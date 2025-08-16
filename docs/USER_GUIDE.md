@@ -16,15 +16,23 @@ This guide covers common usage scenarios and workflows for the rust-sci-hub-mcp 
 
 ### First Time Setup
 
-1. **Install the server** (see [README.md](../README.md) for installation options)
+1. **Install the server**:
+   ```bash
+   # Current working method (source installation)
+   git clone https://github.com/Ladvien/sci_hub_mcp.git
+   cd sci_hub_mcp
+   cargo build --release
+   ```
+
 2. **Start the service**:
    ```bash
-   # If installed via Homebrew
-   brew services start rust-sci-hub-mcp
+   # Run from source
+   ./target/release/rust-sci-hub-mcp --daemon
    
-   # If running from source
-   cargo run --release
+   # Or run in foreground for testing
+   ./target/release/rust-sci-hub-mcp
    ```
+
 3. **Verify it's working**:
    ```bash
    curl http://localhost:8080/health

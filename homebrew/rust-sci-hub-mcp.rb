@@ -1,8 +1,8 @@
 class RustSciHubMcp < Formula
   desc "Rust-based MCP server for Sci-Hub integration and academic paper access"
-  homepage "https://github.com/rust-sci-hub/rust-sci-hub-mcp"
-  url "https://github.com/rust-sci-hub/rust-sci-hub-mcp/archive/v0.1.0.tar.gz"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  homepage "https://github.com/Ladvien/sci_hub_mcp"
+  url "https://github.com/Ladvien/sci_hub_mcp/archive/v0.1.0.tar.gz"
+  sha256 "PLACEHOLDER_SHA256_NEEDS_REAL_RELEASE"
   license "MIT"
 
   # Supported macOS versions

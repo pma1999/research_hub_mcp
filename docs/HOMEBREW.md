@@ -15,14 +15,27 @@ This guide covers installing and managing the rust-sci-hub-mcp server using Home
 
 ## Quick Installation
 
-The easiest way to install rust-sci-hub-mcp is via Homebrew:
+## Current Installation Status
+
+⚠️ **Note**: Homebrew installation requires a GitHub release. Currently, install from source.
+
+### Working Installation (Source)
+```bash
+# Clone and build from source
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
+cargo build --release
+
+# Test the binary
+./target/release/rust-sci-hub-mcp --version
+```
+
+### Future Homebrew Installation
+*Will work after creating a GitHub release:*
 
 ```bash
-# Add the tap (if not using the main Homebrew repository)
-brew tap yourusername/rust-sci-hub-mcp
-
-# Install the package
-brew install rust-sci-hub-mcp
+# After creating v0.1.0 release, this will work:
+brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
 
 # Start the service
 brew services start rust-sci-hub-mcp
