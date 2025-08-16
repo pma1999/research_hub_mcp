@@ -177,23 +177,32 @@ file = "~/Library/Logs/rust-sci-hub-mcp/service.log"
 
 ## Integration with Claude Desktop
 
-### MCP Configuration
+### Quick Setup
 
-Add to your Claude Desktop MCP configuration:
+1. **Install the server**: Follow installation instructions above
+2. **Configure MCP**: Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
+3. **Add server entry**:
 
 ```json
 {
   "mcpServers": {
     "rust-sci-hub-mcp": {
-      "command": "rust-sci-hub-mcp",
-      "args": ["--mcp"],
+      "command": "/opt/homebrew/bin/rust-sci-hub-mcp",
+      "args": [
+        "--config",
+        "/Users/ladvien/.config/rust-sci-hub-mcp/config.toml"
+      ],
       "env": {
-        "RUST_LOG": "info"
+        "RUST_LOG": "info,rust_sci_hub_mcp=debug"
       }
     }
   }
 }
 ```
+
+4. **Restart Claude Desktop**
+
+For detailed setup instructions, see [Claude Desktop Setup Guide](CLAUDE_DESKTOP_SETUP.md).
 
 ### Available Tools
 

@@ -128,6 +128,7 @@ const fn default_verify() -> bool {
 }
 
 /// Paper download tool implementation
+#[derive(Clone)]
 pub struct DownloadTool {
     client: Arc<SciHubClient>,
     http_client: Client,

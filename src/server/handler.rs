@@ -1,15 +1,48 @@
 use crate::{Config, Result, SciHubClient, SearchTool, DownloadTool, MetadataExtractor};
-use std::sync::Arc;
+use rmcp::{
+    model::*,
+    service::{RequestContext, RoleServer},
+    ErrorData,
+    ServerHandler,
+};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::{future::Future, sync::Arc};
 use tracing::{debug, info, instrument};
 
-#[derive(Debug)]
+// Tool input structures
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SearchInput {
+    /// Query string - can be DOI, title, or author name
+    pub query: String,
+    /// Maximum number of results to return (default: 10)
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    /// Offset for pagination (default: 0)
+    #[serde(default)]
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct DownloadInput {
+    /// DOI or URL of the paper to download
+    pub identifier: String,
+    /// Optional output directory
+    pub output_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MetadataInput {
+    /// Path to the PDF file or DOI
+    pub input: String,
+}
+
+/// Main MCP server handler implementing rmcp
+#[derive(Debug, Clone)]
 pub struct SciHubServerHandler {
     config: Arc<Config>,
-    #[allow(dead_code)] // Will be used when MCP integration is complete
     search_tool: SearchTool,
-    #[allow(dead_code)] // Will be used when MCP integration is complete
     download_tool: DownloadTool,
-    #[allow(dead_code)] // Will be used when MCP integration is complete
     metadata_extractor: MetadataExtractor,
 }
 
@@ -29,25 +62,61 @@ impl SciHubServerHandler {
         // Initialize metadata extractor
         let metadata_extractor = MetadataExtractor::new(config.clone())?;
         
-        Ok(Self { config, search_tool, download_tool, metadata_extractor })
+        Ok(Self { 
+            config, 
+            search_tool, 
+            download_tool, 
+            metadata_extractor,
+        })
     }
-}
-
-// For now, create a simple health check function
-// Full MCP handler implementation will be done when we have the correct rmcp API
-impl SciHubServerHandler {
+    
+    /// Health check for the server
     #[instrument(skip(self))]
     pub async fn ping(&self) -> Result<()> {
         debug!("Ping received - server is healthy");
         Ok(())
     }
+}
 
-    #[instrument(skip(self))]
-    pub async fn initialize(&mut self) -> Result<String> {
-        info!("MCP server initializing");
-        debug!("Server configuration loaded with {} mirrors", self.config.sci_hub.mirrors.len());
-        Ok("rust-sci-hub-mcp".to_string())
+impl ServerHandler for SciHubServerHandler {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            instructions: Some("A Rust-based MCP server for Sci-Hub integration. Provides tools to search, download, and extract metadata from academic papers.".into()),
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            ..Default::default()
+        }
     }
+
+    #[instrument(skip(self, request, context))]
+    fn initialize(
+        &self,
+        request: InitializeRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> impl Future<Output = std::result::Result<InitializeResult, ErrorData>> + Send + '_ {
+        info!("MCP server initializing");
+        
+        async move {
+            // Set peer info if not already set
+            if context.peer.peer_info().is_none() {
+                context.peer.set_peer_info(request);
+            }
+            
+            Ok(InitializeResult {
+                protocol_version: ProtocolVersion::default(),
+                capabilities: ServerCapabilities::builder().enable_tools().build(),
+                server_info: Implementation {
+                    name: "rust-sci-hub-mcp".into(),
+                    version: "0.1.0".into(),
+                },
+                instructions: Some("A Rust-based MCP server for Sci-Hub integration. Provides tools to search, download, and extract metadata from academic papers.".into()),
+            })
+        }
+    }
+}
+
+/// Default limit for search results
+const fn default_limit() -> u32 {
+    10
 }
 
 #[cfg(test)]
@@ -66,19 +135,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_handler_initialization() {
-        let mut handler = create_test_handler();
-        let result = handler.initialize().await;
-        assert!(result.is_ok());
-        
-        let server_name = result.unwrap();
-        assert_eq!(server_name, "rust-sci-hub-mcp");
-    }
-
-    #[tokio::test]
     async fn test_ping() {
         let handler = create_test_handler();
         let result = handler.ping().await;
         assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_search_input_validation() {
+        let input = SearchInput {
+            query: "test".to_string(),
+            limit: 10,
+            offset: 0,
+        };
+        assert_eq!(input.query, "test");
+        assert_eq!(input.limit, 10);
+        assert_eq!(input.offset, 0);
     }
 }

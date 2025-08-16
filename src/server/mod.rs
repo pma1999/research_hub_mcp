@@ -2,6 +2,10 @@ pub mod handler;
 pub mod transport;
 
 use crate::{Config, Error, Result};
+use rmcp::{
+    service::ServiceExt,
+    transport::stdio,
+};
 use std::sync::Arc;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
@@ -35,16 +39,14 @@ impl Server {
         info!("Starting MCP server infrastructure");
 
         // Create server handler
-        let mut handler = SciHubServerHandler::new(Arc::clone(&self.config))?;
+        let handler = SciHubServerHandler::new(Arc::clone(&self.config))?;
 
         // Validate transport setup
         transport::validate_stdio_transport().map_err(|e| {
             Error::Service(format!("Transport validation failed: {e}"))
         })?;
 
-        // Initialize handler
-        let server_name = handler.initialize().await?;
-        info!("Server initialized: {}", server_name);
+        info!("MCP server handler initialized successfully");
 
         // Setup signal handlers
         let shutdown_token = self.cancellation_token.clone();
@@ -66,17 +68,18 @@ impl Server {
             shutdown_token.cancel();
         });
 
-        // Run server lifecycle
-        info!("Server running - waiting for shutdown signal");
+        // Start MCP server with stdio transport
+        info!("Starting MCP server on stdio transport");
         
-        tokio::select! {
-            _ = self.health_check_loop(&handler) => {
-                info!("Health check completed");
+        let server_result = tokio::select! {
+            result = self.run_mcp_server(handler) => {
+                result
             }
             () = self.cancellation_token.cancelled() => {
-                info!("Shutdown signal received, stopping server");
+                info!("Shutdown signal received, stopping MCP server");
+                Ok(())
             }
-        }
+        };
 
         // Graceful shutdown with timeout
         let shutdown_timeout = tokio::time::Duration::from_secs(self.config.server.graceful_shutdown_timeout_secs);
@@ -84,27 +87,25 @@ impl Server {
             warn!("Graceful shutdown timeout exceeded, forcing shutdown");
         }
 
-        info!("Server shutdown complete");
-        Ok(())
+        info!("MCP server shutdown complete");
+        server_result
     }
 
-    async fn health_check_loop(&self, handler: &SciHubServerHandler) -> Result<()> {
-        let interval_secs = self.config.server.health_check_interval_secs;
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
+    async fn run_mcp_server(&self, handler: SciHubServerHandler) -> Result<()> {
+        info!("Connecting MCP server to stdio transport");
         
-        loop {
-            interval.tick().await;
-            
-            if let Err(e) = handler.ping().await {
-                error!("Health check failed: {}", e);
-                return Err(e);
-            }
-            
-            if self.cancellation_token.is_cancelled() {
-                break;
-            }
-        }
+        // Create stdio transport 
+        let transport = stdio();
         
+        // Serve the MCP server
+        let server = handler.serve(transport).await
+            .map_err(|e| Error::Service(format!("Failed to start MCP server: {e}")))?;
+
+        // Wait for the server to complete
+        let quit_reason = server.waiting().await
+            .map_err(|e| Error::Service(format!("MCP server error: {e}")))?;
+        
+        info!("MCP server completed with reason: {:?}", quit_reason);
         Ok(())
     }
 

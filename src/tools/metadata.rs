@@ -158,6 +158,7 @@ struct CacheEntry {
 }
 
 /// Metadata extraction tool
+#[derive(Clone)]
 pub struct MetadataExtractor {
     #[allow(dead_code)] // Will be used for configuration access
     config: Arc<Config>,
@@ -180,6 +181,7 @@ struct ExtractionStats {
 
 /// Regex patterns for metadata extraction
 #[allow(clippy::struct_field_names)] // Pattern suffix is intentional for clarity
+#[derive(Clone)]
 struct ExtractionPatterns {
     #[allow(dead_code)] // May be used in future enhancements
     title_pattern: Regex,

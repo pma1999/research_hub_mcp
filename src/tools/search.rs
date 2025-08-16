@@ -102,6 +102,7 @@ impl CacheEntry {
 }
 
 /// Paper search tool implementation
+#[derive(Clone)]
 pub struct SearchTool {
     client: Arc<SciHubClient>,
     cache: Arc<RwLock<HashMap<String, CacheEntry>>>,

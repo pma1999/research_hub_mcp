@@ -12,7 +12,7 @@ rust-version = "1.70"
 
 [dependencies]
 # MCP Framework
-rmcp = "0.5"
+rmcp = { version = "0.5", features = ["transport-io"] }
 
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
