@@ -21,33 +21,53 @@ This project implements an MCP server that enables AI assistants (like Claude) t
 
 ## Installation
 
-### Prerequisites
+### Homebrew Installation (Recommended)
 
-- Rust 1.70+ (latest stable recommended)
-- macOS 10.15+ (for LaunchAgent integration)
+```bash
+# Clone repository to get the formula
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
+
+# Install via Homebrew
+brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
+
+# Configure Sci-Hub mirrors (required)
+mkdir -p ~/.config/rust-sci-hub-mcp
+cat > ~/.config/rust-sci-hub-mcp/config.toml << 'EOF'
+[sci_hub]
+mirrors = [
+    "https://sci-hub.se",
+    "https://sci-hub.st", 
+    "https://sci-hub.ru"
+]
+EOF
+
+# Start the service
+brew services start rust-sci-hub-mcp
+
+# Verify installation
+rust-sci-hub-mcp --version
+```
 
 ### Building from Source
 
 ```bash
-git clone <repository-url>
-cd rust-sci-hub-mcp
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
 cargo build --release
 ```
 
 ### Running
 
 ```bash
-# Development mode
-cargo run
+# Test the binary
+./target/release/rust-sci-hub-mcp --version
 
-# With verbose logging
-cargo run -- --verbose
+# Run in foreground
+./target/release/rust-sci-hub-mcp
 
-# With custom config
-cargo run -- --config /path/to/config.toml
-
-# As daemon (when implemented)
-cargo run -- --daemon
+# Run as daemon
+./target/release/rust-sci-hub-mcp --daemon
 ```
 
 ## Development

@@ -15,11 +15,65 @@ This guide covers installing and managing the rust-sci-hub-mcp server using Home
 
 ## Quick Installation
 
-## Current Installation Status
+## Installation Status
 
-⚠️ **Note**: Homebrew installation requires a GitHub release. Currently, install from source.
+✅ **Homebrew Installation**: Now available and working!
 
-### Working Installation (Source)
+### Homebrew Installation (Recommended)
+```bash
+# Clone repository to get the formula
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
+
+# Install via Homebrew
+brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
+
+# Configure Sci-Hub mirrors (required)
+mkdir -p ~/.config/rust-sci-hub-mcp
+
+# Edit config file to add mirrors
+cat > ~/.config/rust-sci-hub-mcp/config.toml << 'EOF'
+[server]
+host = "127.0.0.1"
+port = 8080
+health_check_interval_secs = 60
+graceful_shutdown_timeout_secs = 30
+
+[sci_hub]
+mirrors = [
+    "https://sci-hub.se",
+    "https://sci-hub.st", 
+    "https://sci-hub.ru"
+]
+timeout_secs = 30
+retry_attempts = 3
+rate_limit_requests_per_minute = 30
+
+[downloads]
+directory = "~/Downloads/papers"
+concurrent_downloads = 3
+chunk_size_bytes = 8192
+
+[metadata]
+cache_enabled = true
+cache_ttl_hours = 168
+extraction_timeout_secs = 10
+
+[logging]
+level = "info"
+file = "~/Library/Logs/rust-sci-hub-mcp/service.log"
+max_size_mb = 10
+max_backups = 5
+EOF
+
+# Start the service
+brew services start rust-sci-hub-mcp
+
+# Test the binary
+rust-sci-hub-mcp --version
+```
+
+### Source Installation (Alternative)
 ```bash
 # Clone and build from source
 git clone https://github.com/Ladvien/sci_hub_mcp.git
@@ -28,20 +82,6 @@ cargo build --release
 
 # Test the binary
 ./target/release/rust-sci-hub-mcp --version
-```
-
-### Future Homebrew Installation
-*Will work after creating a GitHub release:*
-
-```bash
-# After creating v0.1.0 release, this will work:
-brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
-
-# Start the service
-brew services start rust-sci-hub-mcp
-
-# Check if it's running
-curl http://localhost:8080/health
 ```
 
 ## Installation Options

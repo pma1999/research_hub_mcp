@@ -18,25 +18,47 @@ This guide covers common usage scenarios and workflows for the rust-sci-hub-mcp 
 
 1. **Install the server**:
    ```bash
-   # Current working method (source installation)
+   # Recommended: Homebrew installation
    git clone https://github.com/Ladvien/sci_hub_mcp.git
    cd sci_hub_mcp
+   brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
+   
+   # Alternative: Source installation
    cargo build --release
    ```
 
-2. **Start the service**:
+2. **Configure Sci-Hub mirrors** (required):
    ```bash
-   # Run from source
-   ./target/release/rust-sci-hub-mcp --daemon
+   # Create config directory
+   mkdir -p ~/.config/rust-sci-hub-mcp
    
-   # Or run in foreground for testing
-   ./target/release/rust-sci-hub-mcp
+   # Add required mirror configuration
+   echo '[sci_hub]
+   mirrors = [
+       "https://sci-hub.se",
+       "https://sci-hub.st", 
+       "https://sci-hub.ru"
+   ]' >> ~/.config/rust-sci-hub-mcp/config.toml
    ```
 
-3. **Verify it's working**:
+3. **Start the service**:
    ```bash
-   curl http://localhost:8080/health
-   # Should return: {"status":"healthy","uptime":"0s"}
+   # Via Homebrew
+   brew services start rust-sci-hub-mcp
+   
+   # Or run manually
+   rust-sci-hub-mcp --daemon
+   ```
+
+4. **Verify it's working**:
+   ```bash
+   # Check version
+   rust-sci-hub-mcp --version
+   
+   # Check service status
+   brew services list | grep rust-sci-hub-mcp
+   
+   # Note: This is an MCP server (not HTTP), so no health endpoint
    ```
 
 ### Basic Configuration
