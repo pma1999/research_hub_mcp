@@ -35,17 +35,29 @@ The developers of this tool do not condone or support any illegal activities. Us
 
 ## Installation
 
-### Prerequisites
+### Quick Start (Recommended)
 
-- Rust 1.70+ (install from [rustup.rs](https://rustup.rs/))
-- Claude Desktop (for MCP integration)
+**Download the latest release binary:**
+
+```bash
+# macOS (Apple Silicon)
+curl -L -o rust-research-mcp https://github.com/Ladvien/research_hub_mcp/releases/latest/download/rust-research-mcp
+chmod +x rust-research-mcp
+
+# Move to a permanent location
+sudo mv rust-research-mcp /usr/local/bin/
+```
 
 ### Building from Source
 
+If you prefer to build from source:
+
 ```bash
+# Prerequisites: Rust 1.70+ (install from https://rustup.rs/)
+
 # Clone the repository
-git clone https://github.com/yourusername/rust-research-mcp.git
-cd rust-research-mcp
+git clone https://github.com/Ladvien/research_hub_mcp.git
+cd research_hub_mcp
 
 # Build the release binary
 cargo build --release
@@ -65,7 +77,7 @@ Add the following to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "rust-research-mcp": {
-      "command": "/path/to/rust-research-mcp",
+      "command": "/usr/local/bin/rust-research-mcp",
       "args": [
         "--download-dir", "~/Downloads/Research-Papers",
         "--log-level", "info"
