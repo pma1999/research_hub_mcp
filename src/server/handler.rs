@@ -84,7 +84,7 @@ impl ResearchServerHandler {
 impl ServerHandler for ResearchServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("A Rust-based MCP server for academic research paper access. Provides tools to search, download, and extract metadata from academic papers.".into()),
+            instructions: Some("🔬 Research Hub MCP Server v0.2.1 - Academic paper search and retrieval.\n\nProvides tools to:\n• 🔍 Search across arXiv, CrossRef, and Sci-Hub\n• 📥 Download papers with configurable directories\n• 📊 Extract metadata from PDFs\n\nDesigned for personal academic research use only.".into()),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
