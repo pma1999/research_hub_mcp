@@ -1,4 +1,6 @@
-use super::traits::{ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider};
+use super::traits::{
+    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
+};
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -95,7 +97,8 @@ impl ArxivProvider {
                     }
                     "summary" => {
                         if let Some(summary) = child.text() {
-                            paper.abstract_text = Some(summary.trim().replace('\n', " ").replace("  ", " "));
+                            paper.abstract_text =
+                                Some(summary.trim().replace('\n', " ").replace("  ", " "));
                         }
                     }
                     "published" => {
@@ -179,10 +182,17 @@ impl SourceProvider for ArxivProvider {
         Duration::from_millis(3000) // arXiv recommends 3-second delays
     }
 
-    async fn search(&self, query: &SearchQuery, context: &SearchContext) -> Result<ProviderResult, ProviderError> {
+    async fn search(
+        &self,
+        query: &SearchQuery,
+        context: &SearchContext,
+    ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
-        
-        info!("Searching arXiv for: {} (type: {:?})", query.query, query.search_type);
+
+        info!(
+            "Searching arXiv for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         // Build the search URL
         let url = self.build_search_url(query)?;
@@ -190,41 +200,41 @@ impl SourceProvider for ArxivProvider {
 
         // Make the request
         let mut request = self.client.get(&url);
-        
+
         // Add custom headers
         for (key, value) in &context.headers {
             request = request.header(key, value);
         }
 
-        let response = request
-            .timeout(context.timeout)
-            .send()
-            .await
-            .map_err(|e| {
-                error!("arXiv request failed: {}", e);
-                if e.is_timeout() {
-                    ProviderError::Timeout
-                } else if e.is_connect() {
-                    ProviderError::Network(format!("Connection failed: {}", e))
-                } else {
-                    ProviderError::Network(format!("Request failed: {}", e))
-                }
-            })?;
+        let response = request.timeout(context.timeout).send().await.map_err(|e| {
+            error!("arXiv request failed: {}", e);
+            if e.is_timeout() {
+                ProviderError::Timeout
+            } else if e.is_connect() {
+                ProviderError::Network(format!("Connection failed: {}", e))
+            } else {
+                ProviderError::Network(format!("Request failed: {}", e))
+            }
+        })?;
 
         // Check response status
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            
+
             return Err(match status.as_u16() {
                 429 => ProviderError::RateLimit,
-                503 => ProviderError::ServiceUnavailable("arXiv service temporarily unavailable".to_string()),
+                503 => ProviderError::ServiceUnavailable(
+                    "arXiv service temporarily unavailable".to_string(),
+                ),
                 _ => ProviderError::Network(format!("HTTP {}: {}", status, error_text)),
             });
         }
 
         // Parse the response
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
 
         let papers = self.parse_response(&response_text)?;
@@ -237,7 +247,11 @@ impl SourceProvider for ArxivProvider {
         metadata.insert("api_url".to_string(), url);
         metadata.insert("response_size".to_string(), response_text.len().to_string());
 
-        info!("arXiv search completed: {} papers found in {:?}", papers.len(), search_time);
+        info!(
+            "arXiv search completed: {} papers found in {:?}",
+            papers.len(),
+            search_time
+        );
 
         Ok(ProviderResult {
             papers,
@@ -251,7 +265,7 @@ impl SourceProvider for ArxivProvider {
 
     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
         debug!("Performing arXiv health check");
-        
+
         let query = SearchQuery {
             query: "quantum".to_string(),
             search_type: SearchType::Keywords,
@@ -263,7 +277,10 @@ impl SourceProvider for ArxivProvider {
         match self.search(&query, context).await {
             Ok(result) => {
                 let healthy = !result.papers.is_empty();
-                info!("arXiv health check: {}", if healthy { "OK" } else { "No results" });
+                info!(
+                    "arXiv health check: {}",
+                    if healthy { "OK" } else { "No results" }
+                );
                 Ok(healthy)
             }
             Err(ProviderError::RateLimit) => {
@@ -292,7 +309,7 @@ mod tests {
     #[test]
     fn test_arxiv_search_url_building() {
         let provider = ArxivProvider::new().unwrap();
-        
+
         let query = SearchQuery {
             query: "quantum computing".to_string(),
             search_type: SearchType::Keywords,
@@ -302,7 +319,11 @@ mod tests {
         };
 
         let url = provider.build_search_url(&query).unwrap();
-        assert!(url.contains("all:%22quantum%20computing%22") || url.contains("all:quantum") || url.contains("quantum"));
+        assert!(
+            url.contains("all:%22quantum%20computing%22")
+                || url.contains("all:quantum")
+                || url.contains("quantum")
+        );
         assert!(url.contains("max_results=10"));
         assert!(url.contains("start=0"));
     }
@@ -310,7 +331,7 @@ mod tests {
     #[test]
     fn test_arxiv_doi_search_url() {
         let provider = ArxivProvider::new().unwrap();
-        
+
         let query = SearchQuery {
             query: "10.1103/PhysRevA.52.R2493".to_string(),
             search_type: SearchType::Doi,
@@ -320,6 +341,9 @@ mod tests {
         };
 
         let url = provider.build_search_url(&query).unwrap();
-        assert!(url.contains("search_query=doi%3A10.1103") || url.contains("search_query") && url.contains("doi"));
+        assert!(
+            url.contains("search_query=doi%3A10.1103")
+                || url.contains("search_query") && url.contains("doi")
+        );
     }
 }

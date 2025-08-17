@@ -1,8 +1,8 @@
+use futures::stream::StreamExt;
 use signal_hook::consts::signal::*;
 use signal_hook_tokio::Signals;
 use std::sync::Arc;
 use tokio::sync::{watch, RwLock};
-use futures::stream::StreamExt;
 use tracing::{info, instrument, warn};
 
 use super::daemon::ServiceStats;
@@ -15,9 +15,7 @@ pub struct SignalHandler {
 impl SignalHandler {
     /// Create a new signal handler
     pub fn new() -> crate::Result<Self> {
-        Ok(Self {
-            signals: None,
-        })
+        Ok(Self { signals: None })
     }
 
     /// Set up signal handlers
@@ -40,16 +38,18 @@ impl SignalHandler {
 
         self.signals = Some(signals);
 
-        // Spawn signal handling task  
+        // Spawn signal handling task
         tokio::spawn(async move {
             #[cfg(unix)]
             let mut signals = Signals::new([SIGTERM, SIGINT, SIGQUIT, SIGHUP])
-                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e))).unwrap();
+                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))
+                .unwrap();
 
             #[cfg(not(unix))]
             let mut signals = Signals::new([SIGTERM, SIGINT])
-                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e))).unwrap();
-            
+                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))
+                .unwrap();
+
             while let Some(signal) = signals.next().await {
                 match signal {
                     SIGTERM => {
@@ -79,12 +79,12 @@ impl SignalHandler {
                         warn!("Received unexpected signal: {}", signal);
                     }
                 }
-                
+
                 // Update stats
                 let mut stats = stats.write().await;
                 stats.errors_count += 1;
             }
-            
+
             info!("Signal handler task exiting");
         });
 
@@ -97,7 +97,7 @@ impl SignalHandler {
         {
             use nix::sys::signal;
             use nix::unistd::Pid;
-            
+
             let nix_signal = match signal {
                 Signal::Term => signal::Signal::SIGTERM,
                 Signal::Int => signal::Signal::SIGINT,
@@ -106,16 +106,18 @@ impl SignalHandler {
                 Signal::Usr1 => signal::Signal::SIGUSR1,
                 Signal::Usr2 => signal::Signal::SIGUSR2,
             };
-            
+
             signal::kill(Pid::from_raw(pid as i32), nix_signal)
                 .map_err(|e| crate::Error::Service(format!("Failed to send signal: {}", e)))?;
         }
-        
+
         #[cfg(not(unix))]
         {
-            return Err(crate::Error::Service("Signal handling not supported on this platform".to_string()));
+            return Err(crate::Error::Service(
+                "Signal handling not supported on this platform".to_string(),
+            ));
         }
-        
+
         Ok(())
     }
 

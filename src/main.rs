@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use rust_research_mcp::{Config, ConfigOverrides, Server, DaemonConfig, DaemonService, PidFile};
+use rust_research_mcp::{Config, ConfigOverrides, DaemonConfig, DaemonService, PidFile, Server};
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
@@ -45,6 +45,10 @@ struct Cli {
     #[arg(long)]
     profile: Option<String>,
 
+    /// Override download directory path
+    #[arg(long)]
+    download_dir: Option<std::path::PathBuf>,
+
     /// Generate JSON schema for configuration
     #[arg(long)]
     generate_schema: bool,
@@ -79,8 +83,15 @@ async fn main() -> Result<()> {
     let overrides = ConfigOverrides {
         server_port: cli.port,
         server_host: cli.host,
-        log_level: cli.log_level.or_else(|| if cli.verbose { Some("debug".to_string()) } else { None }),
+        log_level: cli.log_level.or_else(|| {
+            if cli.verbose {
+                Some("debug".to_string())
+            } else {
+                None
+            }
+        }),
         profile: cli.profile,
+        download_directory: cli.download_dir,
     };
 
     // Load configuration with proper precedence
@@ -93,24 +104,26 @@ async fn main() -> Result<()> {
 
     // Log configuration (safely)
     let safe_config = config.safe_for_logging();
-    info!("Loaded configuration: profile={}, schema_version={}", 
-          safe_config.profile, safe_config.schema_version);
+    info!(
+        "Loaded configuration: profile={}, schema_version={}",
+        safe_config.profile, safe_config.schema_version
+    );
     debug!("Configuration details: {:#?}", safe_config);
 
     // Check if running in daemon mode
     if cli.daemon {
         info!("Starting in daemon mode");
-        
+
         // Configure daemon
         let mut daemon_config = DaemonConfig::default();
         daemon_config.daemon = true;
         daemon_config.health_port = cli.health_port;
         daemon_config.pid_file = cli.pid_file.or_else(|| Some(PidFile::standard_path()));
-        
+
         // Create and start daemon service
         let config = Arc::new(config);
         let mut daemon = DaemonService::new(config, daemon_config)?;
-        
+
         match daemon.start().await {
             Ok(()) => {
                 info!("Daemon service stopped");
@@ -124,7 +137,7 @@ async fn main() -> Result<()> {
     } else {
         // Run in foreground mode
         let server = Server::new(config);
-        
+
         match server.run().await {
             Ok(()) => {
                 info!("Server shutdown completed successfully");
@@ -137,4 +150,3 @@ async fn main() -> Result<()> {
         }
     }
 }
-

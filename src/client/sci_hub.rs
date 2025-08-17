@@ -56,11 +56,10 @@ impl ResearchClient {
 
         // Configure proxy if provided
         if let Some(proxy_url) = &http_config.proxy {
-            let proxy = reqwest::Proxy::all(proxy_url)
-                .map_err(|e| crate::Error::InvalidInput {
-                    field: "proxy".to_string(),
-                    reason: format!("Invalid proxy URL: {e}"),
-                })?;
+            let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| crate::Error::InvalidInput {
+                field: "proxy".to_string(),
+                reason: format!("Invalid proxy URL: {e}"),
+            })?;
             client_builder = client_builder.proxy(proxy);
         }
 
@@ -70,13 +69,15 @@ impl ResearchClient {
             client_builder = client_builder.danger_accept_invalid_certs(true);
         }
 
-        let http_client = client_builder.build()
+        let http_client = client_builder
+            .build()
             .map_err(|e| crate::Error::Service(format!("Failed to create HTTP client: {e}")))?;
 
         // Initialize mirror manager
-        let mirror_manager = Arc::new(
-            MirrorManager::new(config.research_source.endpoints.clone(), http_client.clone())?
-        );
+        let mirror_manager = Arc::new(MirrorManager::new(
+            config.research_source.endpoints.clone(),
+            http_client.clone(),
+        )?);
 
         // Initialize rate limiter
         let rate_config = RateLimitConfig {
@@ -87,7 +88,10 @@ impl ResearchClient {
         };
         let rate_limiter = Arc::new(RwLock::new(AdaptiveRateLimiter::new(rate_config)));
 
-        info!("Initialized Sci-Hub client with {} mirrors", config.research_source.endpoints.len());
+        info!(
+            "Initialized Sci-Hub client with {} mirrors",
+            config.research_source.endpoints.len()
+        );
 
         Ok(Self {
             http_client,
@@ -111,22 +115,22 @@ impl ResearchClient {
                 reason: "title cannot be empty".to_string(),
             });
         }
-        
+
         self.search_paper(title).await
     }
 
     /// Internal method to search for a paper using various strategies
     async fn search_paper(&self, query: &str) -> Result<ResearchResponse> {
         let start_time = SystemTime::now();
-        
+
         // Apply rate limiting
         self.rate_limiter.write().await.acquire().await;
 
         // Perform search with retry logic
         let response = self.perform_search(query).await?;
-        
+
         let response_time = start_time.elapsed().unwrap_or(Duration::ZERO);
-        
+
         // Record successful response time for adaptive rate limiting
         {
             let mut rate_limiter = self.rate_limiter.write().await;
@@ -134,9 +138,14 @@ impl ResearchClient {
         }
 
         // Mark mirror as successful
-        self.mirror_manager.mark_mirror_success(&response.source_mirror, response_time).await;
-        
-        debug!("Search completed successfully in {}ms", response_time.as_millis());
+        self.mirror_manager
+            .mark_mirror_success(&response.source_mirror, response_time)
+            .await;
+
+        debug!(
+            "Search completed successfully in {}ms",
+            response_time.as_millis()
+        );
         Ok(response)
     }
 
@@ -151,20 +160,22 @@ impl ResearchClient {
         drop(config);
 
         let query_owned = query.to_string(); // Take ownership to avoid lifetime issues
-        
+
         Retry::spawn(retry_strategy.take(max_retries as usize), || {
             self.try_search_on_available_mirror(&query_owned)
-        }).await
+        })
+        .await
     }
 
     /// Try to search on an available mirror
     async fn try_search_on_available_mirror(&self, query: &str) -> Result<ResearchResponse> {
         // Get next available mirror
-        let mirror = self.mirror_manager.get_next_mirror().await
-            .ok_or_else(|| crate::Error::ServiceUnavailable {
+        let mirror = self.mirror_manager.get_next_mirror().await.ok_or_else(|| {
+            crate::Error::ServiceUnavailable {
                 service: "Sci-Hub".to_string(),
                 reason: "No healthy mirrors available".to_string(),
-            })?;
+            }
+        })?;
 
         debug!("Attempting search on mirror: {}", mirror.url);
 
@@ -173,14 +184,18 @@ impl ResearchClient {
 
         // Build search URL
         let search_url = Self::build_search_url(&mirror.url, query);
-        
+
         let start_time = SystemTime::now();
-        
+
         // Make HTTP request
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&search_url)
             .header("User-Agent", user_agent)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
             .header("Accept-Language", "en-US,en;q=0.5")
             .header("Accept-Encoding", "gzip, deflate")
             .header("Connection", "keep-alive")
@@ -193,7 +208,7 @@ impl ResearchClient {
             })?;
 
         let response_time = start_time.elapsed().unwrap_or(Duration::ZERO);
-        
+
         if !response.status().is_success() {
             let status = response.status();
             self.mirror_manager.mark_mirror_failed(&mirror.url).await;
@@ -204,7 +219,9 @@ impl ResearchClient {
         }
 
         // Parse response
-        let html_content = response.text().await
+        let html_content = response
+            .text()
+            .await
             .map_err(|e| crate::Error::Service(format!("Failed to read response body: {e}")))?;
 
         let metadata = Self::parse_sci_hub_response(&html_content, query)?;
@@ -220,26 +237,34 @@ impl ResearchClient {
     /// Build search URL for a given mirror and query
     fn build_search_url(mirror_url: &Url, query: &str) -> String {
         let encoded_query = urlencoding::encode(query);
-        
+
         // For now, use the direct DOI/title lookup pattern
-        format!("{}/{}", mirror_url.as_str().trim_end_matches('/'), encoded_query)
+        format!(
+            "{}/{}",
+            mirror_url.as_str().trim_end_matches('/'),
+            encoded_query
+        )
     }
 
     /// Parse Sci-Hub HTML response to extract paper metadata
     fn parse_sci_hub_response(html: &str, original_query: &str) -> Result<PaperMetadata> {
         let document = Html::parse_document(html);
-        
+
         // Try to find PDF download link
-        let pdf_selector = Selector::parse("a[href*='.pdf'], iframe[src*='.pdf'], embed[src*='.pdf']")
-            .map_err(|e| crate::Error::Parse {
-                context: "CSS selector".to_string(),
-                message: format!("Invalid CSS selector: {e}"),
-            })?;
-        
+        let pdf_selector = Selector::parse(
+            "a[href*='.pdf'], iframe[src*='.pdf'], embed[src*='.pdf']",
+        )
+        .map_err(|e| crate::Error::Parse {
+            context: "CSS selector".to_string(),
+            message: format!("Invalid CSS selector: {e}"),
+        })?;
+
         let pdf_url = document
             .select(&pdf_selector)
             .find_map(|element| {
-                element.value().attr("href")
+                element
+                    .value()
+                    .attr("href")
                     .or_else(|| element.value().attr("src"))
             })
             .map(|url| {
@@ -253,37 +278,40 @@ impl ResearchClient {
 
         // Try to extract title
         let title_selectors = [
-            "h1", "#title", ".title", "title",
-            "meta[name='citation_title']", "meta[property='og:title']"
+            "h1",
+            "#title",
+            ".title",
+            "title",
+            "meta[name='citation_title']",
+            "meta[property='og:title']",
         ];
-        
-        let title = title_selectors
-            .iter()
-            .find_map(|selector| {
-                Selector::parse(selector).ok().and_then(|sel| {
-                    document.select(&sel).next().and_then(|element| {
-                        if selector.contains("meta") {
-                            element.value().attr("content").map(ToString::to_string)
+
+        let title = title_selectors.iter().find_map(|selector| {
+            Selector::parse(selector).ok().and_then(|sel| {
+                document.select(&sel).next().and_then(|element| {
+                    if selector.contains("meta") {
+                        element.value().attr("content").map(ToString::to_string)
+                    } else {
+                        let text = element.text().collect::<String>();
+                        let trimmed = text.trim();
+                        if trimmed.is_empty() {
+                            None
                         } else {
-                            let text = element.text().collect::<String>();
-                            let trimmed = text.trim();
-                            if trimmed.is_empty() {
-                                None
-                            } else {
-                                Some(trimmed.to_string())
-                            }
+                            Some(trimmed.to_string())
                         }
-                    })
+                    }
                 })
-            });
+            })
+        });
 
         // Try to extract authors
         let author_selectors = [
             "meta[name='citation_author']",
             "meta[name='author']",
-            ".authors", ".author",
+            ".authors",
+            ".author",
         ];
-        
+
         let mut authors = Vec::new();
         for selector_str in &author_selectors {
             if let Ok(selector) = Selector::parse(selector_str) {
@@ -311,8 +339,12 @@ impl ResearchClient {
         metadata.authors = authors;
         metadata.pdf_url = pdf_url;
 
-        debug!("Parsed metadata: title={:?}, authors={}, pdf_url={:?}", 
-               metadata.title, metadata.authors.len(), metadata.pdf_url.is_some());
+        debug!(
+            "Parsed metadata: title={:?}, authors={}, pdf_url={:?}",
+            metadata.title,
+            metadata.authors.len(),
+            metadata.pdf_url.is_some()
+        );
 
         Ok(metadata)
     }
@@ -338,16 +370,21 @@ impl ResearchClient {
     /// Get current rate limiting status
     pub async fn get_rate_limit_info(&self) -> (u32, Option<Duration>) {
         let rate_limiter = self.rate_limiter.read().await;
-        (rate_limiter.current_rate(), rate_limiter.average_response_time())
+        (
+            rate_limiter.current_rate(),
+            rate_limiter.average_response_time(),
+        )
     }
 
     /// Update configuration (for hot reload)
     pub async fn update_config(&self, new_config: Config) -> Result<()> {
         {
             let mut config = self.config.write().await;
-            
+
             // Update rate limiter if rate changed
-            if config.research_source.rate_limit_per_sec != new_config.research_source.rate_limit_per_sec {
+            if config.research_source.rate_limit_per_sec
+                != new_config.research_source.rate_limit_per_sec
+            {
                 let rate_config = RateLimitConfig {
                     requests_per_second: new_config.research_source.rate_limit_per_sec,
                     adaptive: true,
@@ -355,7 +392,10 @@ impl ResearchClient {
                     max_rate: new_config.research_source.rate_limit_per_sec * 2,
                 };
                 *self.rate_limiter.write().await = AdaptiveRateLimiter::new(rate_config);
-                info!("Updated rate limit to {} requests/sec", new_config.research_source.rate_limit_per_sec);
+                info!(
+                    "Updated rate limit to {} requests/sec",
+                    new_config.research_source.rate_limit_per_sec
+                );
             }
 
             *config = new_config;
@@ -370,14 +410,15 @@ impl ResearchClient {
 
         for mirror in mirrors {
             let start_time = SystemTime::now();
-            let is_reachable = self.http_client
+            let is_reachable = self
+                .http_client
                 .head(mirror.url.as_str())
                 .timeout(Duration::from_secs(10))
                 .send()
                 .await
                 .map(|response| response.status().is_success())
                 .unwrap_or(false);
-            
+
             let response_time = if is_reachable {
                 Some(start_time.elapsed().unwrap_or(Duration::ZERO))
             } else {
@@ -446,7 +487,7 @@ mod tests {
             </body>
             </html>
         "#;
-        
+
         let metadata = ResearchClient::parse_sci_hub_response(html, "10.1038/test").unwrap();
         assert!(metadata.title.is_some());
         assert!(metadata.pdf_url.is_some());

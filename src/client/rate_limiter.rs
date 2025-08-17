@@ -17,20 +17,23 @@ impl RateLimiter {
         } else {
             Duration::from_secs(1)
         };
-        
-        debug!("Created rate limiter: {} requests per second", requests_per_second);
-        
+
+        debug!(
+            "Created rate limiter: {} requests per second",
+            requests_per_second
+        );
+
         Self {
             requests_per_second,
             last_request_time: None,
             min_interval,
         }
     }
-    
+
     /// Wait until it's safe to make a request (respects rate limit)
     pub async fn acquire(&mut self) {
         let now = Instant::now();
-        
+
         if let Some(last_time) = self.last_request_time {
             let elapsed = now.duration_since(last_time);
             if elapsed < self.min_interval {
@@ -39,23 +42,25 @@ impl RateLimiter {
                 sleep(wait_time).await;
             }
         }
-        
+
         self.last_request_time = Some(Instant::now());
         debug!("Rate limiter: request permitted");
     }
-    
+
     /// Check if a request would be allowed without waiting
     #[must_use]
     pub fn check(&self) -> bool {
-        self.last_request_time.map_or(true, |last_time| Instant::now().duration_since(last_time) >= self.min_interval)
+        self.last_request_time.map_or(true, |last_time| {
+            Instant::now().duration_since(last_time) >= self.min_interval
+        })
     }
-    
+
     /// Get the current rate limit (requests per second)
     #[must_use]
     pub const fn rate_per_second(&self) -> u32 {
         self.requests_per_second
     }
-    
+
     /// Update the rate limit
     pub fn update_rate(&mut self, requests_per_second: u32) {
         if requests_per_second != self.requests_per_second {
@@ -65,22 +70,25 @@ impl RateLimiter {
             } else {
                 Duration::from_secs(1)
             };
-            
-            debug!("Updated rate limiter: {} requests per second", requests_per_second);
+
+            debug!(
+                "Updated rate limiter: {} requests per second",
+                requests_per_second
+            );
         }
     }
-    
+
     /// Get time until next request is allowed
     #[must_use]
     pub fn time_until_ready(&self) -> Option<Duration> {
         self.last_request_time.and_then(|last_time| {
-                let elapsed = Instant::now().duration_since(last_time);
-                if elapsed >= self.min_interval {
-                    None
-                } else {
-                    Some(self.min_interval - elapsed)
-                }
-            })
+            let elapsed = Instant::now().duration_since(last_time);
+            if elapsed >= self.min_interval {
+                None
+            } else {
+                Some(self.min_interval - elapsed)
+            }
+        })
     }
 }
 
@@ -127,7 +135,7 @@ impl AdaptiveRateLimiter {
     #[must_use]
     pub fn new(config: RateLimitConfig) -> Self {
         let inner = RateLimiter::new(config.requests_per_second);
-        
+
         Self {
             inner,
             config,
@@ -135,24 +143,25 @@ impl AdaptiveRateLimiter {
             max_samples: 10, // Keep last 10 response times
         }
     }
-    
+
     /// Record a response time and potentially adjust the rate
     pub fn record_response_time(&mut self, response_time: Duration) {
         if !self.config.adaptive {
             return;
         }
-        
+
         self.response_times.push(response_time);
-        
+
         // Keep only the most recent samples
         if self.response_times.len() > self.max_samples {
             self.response_times.remove(0);
         }
-        
+
         // Adjust rate based on average response time
         if self.response_times.len() >= 3 {
-            let avg_response_time = self.response_times.iter().sum::<Duration>() / u32::try_from(self.response_times.len()).unwrap_or(1);
-            
+            let avg_response_time = self.response_times.iter().sum::<Duration>()
+                / u32::try_from(self.response_times.len()).unwrap_or(1);
+
             let new_rate = if avg_response_time > Duration::from_millis(5000) {
                 // Slow responses - decrease rate
                 (self.inner.rate_per_second().saturating_sub(1)).max(self.config.min_rate)
@@ -163,7 +172,7 @@ impl AdaptiveRateLimiter {
                 // Keep current rate
                 self.inner.rate_per_second()
             };
-            
+
             if new_rate != self.inner.rate_per_second() {
                 debug!("Adaptive rate limiting: adjusting from {} to {} requests/sec (avg response time: {}ms)",
                       self.inner.rate_per_second(), new_rate, avg_response_time.as_millis());
@@ -171,31 +180,34 @@ impl AdaptiveRateLimiter {
             }
         }
     }
-    
+
     /// Wait until it's safe to make a request
     pub async fn acquire(&mut self) {
         self.inner.acquire().await;
     }
-    
+
     /// Check if a request would be allowed without waiting
     #[must_use]
     pub fn check(&self) -> bool {
         self.inner.check()
     }
-    
+
     /// Get the current rate limit
     #[must_use]
     pub const fn current_rate(&self) -> u32 {
         self.inner.rate_per_second()
     }
-    
+
     /// Get average response time from recent samples
     #[must_use]
     pub fn average_response_time(&self) -> Option<Duration> {
         if self.response_times.is_empty() {
             None
         } else {
-            Some(self.response_times.iter().sum::<Duration>() / u32::try_from(self.response_times.len()).unwrap_or(1))
+            Some(
+                self.response_times.iter().sum::<Duration>()
+                    / u32::try_from(self.response_times.len()).unwrap_or(1),
+            )
         }
     }
 }
@@ -204,40 +216,40 @@ impl AdaptiveRateLimiter {
 mod tests {
     use super::*;
     use tokio::time::Instant;
-    
+
     #[tokio::test]
     async fn test_rate_limiter_basic() {
         let mut limiter = RateLimiter::new(2); // 2 requests per second
-        
+
         // First request should be immediate
         let start = Instant::now();
         limiter.acquire().await;
         let first_duration = start.elapsed();
         assert!(first_duration < Duration::from_millis(100));
-        
+
         // Second request should wait for the interval
         limiter.acquire().await;
         let second_duration = start.elapsed();
         assert!(second_duration >= Duration::from_millis(400)); // At least 500ms between requests for 2/sec
     }
-    
+
     #[test]
     fn test_rate_limiter_check() {
         let limiter = RateLimiter::new(1);
-        
+
         // Should be ready initially
         assert!(limiter.check());
     }
-    
+
     #[test]
     fn test_rate_limiter_update() {
         let mut limiter = RateLimiter::new(1);
         assert_eq!(limiter.rate_per_second(), 1);
-        
+
         limiter.update_rate(5);
         assert_eq!(limiter.rate_per_second(), 5);
     }
-    
+
     #[test]
     fn test_adaptive_rate_limiter() {
         let config = RateLimitConfig {
@@ -246,19 +258,19 @@ mod tests {
             min_rate: 1,
             max_rate: 5,
         };
-        
+
         let mut limiter = AdaptiveRateLimiter::new(config);
         assert_eq!(limiter.current_rate(), 2);
-        
+
         // Record slow response times
         for _ in 0..5 {
             limiter.record_response_time(Duration::from_millis(6000));
         }
-        
+
         // Rate should decrease due to slow responses
         assert!(limiter.current_rate() < 2);
     }
-    
+
     #[test]
     fn test_adaptive_rate_limiter_fast_responses() {
         let config = RateLimitConfig {
@@ -267,14 +279,14 @@ mod tests {
             min_rate: 1,
             max_rate: 5,
         };
-        
+
         let mut limiter = AdaptiveRateLimiter::new(config);
-        
+
         // Record fast response times
         for _ in 0..5 {
             limiter.record_response_time(Duration::from_millis(500));
         }
-        
+
         // Rate should increase due to fast responses
         assert!(limiter.current_rate() > 2);
     }

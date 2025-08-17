@@ -1,6 +1,6 @@
 use crate::client::providers::{
-    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
-    ArxivProvider, CrossRefProvider, SciHubProvider,
+    ArxivProvider, CrossRefProvider, ProviderError, ProviderResult, SciHubProvider, SearchContext,
+    SearchQuery, SearchType, SourceProvider,
 };
 use crate::client::PaperMetadata;
 use crate::Config;
@@ -78,7 +78,10 @@ impl MetaSearchClient {
         // Add Sci-Hub provider (lower priority, for full-text access)
         providers.push(Arc::new(SciHubProvider::new(app_config)?));
 
-        info!("Initialized meta-search client with {} providers", providers.len());
+        info!(
+            "Initialized meta-search client with {} providers",
+            providers.len()
+        );
 
         Ok(Self {
             providers,
@@ -89,7 +92,10 @@ impl MetaSearchClient {
 
     /// Get list of available providers
     pub fn providers(&self) -> Vec<String> {
-        self.providers.iter().map(|p| p.name().to_string()).collect()
+        self.providers
+            .iter()
+            .map(|p| p.name().to_string())
+            .collect()
     }
 
     /// Perform health checks on all providers
@@ -100,7 +106,7 @@ impl MetaSearchClient {
         for provider in &self.providers {
             let health = provider.health_check(&context).await.unwrap_or(false);
             results.insert(provider.name().to_string(), health);
-            
+
             if health {
                 info!("Provider {} is healthy", provider.name());
             } else {
@@ -114,21 +120,31 @@ impl MetaSearchClient {
     /// Search across multiple providers
     pub async fn search(&self, query: &SearchQuery) -> Result<MetaSearchResult, ProviderError> {
         let start_time = Instant::now();
-        info!("Starting meta-search for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Starting meta-search for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         // Create search context
         let context = self.create_search_context().await;
 
         // Filter providers based on query type and supported features
         let suitable_providers = self.filter_providers_for_query(query).await;
-        info!("Using {} providers for search: {:?}", 
-              suitable_providers.len(), 
-              suitable_providers.iter().map(|p| p.name()).collect::<Vec<_>>());
+        info!(
+            "Using {} providers for search: {:?}",
+            suitable_providers.len(),
+            suitable_providers
+                .iter()
+                .map(|p| p.name())
+                .collect::<Vec<_>>()
+        );
 
         // Search providers in parallel (with concurrency limit)
         let mut provider_results = Vec::new();
         let mut provider_errors = HashMap::new();
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(self.config.max_parallel_providers));
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(
+            self.config.max_parallel_providers,
+        ));
 
         let mut tasks = Vec::new();
         for provider in suitable_providers {
@@ -140,7 +156,7 @@ impl MetaSearchClient {
 
             let task = tokio::spawn(async move {
                 let _permit = semaphore.acquire().await.unwrap();
-                
+
                 // Apply rate limiting
                 if let Err(e) = Self::apply_rate_limit(&provider).await {
                     return (provider.name().to_string(), Err(e));
@@ -148,14 +164,14 @@ impl MetaSearchClient {
 
                 // Search with timeout
                 let result = timeout(timeout_duration, provider.search(&query, &context)).await;
-                
+
                 match result {
                     Ok(Ok(provider_result)) => (provider.name().to_string(), Ok(provider_result)),
                     Ok(Err(e)) => (provider.name().to_string(), Err(e)),
                     Err(_) => (provider.name().to_string(), Err(ProviderError::Timeout)),
                 }
             });
-            
+
             tasks.push(task);
         }
 
@@ -163,7 +179,11 @@ impl MetaSearchClient {
         for task in tasks {
             match task.await {
                 Ok((provider_name, Ok(result))) => {
-                    info!("Provider {} returned {} results", provider_name, result.papers.len());
+                    info!(
+                        "Provider {} returned {} results",
+                        provider_name,
+                        result.papers.len()
+                    );
                     provider_results.push((provider_name, result));
                 }
                 Ok((provider_name, Err(error))) => {
@@ -177,12 +197,16 @@ impl MetaSearchClient {
         }
 
         // Aggregate results
-        let meta_result = self.aggregate_results(provider_results, provider_errors, start_time).await;
-        
-        info!("Meta-search completed: {} total papers from {} providers in {:?}", 
-              meta_result.papers.len(), 
-              meta_result.successful_providers,
-              meta_result.total_search_time);
+        let meta_result = self
+            .aggregate_results(provider_results, provider_errors, start_time)
+            .await;
+
+        info!(
+            "Meta-search completed: {} total papers from {} providers in {:?}",
+            meta_result.papers.len(),
+            meta_result.successful_providers,
+            meta_result.total_search_time
+        );
 
         Ok(meta_result)
     }
@@ -235,13 +259,21 @@ impl MetaSearchClient {
     }
 
     /// Filter providers based on query characteristics
-    async fn filter_providers_for_query(&self, query: &SearchQuery) -> Vec<Arc<dyn SourceProvider>> {
+    async fn filter_providers_for_query(
+        &self,
+        query: &SearchQuery,
+    ) -> Vec<Arc<dyn SourceProvider>> {
         let mut suitable = Vec::new();
 
         for provider in &self.providers {
             // Check if provider supports the search type
-            if provider.supported_search_types().contains(&query.search_type) 
-                || provider.supported_search_types().contains(&SearchType::Auto) {
+            if provider
+                .supported_search_types()
+                .contains(&query.search_type)
+                || provider
+                    .supported_search_types()
+                    .contains(&SearchType::Auto)
+            {
                 suitable.push(provider.clone());
             }
         }
@@ -256,11 +288,11 @@ impl MetaSearchClient {
     async fn apply_rate_limit(provider: &Arc<dyn SourceProvider>) -> Result<(), ProviderError> {
         // Simple rate limiting - wait for base delay since last request
         let base_delay = provider.base_delay();
-        
+
         // For now, just wait the base delay
         // In a more sophisticated implementation, we'd track per-provider timing
         tokio::time::sleep(base_delay).await;
-        
+
         Ok(())
     }
 
@@ -343,8 +375,11 @@ impl MetaSearchClient {
             }
         }
 
-        debug!("Deduplicated {} papers to {} unique papers", 
-               original_count, unique_papers.len());
+        debug!(
+            "Deduplicated {} papers to {} unique papers",
+            original_count,
+            unique_papers.len()
+        );
 
         unique_papers
     }
@@ -367,7 +402,7 @@ mod tests {
         let config = Config::default();
         let meta_config = MetaSearchConfig::default();
         let client = MetaSearchClient::new(config, meta_config).unwrap();
-        
+
         let providers = client.providers();
         assert!(providers.contains(&"arxiv".to_string()));
         assert!(providers.contains(&"crossref".to_string()));

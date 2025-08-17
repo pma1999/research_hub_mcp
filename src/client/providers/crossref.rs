@@ -1,4 +1,6 @@
-use super::traits::{ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider};
+use super::traits::{
+    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
+};
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use reqwest::Client;
@@ -95,7 +97,10 @@ impl CrossRefProvider {
         match query.search_type {
             SearchType::Doi => {
                 // For DOI search, use the works/{doi} endpoint
-                let clean_doi = query.query.trim_start_matches("doi:").trim_start_matches("https://doi.org/");
+                let clean_doi = query
+                    .query
+                    .trim_start_matches("doi:")
+                    .trim_start_matches("https://doi.org/");
                 let doi_url = format!("{}/{}", self.base_url, clean_doi);
                 return Ok(doi_url);
             }
@@ -123,27 +128,29 @@ impl CrossRefProvider {
 
     /// Convert CrossRef work to PaperMetadata
     fn convert_work(&self, work: CrossRefWork) -> PaperMetadata {
-        let title = work.title
+        let title = work
+            .title
             .and_then(|titles| titles.into_iter().next())
             .map(|title| title.trim().to_string());
 
-        let authors = work.author
+        let authors = work
+            .author
             .unwrap_or_default()
             .into_iter()
-            .map(|author| {
-                match (author.given, author.family) {
-                    (Some(given), Some(family)) => format!("{} {}", given, family),
-                    (None, Some(family)) => family,
-                    (Some(given), None) => given,
-                    (None, None) => "Unknown".to_string(),
-                }
+            .map(|author| match (author.given, author.family) {
+                (Some(given), Some(family)) => format!("{} {}", given, family),
+                (None, Some(family)) => family,
+                (Some(given), None) => given,
+                (None, None) => "Unknown".to_string(),
             })
             .collect();
 
-        let journal = work.container_title
+        let journal = work
+            .container_title
             .and_then(|titles| titles.into_iter().next());
 
-        let year = work.published
+        let year = work
+            .published
             .and_then(|date| date.date_parts)
             .and_then(|parts| parts.into_iter().next())
             .and_then(|part| part.into_iter().next());
@@ -205,10 +212,17 @@ impl SourceProvider for CrossRefProvider {
         }
     }
 
-    async fn search(&self, query: &SearchQuery, context: &SearchContext) -> Result<ProviderResult, ProviderError> {
+    async fn search(
+        &self,
+        query: &SearchQuery,
+        context: &SearchContext,
+    ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
-        
-        info!("Searching CrossRef for: {} (type: {:?})", query.query, query.search_type);
+
+        info!(
+            "Searching CrossRef for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         // Build the search URL
         let url = self.build_search_url(query)?;
@@ -216,32 +230,28 @@ impl SourceProvider for CrossRefProvider {
 
         // Make the request
         let mut request = self.client.get(&url);
-        
+
         // Add custom headers
         for (key, value) in &context.headers {
             request = request.header(key, value);
         }
 
-        let response = request
-            .timeout(context.timeout)
-            .send()
-            .await
-            .map_err(|e| {
-                error!("CrossRef request failed: {}", e);
-                if e.is_timeout() {
-                    ProviderError::Timeout
-                } else if e.is_connect() {
-                    ProviderError::Network(format!("Connection failed: {}", e))
-                } else {
-                    ProviderError::Network(format!("Request failed: {}", e))
-                }
-            })?;
+        let response = request.timeout(context.timeout).send().await.map_err(|e| {
+            error!("CrossRef request failed: {}", e);
+            if e.is_timeout() {
+                ProviderError::Timeout
+            } else if e.is_connect() {
+                ProviderError::Network(format!("Connection failed: {}", e))
+            } else {
+                ProviderError::Network(format!("Request failed: {}", e))
+            }
+        })?;
 
         // Check response status
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            
+
             return Err(match status.as_u16() {
                 404 if query.search_type == SearchType::Doi => {
                     // DOI not found is not an error, just return empty results
@@ -256,24 +266,33 @@ impl SourceProvider for CrossRefProvider {
                     });
                 }
                 429 => ProviderError::RateLimit,
-                503 => ProviderError::ServiceUnavailable("CrossRef service temporarily unavailable".to_string()),
+                503 => ProviderError::ServiceUnavailable(
+                    "CrossRef service temporarily unavailable".to_string(),
+                ),
                 _ => ProviderError::Network(format!("HTTP {}: {}", status, error_text)),
             });
         }
 
         // Parse the response
-        let response_text = response.text().await
+        let response_text = response
+            .text()
+            .await
             .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
 
         let crossref_response: CrossRefResponse = serde_json::from_str(&response_text)
             .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {}", e)))?;
 
         if crossref_response.status != "ok" {
-            return Err(ProviderError::Other(format!("CrossRef API error: {}", crossref_response.status)));
+            return Err(ProviderError::Other(format!(
+                "CrossRef API error: {}",
+                crossref_response.status
+            )));
         }
 
         // Convert works to papers
-        let papers: Vec<PaperMetadata> = crossref_response.message.items
+        let papers: Vec<PaperMetadata> = crossref_response
+            .message
+            .items
             .into_iter()
             .map(|work| self.convert_work(work))
             .collect();
@@ -289,7 +308,11 @@ impl SourceProvider for CrossRefProvider {
             metadata.insert("total_results".to_string(), total.to_string());
         }
 
-        info!("CrossRef search completed: {} papers found in {:?}", papers.len(), search_time);
+        info!(
+            "CrossRef search completed: {} papers found in {:?}",
+            papers.len(),
+            search_time
+        );
 
         Ok(ProviderResult {
             papers,
@@ -301,7 +324,11 @@ impl SourceProvider for CrossRefProvider {
         })
     }
 
-    async fn get_by_doi(&self, doi: &str, context: &SearchContext) -> Result<Option<PaperMetadata>, ProviderError> {
+    async fn get_by_doi(
+        &self,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
         let query = SearchQuery {
             query: doi.to_string(),
             search_type: SearchType::Doi,
@@ -316,7 +343,7 @@ impl SourceProvider for CrossRefProvider {
 
     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
         debug!("Performing CrossRef health check");
-        
+
         // Try to get a well-known DOI
         let query = SearchQuery {
             query: "10.1038/nature12373".to_string(),
@@ -329,7 +356,10 @@ impl SourceProvider for CrossRefProvider {
         match self.search(&query, context).await {
             Ok(result) => {
                 let healthy = !result.papers.is_empty();
-                info!("CrossRef health check: {}", if healthy { "OK" } else { "No results" });
+                info!(
+                    "CrossRef health check: {}",
+                    if healthy { "OK" } else { "No results" }
+                );
                 Ok(healthy)
             }
             Err(ProviderError::RateLimit) => {
@@ -358,7 +388,7 @@ mod tests {
     #[test]
     fn test_crossref_search_url_building() {
         let provider = CrossRefProvider::new(None).unwrap();
-        
+
         let query = SearchQuery {
             query: "machine learning".to_string(),
             search_type: SearchType::Keywords,
@@ -376,7 +406,7 @@ mod tests {
     #[test]
     fn test_crossref_doi_search_url() {
         let provider = CrossRefProvider::new(None).unwrap();
-        
+
         let query = SearchQuery {
             query: "10.1038/nature12373".to_string(),
             search_type: SearchType::Doi,

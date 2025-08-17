@@ -1,4 +1,4 @@
-use rust_sci_hub_mcp::{Config, Error, SciHubClient, SearchTool, DownloadTool};
+use rust_research_mcp::{Config, DownloadTool, Error, SciHubClient, SearchTool};
 use tempfile::TempDir;
 
 /// Security tests for input validation and sanitization
@@ -26,7 +26,11 @@ async fn test_sql_injection_attempts() {
         let result = search_tool.search_by_doi(payload).await;
         // Should fail validation or return empty results, not crash
         match result {
-            Ok(papers) => assert!(papers.is_empty(), "SQL injection payload should not return papers: {}", payload),
+            Ok(papers) => assert!(
+                papers.is_empty(),
+                "SQL injection payload should not return papers: {}",
+                payload
+            ),
             Err(_) => {} // Expected - should be rejected by validation
         }
     }
@@ -56,7 +60,11 @@ async fn test_xss_injection_attempts() {
         let result = search_tool.search_by_title(payload).await;
         // Should not execute any scripts, should be properly escaped/validated
         match result {
-            Ok(papers) => assert!(papers.is_empty(), "XSS payload should not return papers: {}", payload),
+            Ok(papers) => assert!(
+                papers.is_empty(),
+                "XSS payload should not return papers: {}",
+                payload
+            ),
             Err(_) => {} // Expected - should be rejected by validation
         }
     }
@@ -83,14 +91,23 @@ async fn test_path_traversal_attempts() {
     ];
 
     for payload in path_traversal_payloads {
-        let result = download_tool.download("https://test.com/fake.pdf", Some(payload.to_string())).await;
+        let result = download_tool
+            .download("https://test.com/fake.pdf", Some(payload.to_string()))
+            .await;
         // Should fail validation due to invalid filename
-        assert!(result.is_err(), "Path traversal payload should be rejected: {}", payload);
-        
+        assert!(
+            result.is_err(),
+            "Path traversal payload should be rejected: {}",
+            payload
+        );
+
         if let Err(err) = result {
             match err {
                 Error::InvalidInput { field, .. } => {
-                    assert_eq!(field, "filename", "Should reject filename with path traversal");
+                    assert_eq!(
+                        field, "filename",
+                        "Should reject filename with path traversal"
+                    );
                 }
                 _ => panic!("Should return InvalidInput error for path traversal"),
             }
@@ -144,12 +161,22 @@ async fn test_null_byte_injection() {
         let search_result = search_tool.search_by_doi(payload).await;
         if search_result.is_ok() {
             let papers = search_result.unwrap();
-            assert!(papers.is_empty(), "Null byte payload should not return papers: {}", payload);
+            assert!(
+                papers.is_empty(),
+                "Null byte payload should not return papers: {}",
+                payload
+            );
         }
 
         // Test in filename
-        let download_result = download_tool.download("https://test.com/fake.pdf", Some(payload.to_string())).await;
-        assert!(download_result.is_err(), "Null byte in filename should be rejected: {}", payload);
+        let download_result = download_tool
+            .download("https://test.com/fake.pdf", Some(payload.to_string()))
+            .await;
+        assert!(
+            download_result.is_err(),
+            "Null byte in filename should be rejected: {}",
+            payload
+        );
     }
 }
 
@@ -180,12 +207,22 @@ async fn test_command_injection_attempts() {
         let search_result = search_tool.search_by_title(payload).await;
         if search_result.is_ok() {
             let papers = search_result.unwrap();
-            assert!(papers.is_empty(), "Command injection payload should not return papers: {}", payload);
+            assert!(
+                papers.is_empty(),
+                "Command injection payload should not return papers: {}",
+                payload
+            );
         }
 
         // Test in filenames
-        let download_result = download_tool.download("https://test.com/fake.pdf", Some(payload.to_string())).await;
-        assert!(download_result.is_err(), "Command injection in filename should be rejected: {}", payload);
+        let download_result = download_tool
+            .download("https://test.com/fake.pdf", Some(payload.to_string()))
+            .await;
+        assert!(
+            download_result.is_err(),
+            "Command injection in filename should be rejected: {}",
+            payload
+        );
     }
 }
 
@@ -204,8 +241,8 @@ async fn test_buffer_overflow_attempts() {
     let result = SciHubClient::new(config.sci_hub);
     // Might succeed or fail, but should not crash the process
     match result {
-        Ok(_) => {}, // If it succeeds, that's fine
-        Err(_) => {}, // If it fails, that's also acceptable
+        Ok(_) => {}  // If it succeeds, that's fine
+        Err(_) => {} // If it fails, that's also acceptable
     }
 }
 
@@ -235,16 +272,24 @@ async fn test_unicode_handling() {
         // Test in search - should handle Unicode gracefully
         let search_result = search_tool.search_by_title(payload).await;
         // Should not crash, may return empty results or error
-        
+
         // Test in filename - should validate properly
-        let download_result = download_tool.download("https://test.com/fake.pdf", Some(payload.to_string())).await;
+        let download_result = download_tool
+            .download("https://test.com/fake.pdf", Some(payload.to_string()))
+            .await;
         // Should either succeed with sanitized filename or fail validation
         match download_result {
             Ok(info) => {
                 // If it succeeds, filename should be safe
                 let filename = info.file_path.file_name().unwrap().to_string_lossy();
-                assert!(!filename.contains('\u{202E}'), "Dangerous Unicode should be filtered");
-                assert!(!filename.contains('\u{200D}'), "Zero-width characters should be filtered");
+                assert!(
+                    !filename.contains('\u{202E}'),
+                    "Dangerous Unicode should be filtered"
+                );
+                assert!(
+                    !filename.contains('\u{200D}'),
+                    "Zero-width characters should be filtered"
+                );
             }
             Err(_) => {
                 // Rejection is also acceptable
@@ -267,12 +312,12 @@ async fn test_memory_exhaustion_protection() {
 
     // Test with various large file scenarios
     let large_file_url = "https://test.com/large_file.pdf";
-    
+
     // This should be rejected by file size limits
     let result = download_tool.download(large_file_url, None).await;
     // Should either fail early with size check or handle gracefully
     // The key is that it shouldn't cause out-of-memory errors
-    
+
     println!("Memory exhaustion test completed: {:?}", result.is_err());
 }
 
@@ -280,23 +325,50 @@ async fn test_memory_exhaustion_protection() {
 fn test_config_security_defaults() {
     // Test that configuration has secure defaults
     let config = Config::default();
-    
+
     // Rate limiting should be enabled
-    assert!(config.sci_hub.rate_limit_per_sec > 0, "Rate limiting should be enabled by default");
-    
+    assert!(
+        config.sci_hub.rate_limit_per_sec > 0,
+        "Rate limiting should be enabled by default"
+    );
+
     // File size limits should be reasonable
-    assert!(config.downloads.max_file_size_mb > 0, "File size limits should be set");
-    assert!(config.downloads.max_file_size_mb <= 1000, "File size limits should be reasonable");
-    
+    assert!(
+        config.downloads.max_file_size_mb > 0,
+        "File size limits should be set"
+    );
+    assert!(
+        config.downloads.max_file_size_mb <= 1000,
+        "File size limits should be reasonable"
+    );
+
     // Timeouts should be set
-    assert!(config.server.timeout_secs > 0, "Server timeout should be set");
-    assert!(config.sci_hub.timeout_secs > 0, "Sci-Hub timeout should be set");
-    
+    assert!(
+        config.server.timeout_secs > 0,
+        "Server timeout should be set"
+    );
+    assert!(
+        config.sci_hub.timeout_secs > 0,
+        "Sci-Hub timeout should be set"
+    );
+
     // Max connections should be limited
-    assert!(config.server.max_connections > 0, "Max connections should be set");
-    assert!(config.server.max_connections <= 10000, "Max connections should be reasonable");
-    
+    assert!(
+        config.server.max_connections > 0,
+        "Max connections should be set"
+    );
+    assert!(
+        config.server.max_connections <= 10000,
+        "Max connections should be reasonable"
+    );
+
     // Concurrent downloads should be limited
-    assert!(config.downloads.max_concurrent > 0, "Max concurrent downloads should be set");
-    assert!(config.downloads.max_concurrent <= 100, "Max concurrent downloads should be reasonable");
+    assert!(
+        config.downloads.max_concurrent > 0,
+        "Max concurrent downloads should be set"
+    );
+    assert!(
+        config.downloads.max_concurrent <= 100,
+        "Max concurrent downloads should be reasonable"
+    );
 }

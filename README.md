@@ -1,144 +1,143 @@
-# Rust Sci-Hub MCP Server
+# rust-research-mcp
 
-A Rust-based Model Context Protocol (MCP) server that provides search, download, and metadata extraction capabilities for academic papers through Sci-Hub integration.
+A Model Context Protocol (MCP) server that provides AI assistants with academic paper search and retrieval capabilities through multiple research sources.
 
-## Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
 
-This project implements an MCP server that enables AI assistants (like Claude) to:
-- Search for academic papers by DOI, title, or author
-- Download papers from Sci-Hub mirrors 
-- Extract bibliographic metadata from downloaded papers
-- Run as a background service on macOS
+## ⚠️ Legal Disclaimer
+
+**IMPORTANT: This tool is intended for personal academic use only.**
+
+This software is provided for educational and research purposes. Users are responsible for ensuring their use complies with:
+- All applicable laws and regulations
+- Publisher terms of service
+- Institutional policies
+- Copyright restrictions
+
+The developers of this tool do not condone or support any illegal activities. Users should:
+- Only access papers they have legal rights to access
+- Respect intellectual property rights
+- Use retrieved materials in accordance with fair use principles
+- Consider supporting authors and publishers through legitimate channels
+
+**By using this software, you acknowledge that you understand and will comply with all applicable laws and regulations regarding access to academic content.**
 
 ## Features
 
-- **Robust Sci-Hub Integration**: Automatic mirror discovery and failover
-- **MCP Protocol Support**: Compatible with Claude Desktop and other MCP clients
-- **Background Service**: Runs as macOS LaunchAgent with automatic startup
-- **Rate Limiting**: Respectful request patterns to avoid overwhelming servers
-- **Error Resilience**: Circuit breakers, retries, and graceful degradation
-- **Security First**: Input validation, secure HTTP, minimal permissions
+- 🔍 **Multi-Source Search**: Searches across multiple academic databases including arXiv, CrossRef, and Sci-Hub
+- 📥 **Smart Downloads**: Automated paper retrieval with configurable download directory
+- 📊 **Metadata Extraction**: Extract bibliographic information from PDFs
+- 🤖 **MCP Integration**: Seamlessly works with Claude Desktop and other MCP-compatible AI assistants
+- ⚡ **High Performance**: Built with Rust for speed and reliability
+- 🔄 **Resilient**: Automatic retries, fallback mirrors, and graceful error handling
 
 ## Installation
 
-### Homebrew Installation (Recommended)
+### Prerequisites
 
-```bash
-# Clone repository to get the formula
-git clone https://github.com/Ladvien/sci_hub_mcp.git
-cd sci_hub_mcp
-
-# Install via Homebrew
-brew install --build-from-source homebrew/rust-sci-hub-mcp.rb
-
-# Configure Sci-Hub mirrors (required)
-mkdir -p ~/.config/rust-sci-hub-mcp
-cat > ~/.config/rust-sci-hub-mcp/config.toml << 'EOF'
-[sci_hub]
-mirrors = [
-    "https://sci-hub.se",
-    "https://sci-hub.st", 
-    "https://sci-hub.ru"
-]
-EOF
-
-# Start the service
-brew services start rust-sci-hub-mcp
-
-# Verify installation
-rust-sci-hub-mcp --version
-```
+- Rust 1.70+ (install from [rustup.rs](https://rustup.rs/))
+- Claude Desktop (for MCP integration)
 
 ### Building from Source
 
 ```bash
-git clone https://github.com/Ladvien/sci_hub_mcp.git
-cd sci_hub_mcp
+# Clone the repository
+git clone https://github.com/yourusername/rust-research-mcp.git
+cd rust-research-mcp
+
+# Build the release binary
 cargo build --release
+
+# The binary will be at ./target/release/rust-research-mcp
 ```
 
-### Running
+### Configuration for Claude Desktop
+
+Add the following to your Claude Desktop configuration file:
+
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+**Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "rust-research-mcp": {
+      "command": "/path/to/rust-research-mcp",
+      "args": [
+        "--download-dir", "~/Downloads/Research-Papers",
+        "--log-level", "info"
+      ],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+```
+
+## Usage
+
+Once configured, you can ask Claude to:
+
+- **Search for papers**: "Search for recent papers on quantum computing"
+- **Download papers**: "Download the first paper from the search results"
+- **Extract metadata**: "Extract metadata from the PDF file"
+
+### Command Line Options
 
 ```bash
-# Test the binary
-./target/release/rust-sci-hub-mcp --version
+rust-research-mcp [OPTIONS]
 
-# Run in foreground
-./target/release/rust-sci-hub-mcp
-
-# Run as daemon
-./target/release/rust-sci-hub-mcp --daemon
+Options:
+  --download-dir <PATH>    Directory for downloaded papers [default: ~/Downloads/papers]
+  --log-level <LEVEL>      Log level (error, warn, info, debug, trace) [default: info]
+  --config <PATH>          Path to configuration file
+  --help                   Print help information
+  --version                Print version information
 ```
 
-## Development
+### Environment Variables
 
-### Setup
+- `RSH_DOWNLOAD_DIRECTORY`: Override download directory
+- `RSH_LOG_LEVEL`: Override log level
+- `RUST_LOG`: Standard Rust logging configuration
 
-```bash
-# Install development tools
-rustup component add clippy rustfmt
-cargo install cargo-audit cargo-tarpaulin
+## Available Tools
 
-# Run tests
-cargo test
+### search_papers
+Search for academic papers across multiple sources.
 
-# Run lints
-cargo clippy -- -D warnings
-cargo fmt --check
+**Parameters:**
+- `query` (required): Search query (DOI, title, or author)
+- `limit` (optional): Maximum results to return (default: 10)
 
-# Security audit
-cargo audit
-```
+### download_paper
+Download a paper PDF by DOI.
 
-### Testing
+**Parameters:**
+- `doi` (required): The DOI of the paper to download
+- `filename` (optional): Custom filename for the downloaded PDF
 
-```bash
-# Unit tests
-cargo test
+### extract_metadata
+Extract bibliographic metadata from a PDF file.
 
-# Integration tests
-cargo test --test integration
+**Parameters:**
+- `file_path` (required): Path to the PDF file
 
-# With coverage
-cargo tarpaulin --out html
-```
+## Configuration File
 
-### Code Quality
-
-This project enforces strict code quality standards:
-- All code must pass Clippy with zero warnings
-- Code coverage should be >90%
-- All public APIs must be documented
-- Security audit must pass
-
-## Configuration
-
-Configuration is loaded from:
-1. Command-line arguments (highest priority)
-2. Environment variables  
-3. `~/.config/rust-sci-hub-mcp/config.toml`
-4. Built-in defaults (lowest priority)
-
-Example configuration:
+Create a configuration file at `~/.config/rust-research-mcp/config.toml`:
 
 ```toml
 [server]
 port = 8080
-host = "127.0.0.1" 
-timeout_secs = 30
-
-[sci_hub]
-mirrors = [
-    "https://sci-hub.se",
-    "https://sci-hub.st", 
-    "https://sci-hub.ru"
-]
-rate_limit_per_sec = 1
-timeout_secs = 30
-max_retries = 3
+host = "127.0.0.1"
 
 [downloads]
-directory = "~/Downloads/papers"
+directory = "~/Downloads/Research-Papers"
 max_concurrent = 3
 max_file_size_mb = 100
 
@@ -147,35 +146,98 @@ level = "info"
 format = "json"
 ```
 
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run with coverage
+cargo tarpaulin --out Html
+
+# Run benchmarks
+cargo bench
+```
+
+### Code Quality
+
+```bash
+# Format code
+cargo fmt
+
+# Run linter
+cargo clippy -- -D warnings
+
+# Security audit
+cargo audit
+```
+
 ## Architecture
 
-```
-rust-sci-hub-mcp/
-├── src/
-│   ├── main.rs              # Entry point and CLI
-│   ├── lib.rs               # Library exports
-│   ├── server/              # MCP server implementation
-│   ├── tools/               # MCP tools (search, download, metadata)
-│   ├── client/              # Sci-Hub client with mirror management
-│   ├── config/              # Configuration management
-│   ├── service/             # Background service logic
-│   └── error.rs             # Error types
-├── tests/                   # Integration tests
-├── benches/                 # Performance benchmarks
-└── docs/                    # Documentation
-```
+The project follows a modular architecture:
 
-## License
-
-MIT License - see LICENSE file for details.
+```
+src/
+├── server/          # MCP server implementation
+├── tools/           # MCP tools (search, download, metadata)
+├── client/          # Research source clients
+│   └── providers/   # Source-specific implementations
+├── resilience/      # Error handling and retry logic
+└── config/          # Configuration management
+```
 
 ## Contributing
 
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
+
 1. Fork the repository
-2. Create a feature branch
-3. Ensure all tests pass and code follows style guidelines
-4. Submit a pull request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue**: Papers not downloading
+- **Solution**: Some papers may not be available through Sci-Hub, especially very recent publications. The tool will provide helpful suggestions for alternatives.
+
+**Issue**: Connection errors
+- **Solution**: Check your internet connection and firewall settings. The tool requires access to academic databases.
+
+**Issue**: Claude Desktop not recognizing the server
+- **Solution**: Ensure the path in `claude_desktop_config.json` is absolute and the binary has execute permissions.
+
+### Logs
+
+Logs are available at:
+- **macOS**: `~/Library/Logs/Claude/mcp-server-rust-research-mcp.log`
+- **Linux**: `~/.local/share/Claude/logs/`
+- **Windows**: `%APPDATA%\Claude\logs\`
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Built with [rmcp](https://github.com/anthropics/rmcp) - Rust SDK for Model Context Protocol
+- Uses the [Model Context Protocol](https://modelcontextprotocol.io) specification
+- Searches academic databases including [arXiv](https://arxiv.org) and [CrossRef](https://www.crossref.org)
 
 ## Disclaimer
 
-This tool is designed for personal research use only. Users are responsible for ensuring their use complies with local laws and institutional policies regarding academic paper access.
+This tool is provided "as is" without warranty of any kind. The authors and contributors are not responsible for any misuse or legal issues arising from the use of this software. Users must ensure they comply with all applicable laws, regulations, and terms of service when accessing academic content.
+
+**For personal academic use only.**
+
+## Support
+
+For issues, questions, or suggestions, please [open an issue](https://github.com/yourusername/rust-research-mcp/issues) on GitHub.
+
+---
+
+Made with ❤️ for the academic community. Please use responsibly.

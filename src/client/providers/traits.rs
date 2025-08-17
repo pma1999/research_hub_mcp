@@ -1,6 +1,5 @@
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
@@ -72,25 +71,25 @@ pub struct ProviderResult {
 pub enum ProviderError {
     #[error("Network error: {0}")]
     Network(String),
-    
+
     #[error("Parse error: {0}")]
     Parse(String),
-    
+
     #[error("Rate limit exceeded")]
     RateLimit,
-    
+
     #[error("Authentication failed: {0}")]
     Auth(String),
-    
+
     #[error("Invalid query: {0}")]
     InvalidQuery(String),
-    
+
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
-    
+
     #[error("Timeout occurred")]
     Timeout,
-    
+
     #[error("Provider error: {0}")]
     Other(String),
 }
@@ -100,21 +99,29 @@ pub enum ProviderError {
 pub trait SourceProvider: Send + Sync {
     /// Unique name/identifier for this provider
     fn name(&self) -> &str;
-    
+
     /// Human-readable description of the provider
     fn description(&self) -> &str;
-    
+
     /// Supported search types
     fn supported_search_types(&self) -> Vec<SearchType>;
-    
+
     /// Whether this provider supports full-text access
     fn supports_full_text(&self) -> bool;
-    
+
     /// Search for papers using this provider
-    async fn search(&self, query: &SearchQuery, context: &SearchContext) -> Result<ProviderResult, ProviderError>;
-    
+    async fn search(
+        &self,
+        query: &SearchQuery,
+        context: &SearchContext,
+    ) -> Result<ProviderResult, ProviderError>;
+
     /// Get paper metadata by DOI (if supported)
-    async fn get_by_doi(&self, doi: &str, context: &SearchContext) -> Result<Option<PaperMetadata>, ProviderError> {
+    async fn get_by_doi(
+        &self,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
         let query = SearchQuery {
             query: doi.to_string(),
             search_type: SearchType::Doi,
@@ -122,11 +129,11 @@ pub trait SourceProvider: Send + Sync {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         let result = self.search(&query, context).await?;
         Ok(result.papers.into_iter().next())
     }
-    
+
     /// Health check for the provider
     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
         // Default implementation: try a simple search
@@ -137,19 +144,19 @@ pub trait SourceProvider: Send + Sync {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         match self.search(&query, context).await {
             Ok(_) => Ok(true),
             Err(ProviderError::RateLimit) => Ok(true), // Rate limit means service is up
             Err(_) => Ok(false),
         }
     }
-    
+
     /// Get the base delay between requests for rate limiting
     fn base_delay(&self) -> Duration {
         Duration::from_millis(1000) // Default 1 second
     }
-    
+
     /// Priority of this provider (higher = more important)
     fn priority(&self) -> u8 {
         50 // Default medium priority

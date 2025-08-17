@@ -6,4 +6,3 @@ fn benchmark_placeholder(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_placeholder);
 criterion_main!(benches);
-

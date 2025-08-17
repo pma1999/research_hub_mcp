@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::{debug, warn, error};
+use tracing::{debug, error, warn};
 
 /// Health status for a component
 #[derive(Debug, Clone, PartialEq)]
@@ -33,9 +33,9 @@ impl HealthStatus {
     pub fn reason(&self) -> Option<&str> {
         match self {
             HealthStatus::Healthy => None,
-            HealthStatus::Degraded { reason } |
-            HealthStatus::Unhealthy { reason } |
-            HealthStatus::Unknown { reason } => Some(reason),
+            HealthStatus::Degraded { reason }
+            | HealthStatus::Unhealthy { reason }
+            | HealthStatus::Unknown { reason } => Some(reason),
         }
     }
 }
@@ -129,7 +129,8 @@ impl HealthCheckManager {
     /// Check health of a specific component
     pub async fn check_component(&self, name: &str) -> Result<HealthCheckResult> {
         let checks = self.checks.read().await;
-        let check = checks.get(name)
+        let check = checks
+            .get(name)
             .ok_or_else(|| Error::Service(format!("Health check '{}' not found", name)))?;
 
         let start_time = Instant::now();
@@ -152,7 +153,10 @@ impl HealthCheckManager {
         };
 
         // Cache the result
-        self.cache.write().await.insert(name.to_string(), result.clone());
+        self.cache
+            .write()
+            .await
+            .insert(name.to_string(), result.clone());
 
         debug!(
             "Health check '{}' completed: {:?} (took {:?})",
@@ -247,7 +251,9 @@ impl HealthCheckManager {
             return HealthStatus::Degraded {
                 reason: format!(
                     "{} degraded, {} unknown out of {} components",
-                    degraded_count, unknown_count, results.len()
+                    degraded_count,
+                    unknown_count,
+                    results.len()
                 ),
             };
         }
@@ -317,7 +323,8 @@ impl HealthCheck for HttpHealthCheck {
     async fn check_health(&self) -> HealthCheckResult {
         let start_time = Instant::now();
 
-        let response = match self.client
+        let response = match self
+            .client
             .get(&self.url)
             .timeout(self.timeout)
             .send()
@@ -385,9 +392,7 @@ pub struct PingHealthCheck {
 
 impl PingHealthCheck {
     pub fn new(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-        }
+        Self { name: name.into() }
     }
 }
 
@@ -395,10 +400,10 @@ impl PingHealthCheck {
 impl HealthCheck for PingHealthCheck {
     async fn check_health(&self) -> HealthCheckResult {
         let start_time = Instant::now();
-        
+
         // Simulate a very fast check
         tokio::time::sleep(Duration::from_millis(1)).await;
-        
+
         HealthCheckResult::new(HealthStatus::Healthy, start_time.elapsed())
             .with_detail("type", "ping")
     }
@@ -453,9 +458,9 @@ mod tests {
         async fn check_health(&self) -> HealthCheckResult {
             let start_time = Instant::now();
             self.call_count.fetch_add(1, Ordering::SeqCst);
-            
+
             tokio::time::sleep(self.delay).await;
-            
+
             HealthCheckResult::new(self.result.clone(), start_time.elapsed())
         }
 
@@ -509,7 +514,7 @@ mod tests {
     async fn test_health_check_caching() {
         let manager = HealthCheckManager::new();
         let check = Arc::new(TestHealthCheck::new("test", HealthStatus::Healthy));
-        
+
         manager.register(check.clone()).await;
 
         // First call should execute the check
@@ -537,7 +542,7 @@ mod tests {
         let manager = HealthCheckManager::new();
         let slow_check = Arc::new(
             TestHealthCheck::new("slow", HealthStatus::Healthy)
-                .with_delay(Duration::from_millis(200))
+                .with_delay(Duration::from_millis(200)),
         );
 
         manager.register(slow_check.clone()).await;
@@ -551,7 +556,7 @@ mod tests {
     async fn test_ping_health_check() {
         let ping = PingHealthCheck::new("ping");
         let result = ping.check_health().await;
-        
+
         assert!(result.status.is_healthy());
         assert!(result.check_duration < Duration::from_millis(10));
     }

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use syslog::{Facility, Formatter3164};
-use tokio::sync::{RwLock, watch};
+use tokio::sync::{watch, RwLock};
 use tokio::time::interval;
 use tokio_metrics::{TaskMetrics, TaskMonitor};
 use tracing::{error, info, instrument, warn};
@@ -98,12 +98,12 @@ impl DaemonService {
     /// Create a new daemon service
     pub fn new(config: Arc<Config>, daemon_config: DaemonConfig) -> Result<Self> {
         info!("Initializing daemon service");
-        
+
         let health_check = Arc::new(HealthCheck::new(daemon_config.health_port));
         let signal_handler = SignalHandler::new()?;
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let task_monitor = TaskMonitor::new();
-        
+
         Ok(Self {
             config,
             daemon_config,
@@ -155,7 +155,7 @@ impl DaemonService {
 
         // Initialize and start the MCP server
         self.server = Some(Arc::new(Server::new_with_arc(self.config.clone())));
-        
+
         // Update stats
         {
             let mut stats = self.stats.write().await;
@@ -172,29 +172,32 @@ impl DaemonService {
                 }
                 Err(e) => {
                     error!("Server error: {}", e);
-                    
+
                     if !self.daemon_config.auto_restart {
                         break;
                     }
-                    
+
                     restart_count += 1;
                     if restart_count > self.daemon_config.max_restart_attempts {
                         error!("Maximum restart attempts exceeded");
                         break;
                     }
-                    
-                    warn!("Restarting server (attempt {}/{})", 
-                          restart_count, self.daemon_config.max_restart_attempts);
-                    
+
+                    warn!(
+                        "Restarting server (attempt {}/{})",
+                        restart_count, self.daemon_config.max_restart_attempts
+                    );
+
                     // Update restart count in stats
                     {
                         let mut stats = self.stats.write().await;
                         stats.restart_count = restart_count;
                     }
-                    
+
                     // Wait before restarting
-                    tokio::time::sleep(Duration::from_secs(self.daemon_config.restart_delay_secs)).await;
-                    
+                    tokio::time::sleep(Duration::from_secs(self.daemon_config.restart_delay_secs))
+                        .await;
+
                     // Recreate server for restart
                     self.server = Some(Arc::new(Server::new_with_arc(self.config.clone())));
                 }
@@ -204,7 +207,7 @@ impl DaemonService {
         // Cleanup
         health_handle.abort();
         monitor_handle.abort();
-        
+
         if let Some(mut pid_file) = self.pid_file.take() {
             pid_file.remove()?;
         }
@@ -218,9 +221,7 @@ impl DaemonService {
             let server_handle = {
                 let server = server.clone();
                 let monitor = self.task_monitor.clone();
-                monitor.instrument(async move {
-                    server.run().await
-                })
+                monitor.instrument(async move { server.run().await })
             };
 
             // Wait for either server completion or shutdown signal
@@ -275,7 +276,8 @@ impl DaemonService {
             daemon = daemon.stdout(stdout).stderr(stderr);
         }
 
-        daemon.start()
+        daemon
+            .start()
             .map_err(|e| crate::Error::Service(format!("Failed to daemonize: {e}")))?;
 
         Ok(())
@@ -292,11 +294,11 @@ impl DaemonService {
 
         let logger = syslog::unix(formatter)
             .map_err(|e| crate::Error::Service(format!("Failed to init syslog: {}", e)))?;
-        
+
         // Note: In a real implementation, we'd integrate this with tracing
         // For now, we just initialize it
         drop(logger);
-        
+
         info!("Syslog logging initialized");
         Ok(())
     }
@@ -305,9 +307,11 @@ impl DaemonService {
     async fn setup_signal_handlers(&mut self) -> Result<()> {
         let shutdown_tx = self.shutdown_tx.clone();
         let stats = self.stats.clone();
-        
-        self.signal_handler.handle_signals(shutdown_tx, stats).await?;
-        
+
+        self.signal_handler
+            .handle_signals(shutdown_tx, stats)
+            .await?;
+
         info!("Signal handlers configured");
         Ok(())
     }
@@ -331,11 +335,11 @@ impl DaemonService {
                     _ = interval.tick() => {
                         // Get task metrics
                         let metrics = task_monitor.cumulative();
-                        
+
                         // Update stats with current resource usage
                         let memory_usage = Self::get_memory_usage();
                         let cpu_usage = Self::get_cpu_usage(&metrics);
-                        
+
                         {
                             let mut stats = stats.write().await;
                             stats.memory_usage_mb = memory_usage;
@@ -369,11 +373,11 @@ impl DaemonService {
         #[cfg(target_os = "macos")]
         {
             use std::process::Command;
-            
+
             let output = Command::new("ps")
                 .args(["-o", "rss=", "-p", &std::process::id().to_string()])
                 .output();
-            
+
             if let Ok(output) = output {
                 if let Ok(text) = String::from_utf8(output.stdout) {
                     if let Ok(kb) = text.trim().parse::<u64>() {
@@ -382,7 +386,7 @@ impl DaemonService {
                 }
             }
         }
-        
+
         0 // Default fallback
     }
 
@@ -391,7 +395,7 @@ impl DaemonService {
         // Simplified CPU usage calculation based on available metrics
         // tokio-metrics 0.3 doesn't have total_duration, so we estimate
         let total_polls = metrics.total_poll_count;
-        
+
         if total_polls > 0 {
             // Estimate based on poll duration
             let avg_poll_duration = metrics.total_poll_duration.as_secs_f32() / total_polls as f32;
@@ -405,13 +409,13 @@ impl DaemonService {
     /// Reload configuration without restart
     pub async fn reload_config(&mut self) -> Result<()> {
         info!("Reloading configuration");
-        
+
         // In a real implementation, this would:
         // 1. Load new config from file
         // 2. Validate the new config
         // 3. Apply changes that don't require restart
         // 4. Queue changes that do require restart
-        
+
         // For now, just log the action
         info!("Configuration reloaded successfully");
         Ok(())
@@ -421,12 +425,13 @@ impl DaemonService {
     pub async fn get_status(&self) -> ServiceStatus {
         let stats = self.stats.read().await;
         let health_status = self.health_check.get_status().await;
-        
+
         ServiceStatus {
             running: true,
             healthy: health_status.healthy,
             start_time: stats.start_time,
-            uptime_seconds: stats.start_time
+            uptime_seconds: stats
+                .start_time
                 .and_then(|start| SystemTime::now().duration_since(start).ok())
                 .map(|d| d.as_secs())
                 .unwrap_or(0),
@@ -442,7 +447,7 @@ impl DaemonService {
     pub async fn shutdown(&self) {
         info!("Initiating graceful shutdown");
         let _ = self.shutdown_tx.send(true);
-        
+
         // Give services time to clean up
         tokio::time::sleep(Duration::from_secs(2)).await;
     }

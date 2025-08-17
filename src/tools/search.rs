@@ -1,5 +1,5 @@
-use crate::client::{PaperMetadata, MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 use crate::client::providers::{SearchQuery, SearchType as ProviderSearchType};
+use crate::client::{MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata};
 use crate::{Config, Result};
 // use rmcp::tool; // Will be enabled when rmcp integration is complete
 use schemars::JsonSchema;
@@ -124,12 +124,13 @@ impl SearchTool {
     /// Create a new search tool with meta-search capabilities
     pub fn new(config: Arc<Config>) -> Result<Self> {
         info!("Initializing paper search tool with meta-search");
-        
+
         // Create meta-search client
         let meta_config = MetaSearchConfig::default();
-        let meta_client = MetaSearchClient::new((*config).clone(), meta_config)
-            .map_err(|e| crate::Error::Service(format!("Failed to create meta-search client: {}", e)))?;
-        
+        let meta_client = MetaSearchClient::new((*config).clone(), meta_config).map_err(|e| {
+            crate::Error::Service(format!("Failed to create meta-search client: {}", e))
+        })?;
+
         Ok(Self {
             meta_client: Arc::new(meta_client),
             cache: Arc::new(RwLock::new(HashMap::new())),
@@ -141,11 +142,14 @@ impl SearchTool {
     // #[tool] // Will be enabled when rmcp integration is complete
     #[instrument(skip(self), fields(query = %input.query, search_type = ?input.search_type))]
     pub async fn search_papers(&self, input: SearchInput) -> Result<SearchResult> {
-        info!("Executing meta-search: query='{}', type={:?}", input.query, input.search_type);
-        
+        info!(
+            "Executing meta-search: query='{}', type={:?}",
+            input.query, input.search_type
+        );
+
         // Validate input
         Self::validate_input(&input)?;
-        
+
         // Check cache first
         let cache_key = Self::generate_cache_key(&input);
         if let Some(cached_result) = self.get_from_cache(&cache_key).await {
@@ -155,7 +159,7 @@ impl SearchTool {
 
         // Convert our SearchType to ProviderSearchType
         let provider_search_type = Self::convert_search_type(&input.search_type);
-        
+
         // Create search query for meta-search
         let search_query = SearchQuery {
             query: input.query.clone(),
@@ -166,7 +170,10 @@ impl SearchTool {
         };
 
         // Execute meta-search
-        let meta_result = self.meta_client.search(&search_query).await
+        let meta_result = self
+            .meta_client
+            .search(&search_query)
+            .await
             .map_err(|e| crate::Error::Service(format!("Meta-search failed: {}", e)))?;
 
         // Convert to our SearchResult format
@@ -180,9 +187,13 @@ impl SearchTool {
         // Cache the result
         self.cache_result(&cache_key, &result).await;
 
-        info!("Meta-search completed in {:?}, found {} results from {} providers", 
-              result.search_time_ms, result.returned_count, result.source_mirror.as_deref().unwrap_or("multiple"));
-        
+        info!(
+            "Meta-search completed in {:?}, found {} results from {} providers",
+            result.search_time_ms,
+            result.returned_count,
+            result.source_mirror.as_deref().unwrap_or("multiple")
+        );
+
         Ok(result)
     }
 
@@ -220,15 +231,15 @@ impl SearchTool {
         Ok(())
     }
 
-
-
     /// Generate cache key for search input
     fn generate_cache_key(input: &SearchInput) -> String {
-        format!("{}:{}:{}:{}", 
-                input.query.to_lowercase(), 
-                serde_json::to_string(&input.search_type).unwrap_or_default(),
-                input.limit,
-                input.offset)
+        format!(
+            "{}:{}:{}:{}",
+            input.query.to_lowercase(),
+            serde_json::to_string(&input.search_type).unwrap_or_default(),
+            input.limit,
+            input.offset
+        )
     }
 
     /// Get result from cache
@@ -250,10 +261,10 @@ impl SearchTool {
         let mut cache = self.cache.write().await;
         let ttl = Duration::from_secs(self.config.research_source.timeout_secs * 10); // Cache for 10x timeout
         cache.insert(cache_key.to_string(), CacheEntry::new(result.clone(), ttl));
-        
+
         // Simple cache cleanup - remove expired entries
         cache.retain(|_, entry| !entry.is_expired());
-        
+
         debug!("Cached search result, cache size: {}", cache.len());
     }
 
@@ -293,14 +304,20 @@ impl SearchTool {
         input: &SearchInput,
     ) -> SearchResult {
         // Convert papers to PaperResult format
-        let papers: Vec<PaperResult> = meta_result.papers
+        let papers: Vec<PaperResult> = meta_result
+            .papers
             .into_iter()
             .enumerate()
             .map(|(index, paper)| {
                 // Determine source (prefer the first source that provided this paper)
-                let source = meta_result.by_source
+                let source = meta_result
+                    .by_source
                     .iter()
-                    .find(|(_, papers)| papers.iter().any(|p| p.doi == paper.doi || p.title == paper.title))
+                    .find(|(_, papers)| {
+                        papers
+                            .iter()
+                            .any(|p| p.doi == paper.doi || p.title == paper.title)
+                    })
                     .map(|(source, _)| source.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
 
@@ -314,13 +331,25 @@ impl SearchTool {
             .collect();
 
         let returned_count = papers.len() as u32;
-        
+
         // Create source summary
         let source_summary = if meta_result.by_source.len() > 1 {
-            format!("Multiple sources: {}", 
-                meta_result.by_source.keys().cloned().collect::<Vec<_>>().join(", "))
+            format!(
+                "Multiple sources: {}",
+                meta_result
+                    .by_source
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
         } else {
-            meta_result.by_source.keys().next().cloned().unwrap_or_else(|| "No sources".to_string())
+            meta_result
+                .by_source
+                .keys()
+                .next()
+                .cloned()
+                .unwrap_or_else(|| "No sources".to_string())
         };
 
         SearchResult {
@@ -345,8 +374,8 @@ const fn default_limit() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::{PaperMetadata, MetaSearchResult};
     use crate::client::providers::SearchType as ProviderSearchType;
+    use crate::client::{MetaSearchResult, PaperMetadata};
     use crate::config::{Config, ResearchSourceConfig};
 
     fn create_test_config() -> Arc<Config> {
@@ -407,11 +436,26 @@ mod tests {
     #[test]
     fn test_search_type_conversion() {
         // Test conversion from our SearchType to ProviderSearchType
-        assert!(matches!(SearchTool::convert_search_type(&SearchType::Auto), ProviderSearchType::Auto));
-        assert!(matches!(SearchTool::convert_search_type(&SearchType::Doi), ProviderSearchType::Doi));
-        assert!(matches!(SearchTool::convert_search_type(&SearchType::Title), ProviderSearchType::Title));
-        assert!(matches!(SearchTool::convert_search_type(&SearchType::Author), ProviderSearchType::Author));
-        assert!(matches!(SearchTool::convert_search_type(&SearchType::AuthorYear), ProviderSearchType::Keywords));
+        assert!(matches!(
+            SearchTool::convert_search_type(&SearchType::Auto),
+            ProviderSearchType::Auto
+        ));
+        assert!(matches!(
+            SearchTool::convert_search_type(&SearchType::Doi),
+            ProviderSearchType::Doi
+        ));
+        assert!(matches!(
+            SearchTool::convert_search_type(&SearchType::Title),
+            ProviderSearchType::Title
+        ));
+        assert!(matches!(
+            SearchTool::convert_search_type(&SearchType::Author),
+            ProviderSearchType::Author
+        ));
+        assert!(matches!(
+            SearchTool::convert_search_type(&SearchType::AuthorYear),
+            ProviderSearchType::Keywords
+        ));
     }
 
     #[test]

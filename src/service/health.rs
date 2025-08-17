@@ -1,10 +1,4 @@
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
-    routing::get,
-    Router,
-};
+use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -122,7 +116,7 @@ impl HealthCheck {
     /// Update individual health check
     pub async fn update_check(&self, check: HealthCheckType, healthy: bool) {
         let mut status = self.status.write().await;
-        
+
         match check {
             HealthCheckType::Server => status.checks.server = healthy,
             HealthCheckType::Database => status.checks.database = healthy,
@@ -169,13 +163,13 @@ async fn health_handler(
     State(status): State<Arc<RwLock<HealthStatus>>>,
 ) -> (StatusCode, Json<HealthStatus>) {
     let health = status.read().await.clone();
-    
+
     let status_code = if health.healthy {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
-    
+
     (status_code, Json(health))
 }
 
@@ -186,11 +180,9 @@ async fn liveness_handler() -> StatusCode {
 }
 
 /// Readiness probe handler (is the service ready to accept requests?)
-async fn readiness_handler(
-    State(status): State<Arc<RwLock<HealthStatus>>>,
-) -> StatusCode {
+async fn readiness_handler(State(status): State<Arc<RwLock<HealthStatus>>>) -> StatusCode {
     let health = status.read().await;
-    
+
     if health.healthy && health.checks.server {
         StatusCode::OK
     } else {
@@ -203,18 +195,18 @@ async fn startup_handler(
     State(status): State<Arc<RwLock<HealthStatus>>>,
 ) -> (StatusCode, Json<StartupStatus>) {
     let health = status.read().await;
-    
+
     let startup = StartupStatus {
         started: health.checks.server,
         timestamp: health.timestamp,
     };
-    
+
     let status_code = if startup.started {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
     };
-    
+
     (status_code, Json(startup))
 }
 
@@ -249,7 +241,7 @@ mod tests {
     async fn test_set_unhealthy() {
         let health = HealthCheck::new(8090);
         health.set_unhealthy("Test failure").await;
-        
+
         let status = health.get_status().await;
         assert!(!status.healthy);
         assert_eq!(status.message, "Test failure");
@@ -259,7 +251,7 @@ mod tests {
     async fn test_update_check() {
         let health = HealthCheck::new(8090);
         health.update_check(HealthCheckType::Database, false).await;
-        
+
         let status = health.get_status().await;
         assert!(!status.healthy);
         assert!(!status.checks.database);
