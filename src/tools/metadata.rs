@@ -233,7 +233,7 @@ impl MetadataExtractor {
     /// Create a new metadata extractor
     pub fn new(config: Arc<Config>) -> Result<Self> {
         info!("Initializing metadata extraction tool");
-        
+
         // Initialize cache database if enabled
         // Initialize cache database
         let cache_db = {
@@ -243,7 +243,10 @@ impl MetadataExtractor {
                     Some(db)
                 }
                 Err(e) => {
-                    warn!("Failed to open cache database: {}, continuing without cache", e);
+                    warn!(
+                        "Failed to open cache database: {}, continuing without cache",
+                        e
+                    );
                     None
                 }
             }
@@ -275,11 +278,16 @@ impl MetadataExtractor {
         // Check for batch processing
         if let Some(batch_files) = input.batch_files {
             // Use Box::pin to avoid recursion issue
-            return Box::pin(self.extract_batch(batch_files, input.use_cache, input.validate_external)).await;
+            return Box::pin(self.extract_batch(
+                batch_files,
+                input.use_cache,
+                input.validate_external,
+            ))
+            .await;
         }
 
         let file_path = PathBuf::from(&input.file_path);
-        
+
         // Validate file exists
         if !file_path.exists() {
             return Ok(MetadataResult {
@@ -296,9 +304,14 @@ impl MetadataExtractor {
             if let Some(cached) = self.get_cached_metadata(&file_path).await? {
                 info!("Returning cached metadata for: {}", input.file_path);
                 let processing_time = start_time.elapsed().unwrap_or_default();
-                
-                self.update_stats(true, true, processing_time.as_millis().try_into().unwrap_or(u64::MAX)).await;
-                
+
+                self.update_stats(
+                    true,
+                    true,
+                    processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+                )
+                .await;
+
                 return Ok(MetadataResult {
                     status: ExtractionStatus::Cached,
                     metadata: Some(cached),
@@ -310,26 +323,34 @@ impl MetadataExtractor {
         }
 
         // Extract metadata from PDF
-        let metadata = match self.extract_from_pdf(&file_path, input.extract_references).await {
+        let metadata = match self
+            .extract_from_pdf(&file_path, input.extract_references)
+            .await
+        {
             Ok(mut meta) => {
                 // Validate with external sources if requested
                 if input.validate_external {
                     self.validate_with_crossref(&mut meta).await;
                 }
-                
+
                 // Cache the result
                 if input.use_cache {
                     self.cache_metadata(&file_path, &meta).await?;
                 }
-                
+
                 meta
             }
             Err(e) => {
                 error!("Failed to extract metadata: {}", e);
                 let processing_time = start_time.elapsed().unwrap_or_default();
-                
-                self.update_stats(false, false, processing_time.as_millis().try_into().unwrap_or(u64::MAX)).await;
-                
+
+                self.update_stats(
+                    false,
+                    false,
+                    processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+                )
+                .await;
+
                 return Ok(MetadataResult {
                     status: ExtractionStatus::Failed,
                     metadata: None,
@@ -341,9 +362,17 @@ impl MetadataExtractor {
         };
 
         let processing_time = start_time.elapsed().unwrap_or_default();
-        self.update_stats(true, false, processing_time.as_millis().try_into().unwrap_or(u64::MAX)).await;
+        self.update_stats(
+            true,
+            false,
+            processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+        )
+        .await;
 
-        info!("Metadata extraction completed in {}ms", processing_time.as_millis());
+        info!(
+            "Metadata extraction completed in {}ms",
+            processing_time.as_millis()
+        );
 
         Ok(MetadataResult {
             status: if metadata.confidence_score > 0.7 {
@@ -359,9 +388,13 @@ impl MetadataExtractor {
     }
 
     /// Extract metadata from PDF file
-    async fn extract_from_pdf(&self, file_path: &Path, extract_refs: bool) -> Result<ExtractedMetadata> {
+    async fn extract_from_pdf(
+        &self,
+        file_path: &Path,
+        extract_refs: bool,
+    ) -> Result<ExtractedMetadata> {
         debug!("Loading PDF document: {:?}", file_path);
-        
+
         // Load PDF document
         let doc = tokio::task::spawn_blocking({
             let path = file_path.to_path_buf();
@@ -376,13 +409,13 @@ impl MetadataExtractor {
 
         // Extract text from PDF
         let text = Self::extract_text_from_pdf(&doc)?;
-        
+
         // Parse metadata from text
         let mut metadata = self.parse_metadata_from_text(&text, extract_refs);
-        
+
         // Try to extract metadata from PDF info dictionary
         Self::extract_pdf_info(&doc, &mut metadata);
-        
+
         // Calculate confidence score
         metadata.confidence_score = Self::calculate_confidence(&metadata);
         metadata.metadata_source = "pdf".to_string();
@@ -394,7 +427,7 @@ impl MetadataExtractor {
     /// Extract text content from PDF
     fn extract_text_from_pdf(doc: &Document) -> Result<String> {
         let mut all_text = String::new();
-        
+
         // Iterate through pages
         for page_id in doc.get_pages().values() {
             if let Ok(content) = doc.get_page_content(*page_id) {
@@ -444,7 +477,10 @@ impl MetadataExtractor {
         let lines: Vec<&str> = text.lines().take(20).collect();
         for line in &lines {
             let trimmed = line.trim();
-            if trimmed.len() > 10 && trimmed.len() < 300 && !self.extraction_patterns.author_pattern.is_match(trimmed) {
+            if trimmed.len() > 10
+                && trimmed.len() < 300
+                && !self.extraction_patterns.author_pattern.is_match(trimmed)
+            {
                 metadata.title = Some(trimmed.to_string());
                 debug!("Found title: {:?}", metadata.title);
                 break;
@@ -452,7 +488,12 @@ impl MetadataExtractor {
         }
 
         // Extract authors
-        for captures in self.extraction_patterns.author_pattern.captures_iter(text).take(20) {
+        for captures in self
+            .extraction_patterns
+            .author_pattern
+            .captures_iter(text)
+            .take(20)
+        {
             if let Some(name) = captures.get(1) {
                 let author_name = name.as_str().to_string();
                 if !author_name.contains("University") && !author_name.contains("Department") {
@@ -496,7 +537,10 @@ impl MetadataExtractor {
         if let Some(captures) = self.extraction_patterns.volume_issue_pattern.captures(text) {
             metadata.volume = captures.get(1).map(|m| m.as_str().to_string());
             metadata.issue = captures.get(2).map(|m| m.as_str().to_string());
-            debug!("Found volume: {:?}, issue: {:?}", metadata.volume, metadata.issue);
+            debug!(
+                "Found volume: {:?}, issue: {:?}",
+                metadata.volume, metadata.issue
+            );
         }
 
         // Extract references if requested
@@ -541,7 +585,8 @@ impl MetadataExtractor {
             // Keywords
             if let Ok(Object::String(keywords, _)) = info.get(b"Keywords") {
                 let keywords_str = String::from_utf8_lossy(keywords.as_ref());
-                metadata.keywords = keywords_str.split(',')
+                metadata.keywords = keywords_str
+                    .split(',')
                     .map(|k| k.trim().to_string())
                     .filter(|k| !k.is_empty())
                     .collect();
@@ -558,7 +603,7 @@ impl MetadataExtractor {
 
         for line in text.lines() {
             let line_lower = line.to_lowercase();
-            
+
             // Check if we're entering references section
             if line_lower.contains("references") || line_lower.contains("bibliography") {
                 in_references = true;
@@ -567,8 +612,7 @@ impl MetadataExtractor {
 
             if in_references {
                 // Stop at next major section
-                if line_lower.starts_with("appendix") || 
-                   line_lower.starts_with("acknowledgment") {
+                if line_lower.starts_with("appendix") || line_lower.starts_with("acknowledgment") {
                     break;
                 }
 
@@ -653,16 +697,17 @@ impl MetadataExtractor {
     async fn validate_with_crossref(&self, metadata: &mut ExtractedMetadata) {
         if let (Some(doi), Some(client)) = (&metadata.doi, &self.crossref_client) {
             debug!("Validating metadata with CrossRef for DOI: {}", doi);
-            
+
             let url = format!("https://api.crossref.org/works/{doi}");
-            
+
             match client.get(&url).send().await {
                 Ok(response) => {
                     if response.status().is_success() {
                         match response.json::<serde_json::Value>().await {
                             Ok(json) => {
                                 Self::merge_crossref_data(metadata, &json);
-                                metadata.confidence_score = (metadata.confidence_score + 0.2).min(1.0);
+                                metadata.confidence_score =
+                                    (metadata.confidence_score + 0.2).min(1.0);
                             }
                             Err(e) => {
                                 debug!("Failed to parse CrossRef response: {}", e);
@@ -700,14 +745,17 @@ impl MetadataExtractor {
 
             // Update publication date if missing
             if metadata.publication_date.is_none() {
-                if let Some(published) = message.get("published-print")
-                    .or_else(|| message.get("published-online")) {
-                    if let Some(date_parts) = published.get("date-parts").and_then(|d| d.as_array()) {
+                if let Some(published) = message
+                    .get("published-print")
+                    .or_else(|| message.get("published-online"))
+                {
+                    if let Some(date_parts) = published.get("date-parts").and_then(|d| d.as_array())
+                    {
                         if let Some(date) = date_parts.first().and_then(|d| d.as_array()) {
                             let year = date.first().and_then(serde_json::Value::as_i64);
                             let month = date.get(1).and_then(serde_json::Value::as_i64);
                             let day = date.get(2).and_then(serde_json::Value::as_i64);
-                            
+
                             if let Some(year) = year {
                                 let date_str = if let (Some(month), Some(day)) = (month, day) {
                                     format!("{year:04}-{month:02}-{day:02}")
@@ -730,7 +778,7 @@ impl MetadataExtractor {
         if let Some(db) = &self.cache_db {
             let file_hash = self.calculate_file_hash(file_path).await?;
             let cache_key = format!("metadata:{file_hash}");
-            
+
             match db.get(cache_key.as_bytes()) {
                 Ok(Some(data)) => {
                     match bincode::deserialize::<CacheEntry>(&data) {
@@ -753,7 +801,7 @@ impl MetadataExtractor {
                 }
             }
         }
-        
+
         Ok(None)
     }
 
@@ -762,13 +810,13 @@ impl MetadataExtractor {
         if let Some(db) = &self.cache_db {
             let file_hash = self.calculate_file_hash(file_path).await?;
             let cache_key = format!("metadata:{file_hash}");
-            
+
             let entry = CacheEntry {
                 metadata: metadata.clone(),
                 file_hash,
                 cached_at: SystemTime::now(),
             };
-            
+
             match bincode::serialize(&entry) {
                 Ok(data) => {
                     if let Err(e) = db.insert(cache_key.as_bytes(), data) {
@@ -780,7 +828,7 @@ impl MetadataExtractor {
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -789,29 +837,32 @@ impl MetadataExtractor {
         use sha2::{Digest, Sha256};
         use tokio::fs::File;
         use tokio::io::AsyncReadExt;
-        
-        let mut file = File::open(file_path).await
-            .map_err(crate::Error::Io)?;
-        
+
+        let mut file = File::open(file_path).await.map_err(crate::Error::Io)?;
+
         let mut hasher = Sha256::new();
         let mut buffer = [0u8; 8192];
-        
+
         loop {
-            let bytes_read = file.read(&mut buffer).await
-                .map_err(crate::Error::Io)?;
-            
+            let bytes_read = file.read(&mut buffer).await.map_err(crate::Error::Io)?;
+
             if bytes_read == 0 {
                 break;
             }
-            
+
             hasher.update(&buffer[..bytes_read]);
         }
-        
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 
     /// Extract metadata from multiple files
-    async fn extract_batch(&self, files: Vec<String>, use_cache: bool, validate_external: bool) -> Result<MetadataResult> {
+    async fn extract_batch(
+        &self,
+        files: Vec<String>,
+        use_cache: bool,
+        validate_external: bool,
+    ) -> Result<MetadataResult> {
         let start_time = SystemTime::now();
         let mut results = Vec::new();
         let mut success_count = 0;
@@ -828,7 +879,10 @@ impl MetadataExtractor {
 
             match self.extract_metadata(input).await {
                 Ok(result) => {
-                    if matches!(result.status, ExtractionStatus::Success | ExtractionStatus::Cached) {
+                    if matches!(
+                        result.status,
+                        ExtractionStatus::Success | ExtractionStatus::Cached
+                    ) {
                         success_count += 1;
                     } else {
                         failure_count += 1;
@@ -898,13 +952,21 @@ impl MetadataExtractor {
         let stats = self.stats.read().await;
         let mut map = HashMap::new();
         map.insert("total_extractions".to_string(), stats.total_extractions);
-        map.insert("successful_extractions".to_string(), stats.successful_extractions);
+        map.insert(
+            "successful_extractions".to_string(),
+            stats.successful_extractions,
+        );
         map.insert("failed_extractions".to_string(), stats.failed_extractions);
         map.insert("cache_hits".to_string(), stats.cache_hits);
-        map.insert("total_processing_time_ms".to_string(), stats.total_processing_time_ms);
+        map.insert(
+            "total_processing_time_ms".to_string(),
+            stats.total_processing_time_ms,
+        );
         if stats.total_extractions > 0 {
-            map.insert("avg_processing_time_ms".to_string(), 
-                      stats.total_processing_time_ms / stats.total_extractions);
+            map.insert(
+                "avg_processing_time_ms".to_string(),
+                stats.total_processing_time_ms / stats.total_extractions,
+            );
         }
         map
     }
@@ -912,11 +974,10 @@ impl MetadataExtractor {
     /// Clear the metadata cache
     pub fn clear_cache(&self) -> Result<()> {
         if let Some(db) = &self.cache_db {
-            db.clear()
-                .map_err(|e| crate::Error::Cache {
-                    operation: "clear".to_string(),
-                    reason: format!("Failed to clear cache: {e}"),
-                })?;
+            db.clear().map_err(|e| crate::Error::Cache {
+                operation: "clear".to_string(),
+                reason: format!("Failed to clear cache: {e}"),
+            })?;
             info!("Metadata cache cleared");
         }
         Ok(())
@@ -953,7 +1014,7 @@ mod tests {
             extract_references: false,
             batch_files: None,
         };
-        
+
         assert!(input.use_cache);
         assert!(!input.validate_external);
         assert!(!input.extract_references);
@@ -962,7 +1023,7 @@ mod tests {
     #[test]
     fn test_confidence_calculation() {
         let extractor = create_test_extractor();
-        
+
         // Full metadata
         let full_metadata = ExtractedMetadata {
             title: Some("Test Title".to_string()),
@@ -987,10 +1048,10 @@ mod tests {
             metadata_source: "pdf".to_string(),
             extracted_at: SystemTime::now(),
         };
-        
+
         let score = MetadataExtractor::calculate_confidence(&full_metadata);
         assert!(score > 0.9);
-        
+
         // Minimal metadata
         let minimal_metadata = ExtractedMetadata {
             title: Some("Test Title".to_string()),
@@ -1008,7 +1069,7 @@ mod tests {
             metadata_source: "pdf".to_string(),
             extracted_at: SystemTime::now(),
         };
-        
+
         let score = MetadataExtractor::calculate_confidence(&minimal_metadata);
         assert!(score < 0.5);
     }
@@ -1016,15 +1077,15 @@ mod tests {
     #[test]
     fn test_extraction_patterns() {
         let patterns = ExtractionPatterns::default();
-        
+
         // Test DOI pattern
         let text = "DOI: 10.1038/nature12373";
         assert!(patterns.doi_pattern.is_match(text));
-        
+
         // Test email pattern
         let text = "Contact: john.doe@example.com";
         assert!(patterns.email_pattern.is_match(text));
-        
+
         // Test date pattern
         let text = "Published: March 2024";
         assert!(patterns.date_pattern.is_match(text));
@@ -1035,12 +1096,12 @@ mod tests {
         let extractor = create_test_extractor();
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         tokio::fs::write(&file_path, b"test content").await.unwrap();
-        
+
         let hash1 = extractor.calculate_file_hash(&file_path).await.unwrap();
         let hash2 = extractor.calculate_file_hash(&file_path).await.unwrap();
-        
+
         assert_eq!(hash1, hash2);
         assert!(!hash1.is_empty());
     }
@@ -1048,13 +1109,13 @@ mod tests {
     #[tokio::test]
     async fn test_stats_tracking() {
         let extractor = create_test_extractor();
-        
+
         extractor.update_stats(true, false, 100).await;
         extractor.update_stats(false, false, 50).await;
         extractor.update_stats(true, true, 10).await;
-        
+
         let stats = extractor.get_stats().await;
-        
+
         assert_eq!(stats.get("total_extractions"), Some(&3));
         assert_eq!(stats.get("successful_extractions"), Some(&2));
         assert_eq!(stats.get("failed_extractions"), Some(&1));
@@ -1072,7 +1133,7 @@ References
 [2] Doe, J. et al. (2022). Another Paper. DOI: 10.1234/test
 [3] Johnson, M. (2021). Third Paper. Conference Proceedings.
         "#;
-        
+
         let refs = extractor.extract_references(text);
         assert_eq!(refs.len(), 3);
         assert!(refs[1].doi.is_some());
@@ -1084,7 +1145,7 @@ References
         let status = ExtractionStatus::Success;
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, "\"success\"");
-        
+
         let status = ExtractionStatus::Failed;
         let json = serde_json::to_string(&status).unwrap();
         assert_eq!(json, "\"failed\"");

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(cargo build:*)",
+      "Bash(tar:*)",
+      "Bash(sudo cp:*)",
+      "Bash(cp:*)",
+      "Bash(chmod:*)",
+      "Bash(/opt/homebrew/bin/rust-research-mcp --version)",
+      "Bash(cargo test:*)"
+    ],
+    "deny": [],
+    "ask": [],
+    "additionalDirectories": [
+      "/opt/homebrew/bin",
+      "/Users/ladvien/.config/rust-research-mcp"
+    ]
+  }
+}

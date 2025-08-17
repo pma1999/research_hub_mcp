@@ -82,12 +82,16 @@ pub enum TimeoutType {
 pub trait TimeoutExt<T> {
     /// Add timeout to a future with default timeout
     async fn with_timeout(self) -> Result<T>;
-    
+
     /// Add timeout to a future with custom duration
     async fn with_timeout_duration(self, duration: Duration) -> Result<T>;
-    
+
     /// Add timeout to a future with operation type
-    async fn with_timeout_type(self, timeout_type: TimeoutType, config: &TimeoutConfig) -> Result<T>;
+    async fn with_timeout_type(
+        self,
+        timeout_type: TimeoutType,
+        config: &TimeoutConfig,
+    ) -> Result<T>;
 }
 
 impl<F, T> TimeoutExt<T> for F
@@ -95,17 +99,22 @@ where
     F: Future<Output = T>,
 {
     async fn with_timeout(self) -> Result<T> {
-        self.with_timeout_duration(TimeoutConfig::default().default_timeout).await
+        self.with_timeout_duration(TimeoutConfig::default().default_timeout)
+            .await
     }
-    
+
     async fn with_timeout_duration(self, duration: Duration) -> Result<T> {
         match timeout(duration, self).await {
             Ok(result) => Ok(result),
             Err(_) => Err(Error::Timeout { timeout: duration }),
         }
     }
-    
-    async fn with_timeout_type(self, timeout_type: TimeoutType, config: &TimeoutConfig) -> Result<T> {
+
+    async fn with_timeout_type(
+        self,
+        timeout_type: TimeoutType,
+        config: &TimeoutConfig,
+    ) -> Result<T> {
         let duration = config.get_timeout(timeout_type);
         self.with_timeout_duration(duration).await
     }
@@ -127,11 +136,7 @@ impl TimeoutWrapper {
     }
 
     /// Execute an operation with timeout and logging
-    pub async fn execute<F, Fut, T>(
-        &self,
-        operation: F,
-        timeout_type: TimeoutType,
-    ) -> Result<T>
+    pub async fn execute<F, Fut, T>(&self, operation: F, timeout_type: TimeoutType) -> Result<T>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T>>,
@@ -185,7 +190,8 @@ impl TimeoutWrapper {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T>>,
     {
-        self.execute(operation, TimeoutType::Custom(custom_timeout)).await
+        self.execute(operation, TimeoutType::Custom(custom_timeout))
+            .await
     }
 
     /// Execute a network operation with appropriate timeout
@@ -301,7 +307,9 @@ pub mod convenience {
         F: Future<Output = T>,
     {
         let config = TimeoutConfig::default();
-        future.with_timeout_duration(config.health_check_timeout).await
+        future
+            .with_timeout_duration(config.health_check_timeout)
+            .await
     }
 
     /// Execute an operation with custom timeout and operation name for logging
@@ -395,10 +403,7 @@ mod tests {
             config.get_timeout(TimeoutType::Network),
             config.network_timeout
         );
-        assert_eq!(
-            config.get_timeout(TimeoutType::File),
-            config.file_timeout
-        );
+        assert_eq!(config.get_timeout(TimeoutType::File), config.file_timeout);
         assert_eq!(
             config.get_timeout(TimeoutType::HealthCheck),
             config.health_check_timeout

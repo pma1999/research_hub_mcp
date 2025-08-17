@@ -1,4 +1,4 @@
-use rust_sci_hub_mcp::{Config, Error};
+use rust_research_mcp::{Config, Error};
 
 #[tokio::test]
 async fn test_config_default() {
@@ -14,25 +14,25 @@ async fn test_config_default() {
 #[tokio::test]
 async fn test_config_validation() {
     let mut config = Config::default();
-    
+
     // Valid config should pass
     assert!(config.validate().is_ok());
-    
+
     // Invalid port
     config.server.port = 0;
     assert!(matches!(config.validate(), Err(Error::InvalidInput { .. })));
     config.server.port = 8080;
-    
+
     // Empty mirrors
     config.sci_hub.mirrors.clear();
     assert!(matches!(config.validate(), Err(Error::InvalidInput { .. })));
     config.sci_hub.mirrors.push("https://test.com".to_string());
-    
+
     // Zero rate limit
     config.sci_hub.rate_limit_per_sec = 0;
     assert!(matches!(config.validate(), Err(Error::InvalidInput { .. })));
     config.sci_hub.rate_limit_per_sec = 1;
-    
+
     // Zero max concurrent
     config.downloads.max_concurrent = 0;
     assert!(matches!(config.validate(), Err(Error::InvalidInput { .. })));
@@ -54,4 +54,3 @@ fn test_build_info() {
     let _version = env!("CARGO_PKG_VERSION");
     let _name = env!("CARGO_PKG_NAME");
 }
-

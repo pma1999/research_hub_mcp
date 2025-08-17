@@ -16,11 +16,16 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, info, instrument};
 
 /// Input parameters for the paper download tool
+/// IMPORTANT: Either 'doi' or 'url' must be provided (not both optional!)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DownloadInput {
-    /// DOI of the paper to download
+    /// DOI of the paper to download (preferred - extract from search_papers results)
+    #[schemars(
+        description = "DOI of the paper (required if url not provided). Extract from search results."
+    )]
     pub doi: Option<String>,
     /// Direct URL to download (alternative to DOI)
+    #[schemars(description = "Direct download URL (required if doi not provided)")]
     pub url: Option<String>,
     /// Target filename (optional, will be derived if not provided)
     pub filename: Option<String>,
@@ -156,7 +161,7 @@ impl DownloadTool {
     /// Create a new download tool
     pub fn new(client: Arc<ResearchClient>, config: Arc<Config>) -> Self {
         info!("Initializing paper download tool");
-        
+
         let http_client = Client::builder()
             .timeout(Duration::from_secs(config.research_source.timeout_secs * 2)) // Longer timeout for downloads
             .connect_timeout(Duration::from_secs(30))
@@ -177,7 +182,7 @@ impl DownloadTool {
     pub fn set_progress_callback(&mut self, callback: ProgressCallback) {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         self.progress_sender = Some(sender);
-        
+
         tokio::spawn(async move {
             while let Some(progress) = receiver.recv().await {
                 callback(progress);
@@ -189,20 +194,25 @@ impl DownloadTool {
     // #[tool] // Will be enabled when rmcp integration is complete
     #[instrument(skip(self), fields(doi = ?input.doi, url = ?input.url))]
     pub async fn download_paper(&self, input: DownloadInput) -> Result<DownloadResult> {
-        info!("Starting paper download: doi={:?}, url={:?}", input.doi, input.url);
-        
+        info!(
+            "Starting paper download: doi={:?}, url={:?}",
+            input.doi, input.url
+        );
+
         // Validate input
         Self::validate_input(&input)?;
-        
+
         // Generate download ID
         let download_id = uuid::Uuid::new_v4().to_string();
-        
+
         // Get download URL and metadata
         let (download_url, metadata) = self.resolve_download_source(&input).await?;
-        
+
         // Determine target file path
-        let file_path = self.determine_file_path(&input, metadata.as_ref(), &download_url).await?;
-        
+        let file_path = self
+            .determine_file_path(&input, metadata.as_ref(), &download_url)
+            .await?;
+
         // Check for existing file
         if file_path.exists() && !input.overwrite {
             if input.verify_integrity {
@@ -230,7 +240,14 @@ impl DownloadTool {
         }
 
         // Perform the download
-        self.execute_download(download_id.clone(), download_url, file_path, metadata, input.verify_integrity).await
+        self.execute_download(
+            download_id.clone(),
+            download_url,
+            file_path,
+            metadata,
+            input.verify_integrity,
+        )
+        .await
     }
 
     /// Validate download input
@@ -256,11 +273,10 @@ impl DownloadTool {
 
         // Validate URL format if provided
         if let Some(url_str) = &input.url {
-            url::Url::parse(url_str)
-                .map_err(|e| crate::Error::InvalidInput {
-                    field: "url".to_string(),
-                    reason: format!("Invalid URL: {e}"),
-                })?;
+            url::Url::parse(url_str).map_err(|e| crate::Error::InvalidInput {
+                field: "url".to_string(),
+                reason: format!("Invalid URL: {e}"),
+            })?;
         }
 
         // Validate filename if provided
@@ -277,11 +293,14 @@ impl DownloadTool {
     }
 
     /// Resolve download source to URL and metadata
-    async fn resolve_download_source(&self, input: &DownloadInput) -> Result<(String, Option<PaperMetadata>)> {
+    async fn resolve_download_source(
+        &self,
+        input: &DownloadInput,
+    ) -> Result<(String, Option<PaperMetadata>)> {
         if let Some(doi_str) = &input.doi {
             let doi = Doi::new(doi_str)?;
             let response = self.client.search_by_doi(&doi).await?;
-            
+
             if let Some(pdf_url) = &response.metadata.pdf_url {
                 Ok((pdf_url.clone(), Some(response.metadata)))
             } else {
@@ -308,30 +327,28 @@ impl DownloadTool {
         download_url: &str,
     ) -> Result<PathBuf> {
         // Get base directory
-        let base_dir = input.directory.as_ref().map_or_else(
-            Self::get_default_download_directory,
-            PathBuf::from
-        );
+        let base_dir = input
+            .directory
+            .as_ref()
+            .map_or_else(|| self.get_default_download_directory(), PathBuf::from);
 
         // Ensure directory exists
-        tokio::fs::create_dir_all(&base_dir).await
+        tokio::fs::create_dir_all(&base_dir)
+            .await
             .map_err(crate::Error::Io)?;
 
         // Determine filename
         let filename = input.filename.as_ref().map_or_else(
-            || Self::generate_filename(metadata, download_url), 
-            Clone::clone
+            || Self::generate_filename(metadata, download_url),
+            Clone::clone,
         );
 
         Ok(base_dir.join(filename))
     }
 
-    /// Get default download directory
-    fn get_default_download_directory() -> PathBuf {
-        dirs::home_dir().map_or_else(
-            || PathBuf::from("./downloads"),
-            |home_dir| home_dir.join("Downloads").join("sci-hub-papers")
-        )
+    /// Get default download directory from config
+    fn get_default_download_directory(&self) -> PathBuf {
+        self.config.downloads.directory.clone()
     }
 
     /// Generate filename from metadata or URL
@@ -341,18 +358,24 @@ impl DownloadTool {
                 // Sanitize title for filename
                 let sanitized = title
                     .chars()
-                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' })
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == ' ' || c == '-' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
                     .collect::<String>()
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join("_");
-                
+
                 let truncated = if sanitized.len() > 50 {
                     sanitized[..50].to_string()
                 } else {
                     sanitized
                 };
-                
+
                 return format!("{truncated}.pdf");
             }
         }
@@ -363,7 +386,8 @@ impl DownloadTool {
                 if let Some(last_segment) = segments.next_back() {
                     if Path::new(last_segment)
                         .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf")) {
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("pdf"))
+                    {
                         return last_segment.to_string();
                     }
                 }
@@ -385,11 +409,15 @@ impl DownloadTool {
         verify_integrity: bool,
     ) -> Result<DownloadResult> {
         let start_time = SystemTime::now();
-        
+
         info!("Starting download: {} -> {:?}", download_url, file_path);
 
         // Create initial progress state
-        let mut progress = Self::create_initial_progress(download_id.clone(), download_url.clone(), file_path.clone());
+        let mut progress = Self::create_initial_progress(
+            download_id.clone(),
+            download_url.clone(),
+            file_path.clone(),
+        );
 
         // Send initial progress
         self.send_progress(progress.clone());
@@ -403,20 +431,36 @@ impl DownloadTool {
         progress.downloaded = start_byte;
 
         // Make download request
-        let response = self.make_download_request(&download_url, start_byte).await?;
+        let response = self
+            .make_download_request(&download_url, start_byte)
+            .await?;
 
         // Update total size from response if not known
         Self::update_total_size_from_response(&mut progress, &response, start_byte);
 
         // Download with progress tracking
-        self.download_with_progress(response, &mut file, &mut progress).await?;
+        self.download_with_progress(response, &mut file, &mut progress)
+            .await?;
 
         // Finalize download
-        self.finalize_download(file, &file_path, start_time, verify_integrity, progress, download_id, metadata).await
+        self.finalize_download(
+            file,
+            &file_path,
+            start_time,
+            verify_integrity,
+            progress,
+            download_id,
+            metadata,
+        )
+        .await
     }
 
     /// Create initial progress state
-    const fn create_initial_progress(download_id: String, download_url: String, file_path: PathBuf) -> DownloadProgress {
+    const fn create_initial_progress(
+        download_id: String,
+        download_url: String,
+        file_path: PathBuf,
+    ) -> DownloadProgress {
         DownloadProgress {
             download_id,
             source: download_url,
@@ -432,7 +476,11 @@ impl DownloadTool {
     }
 
     /// Make download request with optional range header
-    async fn make_download_request(&self, download_url: &str, start_byte: u64) -> Result<reqwest::Response> {
+    async fn make_download_request(
+        &self,
+        download_url: &str,
+        start_byte: u64,
+    ) -> Result<reqwest::Response> {
         let response = if start_byte > 0 {
             self.http_client
                 .get(download_url)
@@ -440,10 +488,7 @@ impl DownloadTool {
                 .send()
                 .await
         } else {
-            self.http_client
-                .get(download_url)
-                .send()
-                .await
+            self.http_client.get(download_url).send().await
         }
         .map_err(|e| crate::Error::Service(format!("Download request failed: {e}")))?;
 
@@ -458,7 +503,11 @@ impl DownloadTool {
     }
 
     /// Update total size from response headers
-    fn update_total_size_from_response(progress: &mut DownloadProgress, response: &reqwest::Response, start_byte: u64) {
+    fn update_total_size_from_response(
+        progress: &mut DownloadProgress,
+        response: &reqwest::Response,
+        start_byte: u64,
+    ) {
         if progress.total_size.is_none() {
             if let Some(content_length) = response.headers().get("content-length") {
                 if let Ok(length_str) = content_length.to_str() {
@@ -471,7 +520,12 @@ impl DownloadTool {
     }
 
     /// Download with progress tracking
-    async fn download_with_progress(&self, response: reqwest::Response, file: &mut File, progress: &mut DownloadProgress) -> Result<()> {
+    async fn download_with_progress(
+        &self,
+        response: reqwest::Response,
+        file: &mut File,
+        progress: &mut DownloadProgress,
+    ) -> Result<()> {
         let mut stream = response.bytes_stream();
         let mut last_progress_time = SystemTime::now();
         let mut bytes_at_last_time = progress.downloaded;
@@ -480,17 +534,20 @@ impl DownloadTool {
             let chunk = chunk_result
                 .map_err(|e| crate::Error::Service(format!("Download stream error: {e}")))?;
 
-            file.write_all(&chunk).await
-                .map_err(crate::Error::Io)?;
+            file.write_all(&chunk).await.map_err(crate::Error::Io)?;
 
             progress.downloaded += chunk.len() as u64;
 
             // Update progress every 500ms
             let now = SystemTime::now();
-            if now.duration_since(last_progress_time).unwrap_or(Duration::ZERO) >= Duration::from_millis(500) {
+            if now
+                .duration_since(last_progress_time)
+                .unwrap_or(Duration::ZERO)
+                >= Duration::from_millis(500)
+            {
                 Self::update_progress_stats(progress, now, last_progress_time, bytes_at_last_time);
                 self.send_progress(progress.clone());
-                
+
                 last_progress_time = now;
                 bytes_at_last_time = progress.downloaded;
             }
@@ -500,13 +557,22 @@ impl DownloadTool {
     }
 
     /// Update progress statistics
-    fn update_progress_stats(progress: &mut DownloadProgress, now: SystemTime, last_time: SystemTime, bytes_at_last_time: u64) {
-        let elapsed = now.duration_since(last_time).unwrap_or(Duration::from_secs(1));
+    fn update_progress_stats(
+        progress: &mut DownloadProgress,
+        now: SystemTime,
+        last_time: SystemTime,
+        bytes_at_last_time: u64,
+    ) {
+        let elapsed = now
+            .duration_since(last_time)
+            .unwrap_or(Duration::from_secs(1));
         let bytes_diff = progress.downloaded - bytes_at_last_time;
         #[allow(clippy::cast_precision_loss)]
         let speed = bytes_diff as f64 / elapsed.as_secs_f64();
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        { progress.speed_bps = speed as u64; }
+        {
+            progress.speed_bps = speed as u64;
+        }
 
         if let Some(total) = progress.total_size {
             #[allow(clippy::cast_precision_loss)]
@@ -571,23 +637,22 @@ impl DownloadTool {
 
     /// Get content length from URL
     async fn get_content_length(&self, url: &str) -> Result<u64> {
-        let response = self.http_client
+        let response = self
+            .http_client
             .head(url)
             .send()
             .await
             .map_err(|e| crate::Error::Service(format!("HEAD request failed: {e}")))?;
 
         if let Some(content_length) = response.headers().get("content-length") {
-            let length_str = content_length.to_str()
-                .map_err(|e| crate::Error::Parse {
-                    context: "content-length header".to_string(),
-                    message: format!("Invalid content-length header: {e}"),
-                })?;
-            length_str.parse::<u64>()
-                .map_err(|e| crate::Error::Parse {
-                    context: "content-length value".to_string(),
-                    message: format!("Cannot parse content-length: {e}"),
-                })
+            let length_str = content_length.to_str().map_err(|e| crate::Error::Parse {
+                context: "content-length header".to_string(),
+                message: format!("Invalid content-length header: {e}"),
+            })?;
+            length_str.parse::<u64>().map_err(|e| crate::Error::Parse {
+                context: "content-length value".to_string(),
+                message: format!("Cannot parse content-length: {e}"),
+            })
         } else {
             Err(crate::Error::Parse {
                 context: "HTTP headers".to_string(),
@@ -606,39 +671,37 @@ impl DownloadTool {
                 .open(file_path)
                 .await
                 .map_err(crate::Error::Io)?;
-            
-            let metadata = tokio::fs::metadata(file_path).await
+
+            let metadata = tokio::fs::metadata(file_path)
+                .await
                 .map_err(crate::Error::Io)?;
-            
+
             Ok((file, metadata.len()))
         } else {
             // Create new file
-            let file = File::create(file_path).await
-                .map_err(crate::Error::Io)?;
-            
+            let file = File::create(file_path).await.map_err(crate::Error::Io)?;
+
             Ok((file, 0))
         }
     }
 
     /// Calculate SHA256 hash of a file
     async fn calculate_file_hash(&self, file_path: &Path) -> Result<String> {
-        let mut file = File::open(file_path).await
-            .map_err(crate::Error::Io)?;
-        
+        let mut file = File::open(file_path).await.map_err(crate::Error::Io)?;
+
         let mut hasher = Sha256::new();
         let mut buffer = [0u8; 8192];
-        
+
         loop {
-            let bytes_read = file.read(&mut buffer).await
-                .map_err(crate::Error::Io)?;
-            
+            let bytes_read = file.read(&mut buffer).await.map_err(crate::Error::Io)?;
+
             if bytes_read == 0 {
                 break;
             }
-            
+
             hasher.update(&buffer[..bytes_read]);
         }
-        
+
         Ok(format!("{:x}", hasher.finalize()))
     }
 
@@ -652,7 +715,10 @@ impl DownloadTool {
     /// Get active downloads
     pub async fn get_active_downloads(&self) -> Vec<DownloadProgress> {
         let downloads = self.active_downloads.read().await;
-        downloads.values().map(|state| state.progress.clone()).collect()
+        downloads
+            .values()
+            .map(|state| state.progress.clone())
+            .collect()
     }
 
     /// Cancel a download
@@ -681,9 +747,15 @@ impl DownloadTool {
     pub async fn clear_completed(&self) {
         let mut downloads = self.active_downloads.write().await;
         downloads.retain(|_, state| {
-            !matches!(state.progress.status, DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Cancelled)
+            !matches!(
+                state.progress.status,
+                DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Cancelled
+            )
         });
-        debug!("Cleared completed downloads, {} active remaining", downloads.len());
+        debug!(
+            "Cleared completed downloads, {} active remaining",
+            downloads.len()
+        );
     }
 }
 
@@ -773,9 +845,13 @@ mod tests {
     fn test_filename_generation() {
         // Test with metadata
         let mut metadata = PaperMetadata::new("10.1038/test".to_string());
-        metadata.title = Some("A Very Long Paper Title That Should Be Truncated Because It Exceeds Fifty Characters".to_string());
-        
-        let filename = DownloadTool::generate_filename(Some(&metadata), "https://example.com/test.pdf");
+        metadata.title = Some(
+            "A Very Long Paper Title That Should Be Truncated Because It Exceeds Fifty Characters"
+                .to_string(),
+        );
+
+        let filename =
+            DownloadTool::generate_filename(Some(&metadata), "https://example.com/test.pdf");
         assert!(filename.ends_with(".pdf"));
         assert!(filename.len() <= 54); // 50 chars + ".pdf"
 
@@ -791,8 +867,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_default_download_directory() {
-        let dir = DownloadTool::get_default_download_directory();
-        assert!(dir.to_string_lossy().contains("sci-hub-papers"));
+        let tool = create_test_download_tool().unwrap();
+        let dir = tool.get_default_download_directory();
+        // Check that it uses the config directory (which defaults to ~/Downloads/papers)
+        assert!(dir.to_string_lossy().contains("papers"));
     }
 
     #[tokio::test]
@@ -810,8 +888,11 @@ mod tests {
         };
 
         let metadata = Some(PaperMetadata::new("10.1038/test".to_string()));
-        let file_path = tool.determine_file_path(&input, metadata.as_ref(), "https://example.com/test.pdf").await.unwrap();
-        
+        let file_path = tool
+            .determine_file_path(&input, metadata.as_ref(), "https://example.com/test.pdf")
+            .await
+            .unwrap();
+
         assert_eq!(file_path.file_name().unwrap(), "test.pdf");
         assert!(file_path.starts_with(temp_dir.path()));
     }
@@ -841,18 +922,21 @@ mod tests {
         let tool = create_test_download_tool().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
-        
+
         tokio::fs::write(&file_path, b"hello world").await.unwrap();
         let hash = tool.calculate_file_hash(&file_path).await.unwrap();
-        
+
         // Known SHA256 hash of "hello world"
-        assert_eq!(hash, "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
+        assert_eq!(
+            hash,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
     }
 
     #[tokio::test]
     async fn test_download_tracking() {
         let tool = create_test_download_tool().unwrap();
-        
+
         // Initially no active downloads
         let active = tool.get_active_downloads().await;
         assert!(active.is_empty());
@@ -860,5 +944,38 @@ mod tests {
         // Queue should be empty
         let queue = tool.get_queue_status().await;
         assert!(queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_custom_download_directory() {
+        // Create config with custom download directory
+        let mut config = Config::default();
+        config.downloads.directory = PathBuf::from("/tmp/test-downloads");
+        let client = Arc::new(ResearchClient::new(config.clone()).unwrap());
+        let tool = DownloadTool::new(client, Arc::new(config));
+
+        // Test that the tool uses the custom directory
+        let dir = tool.get_default_download_directory();
+        assert_eq!(dir, PathBuf::from("/tmp/test-downloads"));
+
+        // Test file path determination with no override
+        let input = DownloadInput {
+            doi: Some("10.1038/test".to_string()),
+            url: None,
+            filename: Some("test.pdf".to_string()),
+            directory: None, // No override, should use config default
+            overwrite: false,
+            verify_integrity: false,
+        };
+
+        let metadata = PaperMetadata::new("10.1038/test".to_string());
+        let file_path = tool
+            .determine_file_path(&input, Some(&metadata), "https://example.com/test.pdf")
+            .await
+            .unwrap();
+
+        // Should use the custom directory from config
+        assert!(file_path.starts_with("/tmp/test-downloads"));
+        assert!(file_path.ends_with("test.pdf"));
     }
 }

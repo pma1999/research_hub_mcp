@@ -1,13 +1,13 @@
-pub mod sci_hub;
-pub mod mirror;
-pub mod rate_limiter;
-pub mod providers;
 pub mod meta_search;
+pub mod mirror;
+pub mod providers;
+pub mod rate_limiter;
+pub mod sci_hub;
 
-pub use sci_hub::{ResearchClient, ResearchResponse};
 pub use meta_search::{MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 pub use mirror::{Mirror, MirrorHealth, MirrorManager};
 pub use rate_limiter::RateLimiter;
+pub use sci_hub::{ResearchClient, ResearchResponse};
 
 use crate::Result;
 use std::time::Duration;
@@ -49,15 +49,18 @@ pub struct Doi(String);
 impl Doi {
     /// Create a new DOI from a string, validating the format
     pub fn new(doi: &str) -> Result<Self> {
-        let cleaned = doi.trim().trim_start_matches("doi:").trim_start_matches("https://doi.org/");
-        
+        let cleaned = doi
+            .trim()
+            .trim_start_matches("doi:")
+            .trim_start_matches("https://doi.org/");
+
         if cleaned.is_empty() {
             return Err(crate::Error::InvalidInput {
                 field: "doi".to_string(),
                 reason: "DOI cannot be empty".to_string(),
             });
         }
-        
+
         // Basic DOI format validation (simplified)
         if !cleaned.contains('/') {
             return Err(crate::Error::InvalidInput {
@@ -65,16 +68,16 @@ impl Doi {
                 reason: "DOI must contain a '/' character".to_string(),
             });
         }
-        
+
         Ok(Self(cleaned.to_string()))
     }
-    
+
     /// Get the DOI string
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
-    
+
     /// Convert to a URL-safe format
     #[must_use]
     pub fn url_encoded(&self) -> String {
@@ -90,7 +93,7 @@ impl std::fmt::Display for Doi {
 
 impl std::str::FromStr for Doi {
     type Err = crate::Error;
-    
+
     fn from_str(s: &str) -> Result<Self> {
         Self::new(s)
     }

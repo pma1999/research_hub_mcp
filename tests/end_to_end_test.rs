@@ -1,10 +1,10 @@
-use rust_sci_hub_mcp::{Config, Server, SciHubClient, SearchTool, DownloadTool, MetadataExtractor};
+use rust_research_mcp::{Config, DownloadTool, MetadataExtractor, SciHubClient, SearchTool, Server};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::time::timeout;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// End-to-end test scenarios covering complete user workflows
 #[tokio::test]
@@ -22,8 +22,8 @@ async fn test_complete_paper_search_workflow() {
     // Mock successful DOI search response
     Mock::given(method("GET"))
         .and(path("/10.1000/test.doi"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_string(r#"
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            r#"
             <html>
                 <body>
                     <div id="article">
@@ -31,16 +31,19 @@ async fn test_complete_paper_search_workflow() {
                     </div>
                 </body>
             </html>
-            "#))
+            "#,
+        ))
         .mount(&mock_server)
         .await;
 
     // Mock PDF download response
     Mock::given(method("GET"))
         .and(path("/download/test.pdf"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_string("Mock PDF content")
-            .append_header("content-type", "application/pdf"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("Mock PDF content")
+                .append_header("content-type", "application/pdf"),
+        )
         .mount(&mock_server)
         .await;
 
@@ -53,7 +56,7 @@ async fn test_complete_paper_search_workflow() {
     // Scenario 1: Search for paper by DOI
     let search_result = search_tool.search_by_doi("10.1000/test.doi").await;
     assert!(search_result.is_ok(), "DOI search should succeed");
-    
+
     let papers = search_result.unwrap();
     assert!(!papers.is_empty(), "Should find at least one paper");
 
@@ -61,13 +64,21 @@ async fn test_complete_paper_search_workflow() {
     let paper = &papers[0];
     let download_result = download_tool.download(&paper.download_url, None).await;
     assert!(download_result.is_ok(), "Download should succeed");
-    
+
     let download_info = download_result.unwrap();
-    assert!(download_info.file_path.exists(), "Downloaded file should exist");
+    assert!(
+        download_info.file_path.exists(),
+        "Downloaded file should exist"
+    );
 
     // Scenario 3: Extract metadata from downloaded paper
-    let metadata_result = metadata_extractor.extract_metadata(&download_info.file_path).await;
-    assert!(metadata_result.is_ok(), "Metadata extraction should not fail");
+    let metadata_result = metadata_extractor
+        .extract_metadata(&download_info.file_path)
+        .await;
+    assert!(
+        metadata_result.is_ok(),
+        "Metadata extraction should not fail"
+    );
 }
 
 #[tokio::test]
@@ -81,9 +92,7 @@ async fn test_complete_server_lifecycle_scenario() {
 
     // Start server in background
     let server_clone = Arc::clone(&server);
-    let server_handle = tokio::spawn(async move {
-        server_clone.run().await
-    });
+    let server_handle = tokio::spawn(async move { server_clone.run().await });
 
     // Give server time to start
     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -93,7 +102,10 @@ async fn test_complete_server_lifecycle_scenario() {
 
     // Test server shutdown
     server.shutdown().await;
-    assert!(server.is_shutdown_requested(), "Server should be marked for shutdown");
+    assert!(
+        server.is_shutdown_requested(),
+        "Server should be marked for shutdown"
+    );
 
     // Wait for graceful shutdown
     let result = timeout(Duration::from_secs(2), server_handle).await;
@@ -122,8 +134,9 @@ async fn test_error_recovery_workflow() {
     // Then succeed
     Mock::given(method("GET"))
         .and(path("/10.1000/failing.doi"))
-        .respond_with(ResponseTemplate::new(200)
-            .set_body_string("<html><body>Success</body></html>"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("<html><body>Success</body></html>"),
+        )
         .mount(&mock_server)
         .await;
 
@@ -152,8 +165,10 @@ async fn test_concurrent_operations_scenario() {
     for i in 1..=5 {
         Mock::given(method("GET"))
             .and(path(&format!("/10.1000/test{}.doi", i)))
-            .respond_with(ResponseTemplate::new(200)
-                .set_body_string(&format!("<html><body>Paper {}</body></html>", i)))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(&format!("<html><body>Paper {}</body></html>", i)),
+            )
             .mount(&mock_server)
             .await;
     }
@@ -166,46 +181,65 @@ async fn test_concurrent_operations_scenario() {
     for i in 1..=5 {
         let search_tool_clone = Arc::clone(&search_tool);
         let doi = format!("10.1000/test{}.doi", i);
-        
-        let handle = tokio::spawn(async move {
-            search_tool_clone.search_by_doi(&doi).await
-        });
+
+        let handle = tokio::spawn(async move { search_tool_clone.search_by_doi(&doi).await });
         handles.push(handle);
     }
 
     // Wait for all to complete
     let results = futures::future::join_all(handles).await;
-    
+
     // Check that all concurrent operations completed
-    assert_eq!(results.len(), 5, "All concurrent operations should complete");
-    
+    assert_eq!(
+        results.len(),
+        5,
+        "All concurrent operations should complete"
+    );
+
     // Count successful operations
-    let successful = results.iter()
+    let successful = results
+        .iter()
         .filter(|r| r.is_ok() && r.as_ref().unwrap().is_ok())
         .count();
-    
-    println!("Concurrent operations: {} successful out of {}", successful, results.len());
-    assert!(successful > 0, "At least some concurrent operations should succeed");
+
+    println!(
+        "Concurrent operations: {} successful out of {}",
+        successful,
+        results.len()
+    );
+    assert!(
+        successful > 0,
+        "At least some concurrent operations should succeed"
+    );
 }
 
 #[tokio::test]
 async fn test_configuration_workflow() {
     // Test configuration loading and validation workflow
     let temp_dir = TempDir::new().unwrap();
-    
+
     // Test default configuration
     let default_config = Config::default();
-    assert!(default_config.validate().is_ok(), "Default config should be valid");
+    assert!(
+        default_config.validate().is_ok(),
+        "Default config should be valid"
+    );
 
     // Test configuration with custom download directory
     let mut custom_config = Config::default();
     custom_config.downloads.directory = temp_dir.path().to_path_buf();
-    assert!(custom_config.validate().is_ok(), "Custom config should be valid");
+    assert!(
+        custom_config.validate().is_ok(),
+        "Custom config should be valid"
+    );
 
     // Test invalid configuration
     let mut invalid_config = Config::default();
     invalid_config.server.port = 0; // Invalid port
-    assert!(invalid_config.validate().is_err(), "Invalid config should fail validation");
+    assert!(
+        invalid_config.validate().is_err(),
+        "Invalid config should fail validation"
+    );
 
     // Test configuration serialization
     let serialized = serde_json::to_string(&default_config);
@@ -238,5 +272,8 @@ async fn test_configuration_workflow() {
     }"#;
 
     let parsed_config: Result<Config, _> = serde_json::from_str(json_config);
-    assert!(parsed_config.is_ok(), "Config should deserialize successfully");
+    assert!(
+        parsed_config.is_ok(),
+        "Config should deserialize successfully"
+    );
 }

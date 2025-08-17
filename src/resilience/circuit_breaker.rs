@@ -1,5 +1,4 @@
 use crate::{Error, Result};
-use crate::error::ErrorCategory;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -300,9 +299,7 @@ mod tests {
         let cb = CircuitBreaker::new("test", CircuitBreakerConfig::default());
 
         // Should allow calls when closed
-        let result = cb
-            .call(|| async { Ok::<(), Error>(()) })
-            .await;
+        let result = cb.call(|| async { Ok::<(), Error>(()) }).await;
         assert!(result.is_ok());
 
         let state = cb.get_state().await;
@@ -367,9 +364,7 @@ mod tests {
         sleep(Duration::from_millis(20)).await;
 
         // Next call should transition to half-open
-        let result = cb
-            .call(|| async { Ok::<(), Error>(()) })
-            .await;
+        let result = cb.call(|| async { Ok::<(), Error>(()) }).await;
         assert!(result.is_ok());
 
         // Should eventually transition to closed on success

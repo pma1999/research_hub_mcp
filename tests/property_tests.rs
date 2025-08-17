@@ -1,5 +1,5 @@
-use rust_sci_hub_mcp::{Config, Error};
 use proptest::prelude::*;
+use rust_research_mcp::{Config, Error};
 
 /// Property-based tests for critical algorithms and data structures
 mod doi_validation_props {
@@ -87,7 +87,7 @@ mod config_validation_props {
 
 mod error_categorization_props {
     use super::*;
-    use rust_sci_hub_mcp::error::ErrorCategory;
+    use rust_research_mcp::error::ErrorCategory;
 
     proptest! {
         #[test]
@@ -117,8 +117,8 @@ mod error_categorization_props {
 
 mod circuit_breaker_props {
     use super::*;
-    use rust_sci_hub_mcp::resilience::CircuitBreaker;
-    use rust_sci_hub_mcp::resilience::circuit_breaker::CircuitBreakerConfig;
+    use rust_research_mcp::resilience::circuit_breaker::CircuitBreakerConfig;
+    use rust_research_mcp::resilience::CircuitBreaker;
     use std::time::Duration;
 
     proptest! {
@@ -137,7 +137,7 @@ mod circuit_breaker_props {
                 recovery_timeout: Duration::from_millis(recovery_timeout_ms),
                 half_open_max_calls: 3,
             };
-            
+
             let _cb = CircuitBreaker::new("test", config);
             // Circuit breaker should be created successfully
             prop_assert!(true, "Circuit breaker creation should succeed");
@@ -149,7 +149,7 @@ mod circuit_breaker_props {
 /*
 mod rate_limiter_props {
     use super::*;
-    use rust_sci_hub_mcp::client::rate_limiter::RateLimiter;
+    use rust_research_mcp::client::rate_limiter::RateLimiter;
     use std::time::Duration;
 
     proptest! {
@@ -160,10 +160,10 @@ mod rate_limiter_props {
         ) {
             // Rate limiter should respect configured limits
             let mut rate_limiter = RateLimiter::new(requests_per_second, burst_capacity);
-            
+
             // First request should always be allowed
             prop_assert!(rate_limiter.check_rate_limit(), "First request should be allowed");
-            
+
             // Rapid successive requests should eventually be limited
             let mut allowed_count = 1; // First request was allowed
             for _ in 0..burst_capacity * 2 {
@@ -171,8 +171,8 @@ mod rate_limiter_props {
                     allowed_count += 1;
                 }
             }
-            
-            prop_assert!(allowed_count <= burst_capacity * 2, 
+
+            prop_assert!(allowed_count <= burst_capacity * 2,
                 "Rate limiter should limit excessive requests");
         }
 
@@ -180,15 +180,15 @@ mod rate_limiter_props {
         fn test_rate_limiter_recovery(requests_per_second in 1u32..=10) {
             // Rate limiter should recover over time
             let mut rate_limiter = RateLimiter::new(requests_per_second, 1);
-            
+
             // Exhaust the rate limiter
             while rate_limiter.check_rate_limit() {
                 // Keep requesting until denied
             }
-            
+
             // After waiting, should be able to make requests again
             std::thread::sleep(Duration::from_millis(1100)); // Wait > 1 second
-            prop_assert!(rate_limiter.check_rate_limit(), 
+            prop_assert!(rate_limiter.check_rate_limit(),
                 "Rate limiter should recover after waiting");
         }
     }
@@ -205,7 +205,7 @@ mod search_algorithm_props {
             let normalized1 = normalize_search_query(&query);
             let normalized2 = normalize_search_query(&normalized1);
             prop_assert_eq!(normalized1.clone(), normalized2, "Query normalization should be idempotent");
-            
+
             // Normalized query should not be empty unless input was empty/whitespace
             if !query.trim().is_empty() {
                 prop_assert!(!normalized1.is_empty(), "Non-empty query should not normalize to empty");
@@ -256,7 +256,7 @@ mod download_props {
         ) {
             // Filename generation should produce valid filenames
             let filename = generate_safe_filename(&title, &extension);
-            
+
             // Should not contain invalid characters
             prop_assert!(!filename.contains('/'), "Filename should not contain path separators");
             prop_assert!(!filename.contains('\\'), "Filename should not contain backslashes");
@@ -269,7 +269,7 @@ mod download_props {
         fn test_file_size_validation(size_mb in 1u64..=1000) {
             // File size validation should work correctly
             let result = validate_file_size(size_mb * 1024 * 1024, 500); // 500MB limit
-            
+
             if size_mb <= 500 {
                 prop_assert!(result.is_ok(), "Files under limit should be accepted");
             } else {
@@ -285,7 +285,7 @@ mod download_props {
             .collect::<String>()
             .trim()
             .replace(' ', "_");
-        
+
         if safe_title.is_empty() {
             format!("document.{}", extension)
         } else {

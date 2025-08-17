@@ -1,5 +1,5 @@
-use crate::{Error, Result};
 use crate::error::ErrorCategory;
+use crate::{Error, Result};
 // Removed unused backoff imports - we implement our own calculation
 use std::future::Future;
 use std::time::Duration;
@@ -103,14 +103,14 @@ impl RetryPolicy {
             ErrorCategory::Transient => {
                 // Choose config based on error type
                 match error {
-                    Error::NetworkTimeout { .. } |
-                    Error::ConnectionRefused { .. } |
-                    Error::DnsFailure { .. } => Some(&self.fast_config),
-                    
-                    Error::ServiceUnavailable { .. } |
-                    Error::ServiceOverloaded { .. } |
-                    Error::InternalServerError(_) => Some(&self.slow_config),
-                    
+                    Error::NetworkTimeout { .. }
+                    | Error::ConnectionRefused { .. }
+                    | Error::DnsFailure { .. } => Some(&self.fast_config),
+
+                    Error::ServiceUnavailable { .. }
+                    | Error::ServiceOverloaded { .. }
+                    | Error::InternalServerError(_) => Some(&self.slow_config),
+
                     _ => Some(&self.default_config),
                 }
             }
@@ -121,7 +121,7 @@ impl RetryPolicy {
 /// Trait for operations that can be retried
 pub trait RetryableOperation<T> {
     type Future: Future<Output = Result<T>>;
-    
+
     fn call(&self) -> Self::Future;
 }
 
@@ -139,30 +139,39 @@ where
     let mut attempt = 1;
 
     loop {
-        debug!("Executing operation '{}' (attempt {})", operation_name, attempt);
-        
+        debug!(
+            "Executing operation '{}' (attempt {})",
+            operation_name, attempt
+        );
+
         let result = operation().await;
-        
+
         match result {
             Ok(value) => {
                 if attempt > 1 {
-                    debug!("Operation '{}' succeeded after {} attempts", operation_name, attempt);
+                    debug!(
+                        "Operation '{}' succeeded after {} attempts",
+                        operation_name, attempt
+                    );
                 }
                 return Ok(value);
             }
             Err(error) => {
                 last_error = Some(error);
                 let error_ref = last_error.as_ref().unwrap();
-                
+
                 // Check if error is retryable
                 let retry_config = match policy.config_for_error(error_ref) {
                     Some(config) => config,
                     None => {
-                        debug!("Operation '{}' failed with non-retryable error: {}", operation_name, error_ref);
+                        debug!(
+                            "Operation '{}' failed with non-retryable error: {}",
+                            operation_name, error_ref
+                        );
                         return Err(last_error.unwrap());
                     }
                 };
-                
+
                 // Check if we've exceeded max attempts
                 if attempt >= retry_config.max_attempts {
                     warn!(
@@ -171,15 +180,15 @@ where
                     );
                     return Err(last_error.unwrap());
                 }
-                
+
                 // Calculate delay for next attempt
                 let delay = calculate_delay(attempt - 1, retry_config, error_ref);
-                
+
                 debug!(
                     "Operation '{}' failed (attempt {}), retrying after {:?}: {}",
                     operation_name, attempt, delay, error_ref
                 );
-                
+
                 sleep(delay).await;
                 attempt += 1;
             }
@@ -193,13 +202,13 @@ fn calculate_delay(attempt: u32, config: &RetryConfig, error: &Error) -> Duratio
     if let Some(retry_after) = error.retry_after() {
         return retry_after.min(config.max_delay);
     }
-    
+
     // Calculate exponential backoff delay
     let base_delay_ms = config.initial_delay.as_millis() as f64;
     let exponential_delay_ms = base_delay_ms * config.multiplier.powi(attempt as i32);
     let capped_delay_ms = exponential_delay_ms.min(config.max_delay.as_millis() as f64);
     let delay = Duration::from_millis(capped_delay_ms as u64);
-    
+
     // Add jitter to prevent thundering herd
     add_jitter(delay, config.jitter)
 }
@@ -209,20 +218,17 @@ fn add_jitter(delay: Duration, jitter_factor: f64) -> Duration {
     if jitter_factor <= 0.0 {
         return delay;
     }
-    
+
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let jitter_ms = (delay.as_millis() as f64 * jitter_factor) as u64;
     let jitter = rng.gen_range(0..=jitter_ms);
-    
+
     delay + Duration::from_millis(jitter)
 }
 
 /// Convenience function for simple retry with default policy
-pub async fn retry<T, F, Fut>(
-    operation: F,
-    operation_name: &str,
-) -> Result<T>
+pub async fn retry<T, F, Fut>(operation: F, operation_name: &str) -> Result<T>
 where
     F: Fn() -> Fut,
     Fut: Future<Output = Result<T>>,
@@ -246,7 +252,7 @@ where
         slow_config: config.clone(),
         rate_limited_config: config,
     };
-    
+
     retry_with_policy(operation, &policy, operation_name).await
 }
 
@@ -258,11 +264,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_retry_success_on_first_attempt() {
-        let result = retry(
-            || async { Ok::<u32, Error>(42) },
-            "test_operation"
-        ).await;
-        
+        let result = retry(|| async { Ok::<u32, Error>(42) }, "test_operation").await;
+
         assert_eq!(result.unwrap(), 42);
     }
 
@@ -270,7 +273,7 @@ mod tests {
     async fn test_retry_success_after_failures() {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
-        
+
         let result = retry(
             move || {
                 let count = counter_clone.fetch_add(1, Ordering::SeqCst);
@@ -285,9 +288,10 @@ mod tests {
                     }
                 }
             },
-            "test_operation"
-        ).await;
-        
+            "test_operation",
+        )
+        .await;
+
         assert_eq!(result.unwrap(), 42);
         assert_eq!(counter.load(Ordering::SeqCst), 3);
     }
@@ -296,7 +300,7 @@ mod tests {
     async fn test_retry_permanent_error_no_retry() {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
-        
+
         let result = retry(
             move || {
                 counter_clone.fetch_add(1, Ordering::SeqCst);
@@ -307,9 +311,10 @@ mod tests {
                     })
                 }
             },
-            "test_operation"
-        ).await;
-        
+            "test_operation",
+        )
+        .await;
+
         assert!(result.is_err());
         assert_eq!(counter.load(Ordering::SeqCst), 1); // Should not retry
     }
@@ -318,13 +323,13 @@ mod tests {
     async fn test_retry_max_attempts() {
         let counter = Arc::new(AtomicU32::new(0));
         let counter_clone = counter.clone();
-        
+
         let config = RetryConfig {
             max_attempts: 2,
             initial_delay: Duration::from_millis(1),
             ..Default::default()
         };
-        
+
         let result = retry_with_config(
             move || {
                 counter_clone.fetch_add(1, Ordering::SeqCst);
@@ -336,9 +341,10 @@ mod tests {
                 }
             },
             config,
-            "test_operation"
-        ).await;
-        
+            "test_operation",
+        )
+        .await;
+
         assert!(result.is_err());
         assert_eq!(counter.load(Ordering::SeqCst), 2); // Should try exactly max_attempts times
     }
@@ -347,7 +353,7 @@ mod tests {
     fn test_jitter_calculation() {
         let delay = Duration::from_millis(1000);
         let jittered = add_jitter(delay, 0.1);
-        
+
         // Jittered delay should be between 1000ms and 1100ms
         assert!(jittered >= delay);
         assert!(jittered <= delay + Duration::from_millis(100));
@@ -356,21 +362,21 @@ mod tests {
     #[test]
     fn test_error_categorization() {
         let policy = RetryPolicy::default();
-        
+
         // Permanent error should not have retry config
         let permanent_error = Error::InvalidInput {
             field: "test".to_string(),
             reason: "invalid".to_string(),
         };
         assert!(policy.config_for_error(&permanent_error).is_none());
-        
+
         // Transient error should have retry config
         let transient_error = Error::ServiceUnavailable {
             service: "test".to_string(),
             reason: "temporary".to_string(),
         };
         assert!(policy.config_for_error(&transient_error).is_some());
-        
+
         // Rate limited error should have rate limited config
         let rate_limited_error = Error::RateLimitExceeded {
             retry_after: Duration::from_secs(60),

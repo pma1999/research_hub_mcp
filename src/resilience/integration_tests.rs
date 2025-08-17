@@ -1,9 +1,12 @@
-use crate::{Error, Result};
-use crate::error::ErrorCategory;
-use super::{CircuitBreaker, RetryPolicy, retry_with_policy, TimeoutExt, HealthCheckManager, PingHealthCheck, HttpHealthCheck};
 use super::circuit_breaker::CircuitBreakerConfig;
-use std::sync::Arc;
+use super::{
+    retry_with_policy, CircuitBreaker, HealthCheckManager, HttpHealthCheck, PingHealthCheck,
+    RetryPolicy, TimeoutExt,
+};
+use crate::error::ErrorCategory;
+use crate::{Error, Result};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -18,11 +21,11 @@ mod tests {
             recovery_timeout: Duration::from_millis(50),
             ..Default::default()
         };
-        
+
         let circuit_breaker = CircuitBreaker::new("test_service", config);
         let retry_policy = RetryPolicy::default();
         let call_count = Arc::new(AtomicU32::new(0));
-        
+
         // Test that circuit breaker and retry work together
         let call_count_clone = call_count.clone();
         let result = retry_with_policy(
@@ -40,9 +43,10 @@ mod tests {
                 }
             },
             &retry_policy,
-            "test_operation"
-        ).await;
-        
+            "test_operation",
+        )
+        .await;
+
         assert_eq!(result.unwrap(), 42);
         assert_eq!(call_count.load(Ordering::SeqCst), 4); // 3 failures + 1 success
     }
@@ -51,7 +55,7 @@ mod tests {
     async fn test_timeout_with_retry() {
         let call_count = Arc::new(AtomicU32::new(0));
         let call_count_clone = call_count.clone();
-        
+
         let result = async {
             call_count_clone.fetch_add(1, Ordering::SeqCst);
             sleep(Duration::from_millis(200)).await;
@@ -59,7 +63,7 @@ mod tests {
         }
         .with_timeout_duration(Duration::from_millis(100))
         .await;
-        
+
         assert!(matches!(result, Err(Error::Timeout { .. })));
         assert_eq!(call_count.load(Ordering::SeqCst), 1);
     }
@@ -67,16 +71,16 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_integration() {
         let manager = HealthCheckManager::new();
-        
+
         // Register ping health check
         let ping_check = Arc::new(PingHealthCheck::new("ping_service"));
         manager.register(ping_check).await;
-        
+
         // Check health
         let result = manager.check_component("ping_service").await;
         assert!(result.is_ok());
         assert!(result.unwrap().status.is_healthy());
-        
+
         // Check system health
         let system_health = manager.get_system_health().await;
         assert!(system_health.is_healthy());
@@ -106,7 +110,10 @@ mod tests {
         };
         assert_eq!(rate_limited_error.category(), ErrorCategory::RateLimited);
         assert!(rate_limited_error.is_retryable());
-        assert_eq!(rate_limited_error.retry_after(), Some(Duration::from_secs(60)));
+        assert_eq!(
+            rate_limited_error.retry_after(),
+            Some(Duration::from_secs(60))
+        );
 
         // Test circuit breaker errors
         let cb_error = Error::CircuitBreakerOpen {
@@ -120,40 +127,47 @@ mod tests {
     async fn test_comprehensive_resilience_scenario() {
         // Simulate a service that fails initially, then becomes unstable, then recovers
         let call_count = Arc::new(AtomicU32::new(0));
-        let circuit_breaker = CircuitBreaker::new("flaky_service", CircuitBreakerConfig {
-            failure_threshold: 3,
-            recovery_timeout: Duration::from_millis(100),
-            ..Default::default()
-        });
-        
+        let circuit_breaker = CircuitBreaker::new(
+            "flaky_service",
+            CircuitBreakerConfig {
+                failure_threshold: 3,
+                recovery_timeout: Duration::from_millis(100),
+                ..Default::default()
+            },
+        );
+
         // Phase 1: Service is down (should trigger circuit breaker)
         for _ in 0..3 {
             let call_count_clone = call_count.clone();
-            let _ = circuit_breaker.call(|| async move {
-                call_count_clone.fetch_add(1, Ordering::SeqCst);
-                Err::<(), Error>(Error::ServiceUnavailable {
-                    service: "flaky_service".to_string(),
-                    reason: "service down".to_string(),
+            let _ = circuit_breaker
+                .call(|| async move {
+                    call_count_clone.fetch_add(1, Ordering::SeqCst);
+                    Err::<(), Error>(Error::ServiceUnavailable {
+                        service: "flaky_service".to_string(),
+                        reason: "service down".to_string(),
+                    })
                 })
-            }).await;
+                .await;
         }
-        
+
         // Circuit should be open now
         let metrics = circuit_breaker.get_metrics().await;
         assert!(!metrics.is_healthy());
-        
+
         // Wait for recovery timeout
         sleep(Duration::from_millis(150)).await;
-        
+
         // Phase 2: Service recovers (should close circuit breaker)
         let call_count_clone = call_count.clone();
-        let result = circuit_breaker.call(|| async move {
-            call_count_clone.fetch_add(1, Ordering::SeqCst);
-            Ok::<u32, Error>(42)
-        }).await;
-        
+        let result = circuit_breaker
+            .call(|| async move {
+                call_count_clone.fetch_add(1, Ordering::SeqCst);
+                Ok::<u32, Error>(42)
+            })
+            .await;
+
         assert_eq!(result.unwrap(), 42);
-        
+
         // Verify call count
         assert!(call_count.load(Ordering::SeqCst) >= 4); // At least 3 failures + 1 success
     }

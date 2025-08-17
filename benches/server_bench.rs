@@ -14,12 +14,13 @@ fn benchmark_server_creation(c: &mut Criterion) {
 
 fn benchmark_handler_initialization(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
-    
+
     c.bench_function("handler_initialization", |b| {
         b.iter(|| {
             rt.block_on(async {
                 let config = black_box(Config::default());
-                let mut handler = rust_sci_hub_mcp::server::SciHubServerHandler::new(Arc::new(config));
+                let mut handler =
+                    rust_sci_hub_mcp::server::SciHubServerHandler::new(Arc::new(config));
                 black_box(handler.initialize().await.unwrap())
             })
         })
@@ -28,7 +29,7 @@ fn benchmark_handler_initialization(c: &mut Criterion) {
 
 fn benchmark_ping_response(c: &mut Criterion) {
     let rt = Runtime::new().unwrap();
-    
+
     c.bench_function("ping_response", |b| {
         b.iter(|| {
             rt.block_on(async {

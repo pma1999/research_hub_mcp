@@ -1,8 +1,8 @@
+use config;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use schemars::JsonSchema;
 use tracing::{debug, warn};
-use config;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -88,10 +88,16 @@ fn expand_path(path: &str) -> PathBuf {
         dirs::home_dir().map_or_else(|| PathBuf::from(path), |home_dir| home_dir.join(stripped))
     } else if path.starts_with('$') {
         // Handle environment variables like $HOME/downloads
-        path.find('/').map_or_else(|| PathBuf::from(path), |equals_pos| {
-            let env_var = &path[1..equals_pos];
-            std::env::var(env_var).map_or_else(|_| PathBuf::from(path), |env_value| PathBuf::from(env_value).join(&path[equals_pos + 1..]))
-        })
+        path.find('/').map_or_else(
+            || PathBuf::from(path),
+            |equals_pos| {
+                let env_var = &path[1..equals_pos];
+                std::env::var(env_var).map_or_else(
+                    |_| PathBuf::from(path),
+                    |env_value| PathBuf::from(env_value).join(&path[equals_pos + 1..]),
+                )
+            },
+        )
     } else {
         PathBuf::from(path)
     }
@@ -104,6 +110,7 @@ pub struct ConfigOverrides {
     pub server_host: Option<String>,
     pub log_level: Option<String>,
     pub profile: Option<String>,
+    pub download_directory: Option<PathBuf>,
 }
 
 /// Environment variable overrides with RSH_ prefix
@@ -117,6 +124,8 @@ pub struct ConfigEnvOverrides {
     pub log_level: Option<String>,
     #[serde(rename = "profile")]
     pub profile: Option<String>,
+    #[serde(rename = "download_directory")]
+    pub download_directory: Option<String>,
 }
 
 impl Default for Config {
@@ -279,7 +288,7 @@ impl Config {
         match envy::prefixed("RSH_").from_env::<ConfigEnvOverrides>() {
             Ok(env_overrides) => {
                 debug!("Found environment variable overrides");
-                
+
                 if let Some(port) = env_overrides.server_port {
                     if port > 0 {
                         config.server.port = port;
@@ -288,7 +297,7 @@ impl Config {
                         warn!("Invalid port value from env: {}, ignoring", port);
                     }
                 }
-                
+
                 if let Some(host) = env_overrides.server_host {
                     if host.trim().is_empty() {
                         warn!("Empty host value from env, ignoring");
@@ -297,7 +306,7 @@ impl Config {
                         debug!("Overrode server host from env: {}", host);
                     }
                 }
-                
+
                 if let Some(level) = env_overrides.log_level {
                     let valid_levels = ["trace", "debug", "info", "warn", "error"];
                     if valid_levels.contains(&level.as_str()) {
@@ -307,10 +316,19 @@ impl Config {
                         warn!("Invalid log level from env: {}, ignoring", level);
                     }
                 }
-                
+
                 if let Some(profile) = env_overrides.profile {
                     config.profile.clone_from(&profile);
                     debug!("Overrode profile from env: {}", profile);
+                }
+
+                if let Some(dir) = env_overrides.download_directory {
+                    if dir.trim().is_empty() {
+                        warn!("Empty download directory from env, ignoring");
+                    } else {
+                        config.downloads.directory = expand_path(&dir);
+                        debug!("Overrode download directory from env: {}", dir);
+                    }
                 }
             }
             Err(e) => {
@@ -327,20 +345,25 @@ impl Config {
             config.server.port = port;
             debug!("Overrode server port from CLI: {}", port);
         }
-        
+
         if let Some(ref host) = overrides.server_host {
             config.server.host.clone_from(host);
             debug!("Overrode server host from CLI: {}", host);
         }
-        
+
         if let Some(ref level) = overrides.log_level {
             config.logging.level.clone_from(level);
             debug!("Overrode log level from CLI: {}", level);
         }
-        
+
         if let Some(ref profile) = overrides.profile {
             config.profile.clone_from(profile);
             debug!("Overrode profile from CLI: {}", profile);
+        }
+
+        if let Some(ref dir) = overrides.download_directory {
+            config.downloads.directory = dir.clone();
+            debug!("Overrode download directory from CLI: {}", dir.display());
         }
 
         config
@@ -386,68 +409,87 @@ impl Config {
     /// Hot reload configuration with CLI overrides (for non-critical settings)
     pub fn reload_with_overrides(&mut self, overrides: &ConfigOverrides) -> crate::Result<bool> {
         debug!("Attempting configuration hot reload with overrides");
-        
+
         let new_config = Self::load_with_overrides(None, overrides)?;
-        
+
         // Only allow hot reload for non-critical settings to avoid service disruption
         let mut changed = false;
-        
+
         // Hot-reloadable: Logging configuration
         if self.logging.level != new_config.logging.level {
             self.logging.level.clone_from(&new_config.logging.level);
             changed = true;
             debug!("Hot reloaded log level: {}", new_config.logging.level);
         }
-        
+
         if self.logging.format != new_config.logging.format {
             self.logging.format.clone_from(&new_config.logging.format);
             changed = true;
             debug!("Hot reloaded log format: {}", new_config.logging.format);
         }
-        
+
         if self.logging.file != new_config.logging.file {
             self.logging.file.clone_from(&new_config.logging.file);
             changed = true;
             debug!("Hot reloaded log file: {:?}", new_config.logging.file);
         }
-        
+
         // Hot-reloadable: Sci-Hub rate limiting and timeouts
-        if self.research_source.rate_limit_per_sec != new_config.research_source.rate_limit_per_sec {
+        if self.research_source.rate_limit_per_sec != new_config.research_source.rate_limit_per_sec
+        {
             self.research_source.rate_limit_per_sec = new_config.research_source.rate_limit_per_sec;
             changed = true;
-            debug!("Hot reloaded rate limit: {}", new_config.research_source.rate_limit_per_sec);
+            debug!(
+                "Hot reloaded rate limit: {}",
+                new_config.research_source.rate_limit_per_sec
+            );
         }
-        
+
         if self.research_source.timeout_secs != new_config.research_source.timeout_secs {
             self.research_source.timeout_secs = new_config.research_source.timeout_secs;
             changed = true;
-            debug!("Hot reloaded sci-hub timeout: {}", new_config.research_source.timeout_secs);
+            debug!(
+                "Hot reloaded sci-hub timeout: {}",
+                new_config.research_source.timeout_secs
+            );
         }
-        
+
         if self.research_source.max_retries != new_config.research_source.max_retries {
             self.research_source.max_retries = new_config.research_source.max_retries;
             changed = true;
-            debug!("Hot reloaded max retries: {}", new_config.research_source.max_retries);
+            debug!(
+                "Hot reloaded max retries: {}",
+                new_config.research_source.max_retries
+            );
         }
-        
+
         // Hot-reloadable: Health check intervals
         if self.server.health_check_interval_secs != new_config.server.health_check_interval_secs {
             self.server.health_check_interval_secs = new_config.server.health_check_interval_secs;
             changed = true;
-            debug!("Hot reloaded health check interval: {}", new_config.server.health_check_interval_secs);
+            debug!(
+                "Hot reloaded health check interval: {}",
+                new_config.server.health_check_interval_secs
+            );
         }
-        
+
         // Hot-reloadable: Download configuration
         if self.downloads.max_concurrent != new_config.downloads.max_concurrent {
             self.downloads.max_concurrent = new_config.downloads.max_concurrent;
             changed = true;
-            debug!("Hot reloaded max concurrent downloads: {}", new_config.downloads.max_concurrent);
+            debug!(
+                "Hot reloaded max concurrent downloads: {}",
+                new_config.downloads.max_concurrent
+            );
         }
-        
+
         if self.downloads.max_file_size_mb != new_config.downloads.max_file_size_mb {
             self.downloads.max_file_size_mb = new_config.downloads.max_file_size_mb;
             changed = true;
-            debug!("Hot reloaded max file size: {}MB", new_config.downloads.max_file_size_mb);
+            debug!(
+                "Hot reloaded max file size: {}MB",
+                new_config.downloads.max_file_size_mb
+            );
         }
 
         // Validate the reloaded configuration
@@ -458,7 +500,7 @@ impl Config {
         } else {
             debug!("Configuration hot reload completed with no changes");
         }
-        
+
         Ok(changed)
     }
 
@@ -466,8 +508,10 @@ impl Config {
         // Validate schema version (allow forward compatibility)
         let supported_versions = ["1.0"];
         if !supported_versions.contains(&self.schema_version.as_str()) {
-            warn!("Unknown config schema version: {}. Supported: {:?}. Attempting to continue...", 
-                  self.schema_version, supported_versions);
+            warn!(
+                "Unknown config schema version: {}. Supported: {:?}. Attempting to continue...",
+                self.schema_version, supported_versions
+            );
         }
 
         // Validate server configuration
@@ -478,7 +522,10 @@ impl Config {
             });
         }
         if self.server.port < 1024 {
-            warn!("Server port {} is in the privileged range (<1024)", self.server.port);
+            warn!(
+                "Server port {} is in the privileged range (<1024)",
+                self.server.port
+            );
         }
 
         // Validate Sci-Hub configuration
@@ -488,7 +535,7 @@ impl Config {
                 reason: "At least one Sci-Hub mirror must be configured".to_string(),
             });
         }
-        
+
         for mirror in &self.research_source.endpoints {
             if !mirror.starts_with("https://") {
                 return Err(crate::Error::InvalidInput {
@@ -524,7 +571,10 @@ impl Config {
         if !valid_log_levels.contains(&self.logging.level.as_str()) {
             return Err(crate::Error::InvalidInput {
                 field: "logging.level".to_string(),
-                reason: format!("Invalid log level '{}'. Valid levels: {:?}", self.logging.level, valid_log_levels),
+                reason: format!(
+                    "Invalid log level '{}'. Valid levels: {:?}",
+                    self.logging.level, valid_log_levels
+                ),
             });
         }
 
@@ -532,14 +582,20 @@ impl Config {
         if !valid_log_formats.contains(&self.logging.format.as_str()) {
             return Err(crate::Error::InvalidInput {
                 field: "logging.format".to_string(),
-                reason: format!("Invalid log format '{}'. Valid formats: {:?}", self.logging.format, valid_log_formats),
+                reason: format!(
+                    "Invalid log format '{}'. Valid formats: {:?}",
+                    self.logging.format, valid_log_formats
+                ),
             });
         }
 
         // Validate profile
         let valid_profiles = ["development", "production"];
         if !valid_profiles.contains(&self.profile.as_str()) {
-            warn!("Unknown profile '{}'. Valid profiles: {:?}", self.profile, valid_profiles);
+            warn!(
+                "Unknown profile '{}'. Valid profiles: {:?}",
+                self.profile, valid_profiles
+            );
         }
 
         Ok(())
@@ -549,17 +605,22 @@ impl Config {
     #[must_use]
     pub fn safe_for_logging(&self) -> Self {
         let mut safe_config = self.clone();
-        
+
         // Redact any potentially sensitive information
         if let Some(ref _file) = safe_config.logging.file {
             // Log file paths might contain sensitive info, but probably okay to log
         }
-        
+
         // Could redact download directory if it contains user info
-        if safe_config.downloads.directory.to_string_lossy().contains("/Users/") {
+        if safe_config
+            .downloads
+            .directory
+            .to_string_lossy()
+            .contains("/Users/")
+        {
             safe_config.downloads.directory = PathBuf::from("[REDACTED_USER_PATH]");
         }
-        
+
         safe_config
     }
 
@@ -756,19 +817,19 @@ mod tests {
     #[test]
     fn test_config_validation() {
         let mut config = Config::default();
-        
+
         // Valid config should pass
         assert!(config.validate().is_ok());
-        
+
         // Invalid port should fail
         config.server.port = 0;
         assert!(config.validate().is_err());
-        
+
         // Fix port and test invalid log level
         config.server.port = 8080;
         config.logging.level = "invalid".to_string();
         assert!(config.validate().is_err());
-        
+
         // Fix log level and test empty mirrors
         config.logging.level = "info".to_string();
         config.research_source.endpoints.clear();
@@ -803,14 +864,19 @@ mod tests {
             server_host: Some("0.0.0.0".to_string()),
             log_level: Some("debug".to_string()),
             profile: Some("production".to_string()),
+            download_directory: Some(PathBuf::from("/custom/download/path")),
         };
 
         let config = Config::apply_cli_overrides(Config::default(), &overrides);
-        
+
         assert_eq!(config.server.port, 9090);
         assert_eq!(config.server.host, "0.0.0.0");
         assert_eq!(config.logging.level, "debug");
         assert_eq!(config.profile, "production");
+        assert_eq!(
+            config.downloads.directory,
+            PathBuf::from("/custom/download/path")
+        );
     }
 
     #[test]
@@ -818,19 +884,19 @@ mod tests {
         let mut config = Config::default();
         config.profile = "development".to_string();
         config.logging.level = "info".to_string();
-        
+
         let config = Config::apply_profile_settings(config);
-        
+
         // Development profile should change log level to debug
         assert_eq!(config.logging.level, "debug");
         assert_eq!(config.server.timeout_secs, 10);
-        
+
         // Test production profile
         let mut config = Config::default();
         config.profile = "production".to_string();
-        
+
         let config = Config::apply_profile_settings(config);
-        
+
         assert_eq!(config.logging.format, "json");
         assert_eq!(config.server.timeout_secs, 60);
     }
@@ -839,7 +905,7 @@ mod tests {
     fn test_schema_generation() {
         let schema = Config::generate_schema();
         assert!(schema.is_object());
-        
+
         // Verify schema contains expected properties
         let schema_obj = schema.as_object().unwrap();
         assert!(schema_obj.contains_key("$schema"));
@@ -853,11 +919,11 @@ mod tests {
         assert!(example.contains("[sci_hub]"));
         assert!(example.contains("[downloads]"));
         assert!(example.contains("[logging]"));
-        
+
         let minimal = Config::generate_minimal_config();
         assert!(minimal.contains("[server]"));
         assert!(minimal.contains("port"));
-        
+
         let production = Config::generate_production_config();
         assert!(production.contains("production"));
         assert!(production.contains("timeout_secs = 60"));
@@ -867,25 +933,27 @@ mod tests {
     fn test_safe_for_logging() {
         let mut config = Config::default();
         config.downloads.directory = PathBuf::from("/Users/testuser/Downloads");
-        
+
         let safe_config = config.safe_for_logging();
-        assert_eq!(safe_config.downloads.directory, PathBuf::from("[REDACTED_USER_PATH]"));
+        assert_eq!(
+            safe_config.downloads.directory,
+            PathBuf::from("[REDACTED_USER_PATH]")
+        );
     }
 
     #[test]
     fn test_hot_reload() {
         let mut config = Config::default();
         let original_level = config.logging.level.clone();
-        
+
         // Mock a reload that changes the log level
         config.logging.level = "debug".to_string();
-        
+
         // Verify changed detection works
         let mut test_config = Config::default();
         test_config.logging.level = "debug".to_string();
-        
+
         // Hot reload should detect changes in allowed fields
         assert_ne!(test_config.logging.level, original_level);
     }
 }
-

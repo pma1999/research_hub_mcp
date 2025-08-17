@@ -1,5 +1,5 @@
-use thiserror::Error;
 use std::time::Duration;
+use thiserror::Error;
 
 /// Comprehensive error categorization for resilience framework
 #[derive(Error, Debug)]
@@ -68,7 +68,11 @@ pub enum Error {
 
     // Resource errors
     #[error("Resource exhausted: {resource} - {current}/{limit}")]
-    ResourceExhausted { resource: String, current: u64, limit: u64 },
+    ResourceExhausted {
+        resource: String,
+        current: u64,
+        limit: u64,
+    },
 
     #[error("Timeout error: operation timed out after {timeout:?}")]
     Timeout { timeout: Duration },
@@ -104,30 +108,31 @@ impl Error {
     pub fn category(&self) -> ErrorCategory {
         match self {
             // Permanent errors - don't retry
-            Error::Config(_) |
-            Error::InvalidInput { .. } |
-            Error::AuthenticationFailed(_) |
-            Error::AuthorizationDenied { .. } |
-            Error::Parse { .. } |
-            Error::Serde(_) => ErrorCategory::Permanent,
+            Error::Config(_)
+            | Error::InvalidInput { .. }
+            | Error::AuthenticationFailed(_)
+            | Error::AuthorizationDenied { .. }
+            | Error::Parse { .. }
+            | Error::Serde(_) => ErrorCategory::Permanent,
 
             // Rate limited - retry with backoff
             Error::RateLimitExceeded { .. } => ErrorCategory::RateLimited,
 
             // Circuit breaker errors
-            Error::CircuitBreakerOpen { .. } |
-            Error::CircuitBreakerHalfOpen => ErrorCategory::CircuitBreaker,
+            Error::CircuitBreakerOpen { .. } | Error::CircuitBreakerHalfOpen => {
+                ErrorCategory::CircuitBreaker
+            }
 
             // Transient errors - retry with exponential backoff
-            Error::Http(_) |
-            Error::NetworkTimeout { .. } |
-            Error::ConnectionRefused { .. } |
-            Error::DnsFailure { .. } |
-            Error::ServiceUnavailable { .. } |
-            Error::InternalServerError(_) |
-            Error::ServiceOverloaded { .. } |
-            Error::Timeout { .. } |
-            Error::Io(_) => ErrorCategory::Transient,
+            Error::Http(_)
+            | Error::NetworkTimeout { .. }
+            | Error::ConnectionRefused { .. }
+            | Error::DnsFailure { .. }
+            | Error::ServiceUnavailable { .. }
+            | Error::InternalServerError(_)
+            | Error::ServiceOverloaded { .. }
+            | Error::Timeout { .. }
+            | Error::Io(_) => ErrorCategory::Transient,
 
             // Service specific - depends on context
             Error::SciHub { code, .. } => {
@@ -141,7 +146,7 @@ impl Error {
                     // Other codes treated as transient
                     _ => ErrorCategory::Transient,
                 }
-            },
+            }
 
             // Default to transient for unknown errors
             _ => ErrorCategory::Transient,
@@ -150,7 +155,10 @@ impl Error {
 
     /// Check if error is retryable
     pub fn is_retryable(&self) -> bool {
-        matches!(self.category(), ErrorCategory::Transient | ErrorCategory::RateLimited)
+        matches!(
+            self.category(),
+            ErrorCategory::Transient | ErrorCategory::RateLimited
+        )
     }
 
     /// Get suggested retry delay for rate limited errors
@@ -163,15 +171,15 @@ impl Error {
 
     /// Check if error indicates a need for circuit breaker
     pub fn should_trigger_circuit_breaker(&self) -> bool {
-        matches!(self,
-            Error::ServiceUnavailable { .. } |
-            Error::InternalServerError(_) |
-            Error::ServiceOverloaded { .. } |
-            Error::NetworkTimeout { .. } |
-            Error::ConnectionRefused { .. }
+        matches!(
+            self,
+            Error::ServiceUnavailable { .. }
+                | Error::InternalServerError(_)
+                | Error::ServiceOverloaded { .. }
+                | Error::NetworkTimeout { .. }
+                | Error::ConnectionRefused { .. }
         )
     }
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
-
