@@ -1,4 +1,4 @@
-use crate::client::{Doi, PaperMetadata, ResearchClient};
+use crate::client::{Doi, MetaSearchClient, PaperMetadata};
 use crate::{Config, Result};
 use futures::StreamExt;
 use reqwest::Client;
@@ -135,7 +135,7 @@ const fn default_verify() -> bool {
 /// Paper download tool implementation
 #[derive(Clone)]
 pub struct DownloadTool {
-    client: Arc<ResearchClient>,
+    client: Arc<MetaSearchClient>,
     http_client: Client,
     #[allow(dead_code)] // Will be used for configuration in future features
     config: Arc<Config>,
@@ -159,7 +159,7 @@ impl std::fmt::Debug for DownloadTool {
 
 impl DownloadTool {
     /// Create a new download tool
-    pub fn new(client: Arc<ResearchClient>, config: Arc<Config>) -> Self {
+    pub fn new(client: Arc<MetaSearchClient>, config: Arc<Config>) -> Self {
         info!("Initializing paper download tool");
 
         let http_client = Client::builder()
@@ -298,14 +298,37 @@ impl DownloadTool {
         input: &DownloadInput,
     ) -> Result<(String, Option<PaperMetadata>)> {
         if let Some(doi_str) = &input.doi {
-            let doi = Doi::new(doi_str)?;
-            let response = self.client.search_by_doi(&doi).await?;
+            // Create a search query for the DOI
+            let search_query = crate::client::providers::SearchQuery {
+                query: doi_str.clone(),
+                search_type: crate::client::providers::SearchType::Doi,
+                max_results: 1,
+                offset: 0,
+                params: HashMap::new(),
+            };
 
-            if let Some(pdf_url) = &response.metadata.pdf_url {
-                Ok((pdf_url.clone(), Some(response.metadata)))
+            // Use the meta search client to find papers with PDF URLs
+            let search_result = self.client.search(&search_query).await?;
+
+            // Look for a paper with a PDF URL (prioritizing Sci-Hub results)
+            let paper_with_pdf = search_result
+                .papers
+                .iter()
+                .find(|paper| paper.pdf_url.is_some())
+                .cloned();
+
+            if let Some(paper) = paper_with_pdf {
+                if let Some(pdf_url) = &paper.pdf_url {
+                    Ok((pdf_url.clone(), Some(paper)))
+                } else {
+                    Err(crate::Error::ServiceUnavailable {
+                        service: "MetaSearch".to_string(),
+                        reason: format!("No PDF available for DOI: {doi_str}"),
+                    })
+                }
             } else {
                 Err(crate::Error::ServiceUnavailable {
-                    service: "Sci-Hub".to_string(),
+                    service: "MetaSearch".to_string(),
                     reason: format!("No PDF available for DOI: {doi_str}"),
                 })
             }
@@ -779,7 +802,8 @@ mod tests {
 
     fn create_test_download_tool() -> Result<DownloadTool> {
         let config = create_test_config();
-        let client = Arc::new(ResearchClient::new((*config).clone())?);
+        let meta_config = crate::client::MetaSearchConfig::default();
+        let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
         Ok(DownloadTool::new(client, config))
     }
 
@@ -951,7 +975,8 @@ mod tests {
         // Create config with custom download directory
         let mut config = Config::default();
         config.downloads.directory = PathBuf::from("/tmp/test-downloads");
-        let client = Arc::new(ResearchClient::new(config.clone()).unwrap());
+        let meta_config = crate::client::MetaSearchConfig::default();
+        let client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
         let tool = DownloadTool::new(client, Arc::new(config));
 
         // Test that the tool uses the custom directory

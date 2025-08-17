@@ -1,4 +1,6 @@
-use rust_research_mcp::{Config, DownloadTool, MetadataExtractor, SciHubClient, SearchTool, Server};
+use rust_research_mcp::{
+    Config, DownloadTool, MetadataExtractor, SciHubClient, SearchTool, Server,
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;

@@ -1,6 +1,6 @@
 use super::circuit_breaker::CircuitBreakerConfig;
 use super::{
-    retry_with_policy, CircuitBreaker, HealthCheckManager, HttpHealthCheck, PingHealthCheck,
+    retry_with_policy, CircuitBreaker, HealthCheckManager, PingHealthCheck,
     RetryPolicy, TimeoutExt,
 };
 use crate::error::ErrorCategory;

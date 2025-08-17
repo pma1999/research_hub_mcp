@@ -88,6 +88,10 @@ pub enum Error {
     // General service error
     #[error("Service error: {0}")]
     Service(String),
+
+    // Provider errors
+    #[error("Provider error: {0}")]
+    Provider(String),
 }
 
 /// Error categorization for retry strategies
@@ -148,6 +152,9 @@ impl Error {
                 }
             }
 
+            // Provider errors - categorize based on the error type
+            Error::Provider(_) => ErrorCategory::Transient,
+
             // Default to transient for unknown errors
             _ => ErrorCategory::Transient,
         }
@@ -183,3 +190,36 @@ impl Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+// Provider error conversion
+impl From<crate::client::providers::ProviderError> for Error {
+    fn from(err: crate::client::providers::ProviderError) -> Self {
+        match err {
+            crate::client::providers::ProviderError::Network(msg) => {
+                Error::Provider(format!("Network error: {}", msg))
+            }
+            crate::client::providers::ProviderError::Parse(msg) => Error::Parse {
+                context: "provider".to_string(),
+                message: msg,
+            },
+            crate::client::providers::ProviderError::RateLimit => Error::RateLimitExceeded {
+                retry_after: Duration::from_secs(60),
+            },
+            crate::client::providers::ProviderError::Auth(msg) => Error::AuthenticationFailed(msg),
+            crate::client::providers::ProviderError::InvalidQuery(msg) => Error::InvalidInput {
+                field: "query".to_string(),
+                reason: msg,
+            },
+            crate::client::providers::ProviderError::ServiceUnavailable(msg) => {
+                Error::ServiceUnavailable {
+                    service: "provider".to_string(),
+                    reason: msg,
+                }
+            }
+            crate::client::providers::ProviderError::Timeout => Error::Timeout {
+                timeout: Duration::from_secs(30),
+            },
+            crate::client::providers::ProviderError::Other(msg) => Error::Provider(msg),
+        }
+    }
+}

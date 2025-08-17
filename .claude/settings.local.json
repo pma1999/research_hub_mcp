@@ -8,7 +8,8 @@
       "Bash(cp:*)",
       "Bash(chmod:*)",
       "Bash(/opt/homebrew/bin/rust-research-mcp --version)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": [],

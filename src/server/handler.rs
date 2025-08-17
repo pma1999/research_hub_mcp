@@ -2,7 +2,7 @@ use crate::tools::{
     download::DownloadInput as ActualDownloadInput, metadata::MetadataInput as ActualMetadataInput,
     search::SearchInput as ActualSearchInput,
 };
-use crate::{Config, DownloadTool, MetadataExtractor, ResearchClient, Result, SearchTool};
+use crate::{Config, DownloadTool, MetaSearchClient, MetadataExtractor, Result, SearchTool};
 use rmcp::{
     model::*,
     service::{RequestContext, RoleServer},
@@ -53,8 +53,9 @@ impl ResearchServerHandler {
     pub fn new(config: Arc<Config>) -> Result<Self> {
         info!("Initializing Research MCP server handler");
 
-        // Initialize Research client
-        let client = Arc::new(ResearchClient::new((*config).clone())?);
+        // Initialize MetaSearch client with default config
+        let meta_config = crate::client::MetaSearchConfig::default();
+        let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
 
         // Initialize search tool
         let search_tool = SearchTool::new(config.clone())?;
@@ -256,7 +257,7 @@ impl ServerHandler for ResearchServerHandler {
 
                     Ok(CallToolResult {
                         content: Some(vec![Content::text(format!("📚 Found {} papers for '{}'\n\n{}\n\n💡 Tip: Papers from {} may be available for download. Very recent papers (2024-2025) might not be available yet.", 
-                            results.returned_count, 
+                            results.returned_count,
                             results.query,
                             results.papers.iter().enumerate().map(|(i, p)| {
                                 let doi_info = if !p.metadata.doi.is_empty() {
@@ -344,7 +345,6 @@ impl ServerHandler for ResearchServerHandler {
                                             Please try again or use a different DOI.", doi, e)
                                 }
                             };
-                            
                             Ok(CallToolResult {
                                 content: Some(vec![Content::text(error_msg)]),
                                 structured_content: None,

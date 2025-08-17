@@ -2,10 +2,10 @@
 name = "rust-research-mcp"
 version = "0.2.1"
 edition = "2021"
-authors = ["Your Name <your.email@example.com>"]
+authors = ["Ladvien <ladvien@gmail.com>"]
 description = "A Rust-based Model Context Protocol (MCP) server for academic research paper access"
 license = "GPL-3.0"
-repository = "https://github.com/yourusername/rust-research-mcp"
+repository = "https://github.com/Ladvien/research_hub_mcp"
 keywords = ["mcp", "academic", "papers", "research", "library"]
 categories = ["command-line-utilities", "science"]
 rust-version = "1.70"

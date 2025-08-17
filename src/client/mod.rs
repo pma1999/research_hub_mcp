@@ -2,12 +2,10 @@ pub mod meta_search;
 pub mod mirror;
 pub mod providers;
 pub mod rate_limiter;
-pub mod sci_hub;
 
 pub use meta_search::{MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 pub use mirror::{Mirror, MirrorHealth, MirrorManager};
 pub use rate_limiter::RateLimiter;
-pub use sci_hub::{ResearchClient, ResearchResponse};
 
 use crate::Result;
 use std::time::Duration;
@@ -35,7 +33,7 @@ impl Default for HttpClientConfig {
             timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(10),
             max_redirects: 10,
-            user_agent: "rust-research-mcp/0.2.0 (Academic Research Tool)".to_string(),
+            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
             proxy: None,
             danger_accept_invalid_certs: false,
         }

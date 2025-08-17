@@ -71,7 +71,8 @@ async fn test_transport_validation() {
 #[tokio::test]
 async fn test_server_handler_integration() {
     let config = Config::default();
-    let mut handler = rust_research_mcp::server::SciHubServerHandler::new(Arc::new(config)).unwrap();
+    let mut handler =
+        rust_research_mcp::server::SciHubServerHandler::new(Arc::new(config)).unwrap();
 
     // Test initialization
     let result = handler.initialize().await;

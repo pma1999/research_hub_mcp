@@ -6,9 +6,7 @@ pub mod server;
 pub mod service;
 pub mod tools;
 
-pub use client::{
-    Doi, MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata, ResearchClient,
-};
+pub use client::{Doi, MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata};
 pub use config::{Config, ConfigOverrides};
 pub use error::{Error, Result};
 pub use resilience::health::HealthCheckManager;

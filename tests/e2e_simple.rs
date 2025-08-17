@@ -28,15 +28,15 @@ fn test_mcp_basic_functionality() {
         .spawn()
         .and_then(|mut child| {
             let mut stdin = child.stdin.take().unwrap();
-            
+
             // Send initialization request
             writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2024-11-05","capabilities":{{"tools":{{}}}},"clientInfo":{{"name":"test","version":"1.0"}}}}}}"#)?;
             stdin.flush()?;
-            
+
             // Kill after short delay (server will process and respond)
             std::thread::sleep(std::time::Duration::from_millis(100));
             child.kill()?;
-            
+
             child.wait_with_output()
         })
         .expect("Failed to run server");
@@ -144,10 +144,10 @@ fn test_custom_configuration() {
         .spawn()
         .and_then(|mut child| {
             let mut stdin = child.stdin.take().unwrap();
-            
+
             writeln!(stdin, r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"2024-11-05","capabilities":{{"tools":{{}}}},"clientInfo":{{"name":"test","version":"1.0"}}}}}}"#)?;
             stdin.flush()?;
-            
+
             std::thread::sleep(std::time::Duration::from_millis(100));
             child.kill()?;
             child.wait_with_output()

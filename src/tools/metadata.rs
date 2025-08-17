@@ -201,28 +201,28 @@ impl Default for ExtractionPatterns {
         Self {
             // Title patterns - look for large fonts, first non-author text
             title_pattern: Regex::new(r"(?i)^([A-Z][^.!?]*[.!?]?)$").unwrap(),
-            
+
             // Author patterns - name formats
             author_pattern: Regex::new(r"(?i)([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)*\s+[A-Z][a-z]+)").unwrap(),
-            
+
             // DOI pattern
             doi_pattern: Regex::new(r"(?i)(?:doi:?\s*|https?://doi\.org/|https?://dx\.doi\.org/)?(10\.\d{4,}/[-._;()/:\w]+)").unwrap(),
-            
+
             // Date patterns
             date_pattern: Regex::new(r"(?i)(?:january|february|march|april|may|june|july|august|september|october|november|december|\d{1,2})[,\s]+\d{4}|\d{4}").unwrap(),
-            
+
             // Email pattern
             email_pattern: Regex::new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}").unwrap(),
-            
+
             // Abstract pattern
             abstract_pattern: Regex::new(r"(?is)abstract[:\s]*(.+?)(?:keywords|introduction|1\.?\s*introduction|\n\n)").unwrap(),
-            
+
             // Reference pattern
             reference_pattern: Regex::new(r"(?i)^\[?\d+\]?\.?\s*(.+)$").unwrap(),
-            
+
             // Journal pattern
             journal_pattern: Regex::new(r"(?i)(?:journal|proceedings|conference|trans(?:actions)?\.?)\s+(?:of\s+)?(.+?)(?:\s+vol|\s+\d{4}|$)").unwrap(),
-            
+
             // Volume/Issue pattern
             volume_issue_pattern: Regex::new(r"(?i)vol(?:ume)?\.?\s*(\d+)(?:.*?(?:no|issue)\.?\s*(\d+))?").unwrap(),
         }

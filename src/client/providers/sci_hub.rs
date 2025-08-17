@@ -1,77 +1,194 @@
 use super::traits::{
     ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
-use crate::client::{PaperMetadata, ResearchClient, ResearchResponse};
-use crate::{Config, Doi};
+use crate::client::PaperMetadata;
 use async_trait::async_trait;
+use reqwest::Client;
+use scraper::{Html, Selector};
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
-/// Sci-Hub provider adapter
+/// Sci-Hub provider for academic paper access
 pub struct SciHubProvider {
-    client: Arc<ResearchClient>,
+    client: Client,
+    mirrors: Vec<String>,
+    current_mirror_index: std::sync::atomic::AtomicUsize,
 }
 
 impl SciHubProvider {
-    /// Create a new Sci-Hub provider
-    pub fn new(config: Config) -> Result<Self, ProviderError> {
-        let client = ResearchClient::new(config)
-            .map_err(|e| ProviderError::Other(format!("Failed to create Sci-Hub client: {}", e)))?;
+    /// Create a new Sci-Hub provider with known mirrors
+    pub fn new() -> Result<Self, ProviderError> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+            .build()
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+
+        // Known Sci-Hub mirrors (update these as needed)
+        let mirrors = vec![
+            "https://sci-hub.se".to_string(),
+            "https://sci-hub.st".to_string(),
+            "https://sci-hub.ru".to_string(),
+            "https://sci-hub.tw".to_string(),
+        ];
 
         Ok(Self {
-            client: Arc::new(client),
+            client,
+            mirrors,
+            current_mirror_index: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
-    /// Convert search query to Sci-Hub format
-    fn convert_query(&self, query: &SearchQuery) -> String {
-        match query.search_type {
-            SearchType::Doi => {
-                // Clean DOI format
-                query
-                    .query
-                    .trim_start_matches("doi:")
-                    .trim_start_matches("https://doi.org/")
-                    .to_string()
-            }
-            _ => query.query.clone(),
-        }
+    /// Get the next mirror to try
+    fn get_next_mirror(&self) -> String {
+        let index = self
+            .current_mirror_index
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let mirror = self.mirrors[index % self.mirrors.len()].clone();
+        self.current_mirror_index.store(
+            (index + 1) % self.mirrors.len(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        mirror
     }
 
-    /// Convert ResearchResponse to ProviderResult
-    fn convert_response(
+    /// Clean DOI format for Sci-Hub
+    fn clean_doi(&self, doi: &str) -> String {
+        doi.trim()
+            .trim_start_matches("doi:")
+            .trim_start_matches("https://doi.org/")
+            .trim_start_matches("http://dx.doi.org/")
+            .to_string()
+    }
+
+    /// Try to fetch paper from Sci-Hub
+    async fn fetch_from_scihub(
         &self,
-        response: ResearchResponse,
-        start_time: Instant,
-        query: &SearchQuery,
-    ) -> ProviderResult {
-        let papers = if response.found {
-            vec![response.metadata]
-        } else {
-            Vec::new()
+        identifier: &str,
+        search_type: &SearchType,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
+        let query = match search_type {
+            SearchType::Doi => self.clean_doi(identifier),
+            _ => identifier.to_string(),
         };
 
-        let search_time = start_time.elapsed();
+        // Try each mirror until one works
+        for _ in 0..self.mirrors.len() {
+            let mirror = self.get_next_mirror();
 
-        let mut metadata = HashMap::new();
-        metadata.insert(
-            "source_mirror".to_string(),
-            response.source_mirror.to_string(),
-        );
-        metadata.insert(
-            "response_time".to_string(),
-            response.response_time.as_millis().to_string(),
-        );
+            match self.try_mirror(&mirror, &query).await {
+                Ok(Some(metadata)) => {
+                    info!("Successfully found paper on Sci-Hub mirror: {}", mirror);
+                    return Ok(Some(metadata));
+                }
+                Ok(None) => {
+                    debug!("Paper not found on mirror: {}", mirror);
+                }
+                Err(e) => {
+                    warn!("Failed to query mirror {}: {}", mirror, e);
+                }
+            }
+        }
 
-        ProviderResult {
-            papers,
-            source: "Sci-Hub".to_string(),
-            total_available: if response.found { Some(1) } else { Some(0) },
-            search_time,
-            has_more: false, // Sci-Hub typically returns single results
-            metadata,
+        Ok(None)
+    }
+
+    /// Try to fetch from a specific mirror
+    async fn try_mirror(
+        &self,
+        mirror: &str,
+        query: &str,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
+        let url = format!("{}/{}", mirror, urlencoding::encode(query));
+
+        debug!("Trying Sci-Hub URL: {}", url);
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(ProviderError::Network(format!(
+                "HTTP {}",
+                response.status()
+            )));
+        }
+
+        let html_content = response
+            .text()
+            .await
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+
+        self.parse_scihub_response(&html_content, query)
+    }
+
+    /// Parse Sci-Hub HTML response to extract paper metadata
+    fn parse_scihub_response(
+        &self,
+        html: &str,
+        original_query: &str,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
+        let document = Html::parse_document(html);
+
+        // Check if we got an error page
+        if html.contains("article not found") || html.contains("no fulltext") {
+            return Ok(None);
+        }
+
+        // Look for PDF download link
+        let pdf_selector = Selector::parse("embed[src], iframe[src], a[href*='.pdf']")
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
+
+        let mut pdf_url = None;
+        for element in document.select(&pdf_selector) {
+            if let Some(src) = element
+                .value()
+                .attr("src")
+                .or_else(|| element.value().attr("href"))
+            {
+                if src.contains(".pdf") || src.starts_with("//") {
+                    pdf_url = Some(if src.starts_with("//") {
+                        format!("https:{}", src)
+                    } else if src.starts_with("/") {
+                        format!("https://sci-hub.se{}", src)
+                    } else {
+                        src.to_string()
+                    });
+                    break;
+                }
+            }
+        }
+
+        // Extract title if available
+        let title_selector = Selector::parse("title, h1, .article-title")
+            .map_err(|e| ProviderError::Parse(format!("Invalid title selector: {}", e)))?;
+
+        let title = document
+            .select(&title_selector)
+            .next()
+            .map(|el| el.text().collect::<String>().trim().to_string())
+            .filter(|t| !t.is_empty() && !t.to_lowercase().contains("sci-hub"));
+
+        // If we found a PDF URL, we consider it a success
+        if pdf_url.is_some() {
+            let metadata = PaperMetadata {
+                doi: original_query.to_string(),
+                title,
+                authors: Vec::new(), // Sci-Hub doesn't provide detailed metadata
+                journal: None,
+                year: None,
+                abstract_text: None,
+                pdf_url,
+                file_size: None,
+            };
+
+            Ok(Some(metadata))
+        } else {
+            Ok(None)
         }
     }
 }
@@ -87,19 +204,19 @@ impl SourceProvider for SciHubProvider {
     }
 
     fn supported_search_types(&self) -> Vec<SearchType> {
-        vec![SearchType::Auto, SearchType::Doi, SearchType::Title]
+        vec![SearchType::Doi, SearchType::Title, SearchType::Auto]
     }
 
     fn supports_full_text(&self) -> bool {
-        true // Sci-Hub provides PDF access
+        true
     }
 
     fn priority(&self) -> u8 {
-        30 // Lower priority, use as fallback for full-text
+        10 // Lower priority, use as fallback for full-text access
     }
 
     fn base_delay(&self) -> Duration {
-        Duration::from_secs(2) // Respectful delay for Sci-Hub
+        Duration::from_secs(2) // Respectful delay
     }
 
     async fn search(
@@ -114,47 +231,34 @@ impl SourceProvider for SciHubProvider {
             query.query, query.search_type
         );
 
-        // Convert query to Sci-Hub format
-        let search_term = self.convert_query(query);
+        let paper = self
+            .fetch_from_scihub(&query.query, &query.search_type)
+            .await?;
 
-        // Try to search based on query type
-        let response = match query.search_type {
-            SearchType::Doi => {
-                // For DOI searches, use the DOI search method
-                let doi = Doi::new(&search_term)
-                    .map_err(|e| ProviderError::InvalidQuery(format!("Invalid DOI: {}", e)))?;
-
-                self.client.search_by_doi(&doi).await.map_err(|e| {
-                    ProviderError::Other(format!("Sci-Hub DOI search failed: {}", e))
-                })?
-            }
-            SearchType::Title | SearchType::Auto | SearchType::Keywords => {
-                // For title/auto searches, use the title search method
-                self.client
-                    .search_by_title(&search_term)
-                    .await
-                    .map_err(|e| {
-                        ProviderError::Other(format!("Sci-Hub title search failed: {}", e))
-                    })?
-            }
-            SearchType::Author => {
-                return Err(ProviderError::InvalidQuery(
-                    "Sci-Hub does not support author search".to_string(),
-                ));
-            }
-            SearchType::Subject => {
-                return Err(ProviderError::InvalidQuery(
-                    "Sci-Hub does not support subject search".to_string(),
-                ));
-            }
+        let papers = if let Some(metadata) = paper {
+            vec![metadata]
+        } else {
+            Vec::new()
         };
 
-        let result = self.convert_response(response, start_time, query);
+        let search_time = start_time.elapsed();
+        let papers_count = papers.len();
+        let mut metadata = HashMap::new();
+        metadata.insert("mirrors_tried".to_string(), self.mirrors.len().to_string());
+
+        let result = ProviderResult {
+            papers,
+            source: "Sci-Hub".to_string(),
+            total_available: if papers_count == 0 { Some(0) } else { Some(1) },
+            search_time,
+            has_more: false,
+            metadata,
+        };
 
         info!(
             "Sci-Hub search completed: {} papers found in {:?}",
             result.papers.len(),
-            result.search_time
+            search_time
         );
 
         Ok(result)
@@ -166,37 +270,26 @@ impl SourceProvider for SciHubProvider {
         _context: &SearchContext,
     ) -> Result<Option<PaperMetadata>, ProviderError> {
         info!("Getting paper by DOI from Sci-Hub: {}", doi);
-
-        let doi_obj = Doi::new(doi)
-            .map_err(|e| ProviderError::InvalidQuery(format!("Invalid DOI: {}", e)))?;
-
-        let response = self
-            .client
-            .search_by_doi(&doi_obj)
-            .await
-            .map_err(|e| ProviderError::Other(format!("Sci-Hub DOI lookup failed: {}", e)))?;
-
-        if response.found {
-            Ok(Some(response.metadata))
-        } else {
-            Ok(None)
-        }
+        self.fetch_from_scihub(doi, &SearchType::Doi).await
     }
 
     async fn health_check(&self, _context: &SearchContext) -> Result<bool, ProviderError> {
         debug!("Performing Sci-Hub health check");
 
-        // Try a simple DOI lookup
-        let test_doi = "10.1038/nature12373";
+        // Try to access the main page of the first mirror
+        let mirror = &self.mirrors[0];
 
-        match self.get_by_doi(test_doi, _context).await {
-            Ok(_) => {
+        match self.client.get(mirror).send().await {
+            Ok(response) if response.status().is_success() => {
                 info!("Sci-Hub health check: OK");
                 Ok(true)
             }
-            Err(ProviderError::RateLimit) => {
-                info!("Sci-Hub health check: OK (rate limited but responsive)");
-                Ok(true)
+            Ok(response) => {
+                warn!(
+                    "Sci-Hub health check failed with status: {}",
+                    response.status()
+                );
+                Ok(false)
             }
             Err(e) => {
                 warn!("Sci-Hub health check failed: {}", e);
@@ -206,32 +299,47 @@ impl SourceProvider for SciHubProvider {
     }
 }
 
+impl Default for SciHubProvider {
+    fn default() -> Self {
+        Self::new().expect("Failed to create SciHubProvider")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Config;
 
     #[test]
     fn test_sci_hub_provider_creation() {
-        let config = Config::default();
-        let provider = SciHubProvider::new(config);
+        let provider = SciHubProvider::new();
         assert!(provider.is_ok());
     }
 
     #[test]
-    fn test_query_conversion() {
-        let config = Config::default();
-        let provider = SciHubProvider::new(config).unwrap();
+    fn test_clean_doi() {
+        let provider = SciHubProvider::new().unwrap();
 
-        let query = SearchQuery {
-            query: "doi:10.1038/nature12373".to_string(),
-            search_type: SearchType::Doi,
-            max_results: 1,
-            offset: 0,
-            params: HashMap::new(),
-        };
+        assert_eq!(
+            provider.clean_doi("10.1038/nature12373"),
+            "10.1038/nature12373"
+        );
+        assert_eq!(
+            provider.clean_doi("doi:10.1038/nature12373"),
+            "10.1038/nature12373"
+        );
+        assert_eq!(
+            provider.clean_doi("https://doi.org/10.1038/nature12373"),
+            "10.1038/nature12373"
+        );
+    }
 
-        let converted = provider.convert_query(&query);
-        assert_eq!(converted, "10.1038/nature12373");
+    #[test]
+    fn test_provider_interface() {
+        let provider = SciHubProvider::new().unwrap();
+
+        assert_eq!(provider.name(), "sci_hub");
+        assert!(provider.supports_full_text());
+        assert_eq!(provider.priority(), 10);
+        assert!(provider.supported_search_types().contains(&SearchType::Doi));
     }
 }

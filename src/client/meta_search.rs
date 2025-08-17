@@ -66,7 +66,7 @@ pub struct MetaSearchClient {
 
 impl MetaSearchClient {
     /// Create a new meta-search client
-    pub fn new(app_config: Config, meta_config: MetaSearchConfig) -> Result<Self, ProviderError> {
+    pub fn new(_app_config: Config, meta_config: MetaSearchConfig) -> Result<Self, ProviderError> {
         let mut providers: Vec<Arc<dyn SourceProvider>> = Vec::new();
 
         // Add arXiv provider (high priority for CS/physics/math)
@@ -76,7 +76,7 @@ impl MetaSearchClient {
         providers.push(Arc::new(CrossRefProvider::new(None)?)); // TODO: Get email from config
 
         // Add Sci-Hub provider (lower priority, for full-text access)
-        providers.push(Arc::new(SciHubProvider::new(app_config)?));
+        providers.push(Arc::new(SciHubProvider::new()?));
 
         info!(
             "Initialized meta-search client with {} providers",
@@ -252,7 +252,7 @@ impl MetaSearchClient {
     async fn create_search_context(&self) -> SearchContext {
         SearchContext {
             timeout: self.config.provider_timeout,
-            user_agent: "rust-research-mcp/0.2.0 (Academic Research Tool)".to_string(),
+            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
             rate_limit: Some(Duration::from_millis(1000)),
             headers: HashMap::new(),
         }
