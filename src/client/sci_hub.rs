@@ -13,9 +13,9 @@ use tokio_retry::{strategy::ExponentialBackoff, Retry};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
-/// Response from Sci-Hub API containing paper information
+/// Response from research source containing paper information
 #[derive(Debug, Clone)]
-pub struct SciHubResponse {
+pub struct ResearchResponse {
     /// Paper metadata
     pub metadata: PaperMetadata,
     /// Source mirror that provided the response
@@ -34,8 +34,8 @@ const USER_AGENTS: &[&str] = &[
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
 ];
 
-/// Main Sci-Hub client with comprehensive error handling and resilience
-pub struct SciHubClient {
+/// Main research client with comprehensive error handling and resilience
+pub struct ResearchClient {
     http_client: Client,
     mirror_manager: Arc<MirrorManager>,
     rate_limiter: Arc<RwLock<AdaptiveRateLimiter>>,
@@ -43,12 +43,12 @@ pub struct SciHubClient {
     user_agent_index: Arc<RwLock<usize>>,
 }
 
-impl SciHubClient {
-    /// Create a new Sci-Hub client with the given configuration
+impl ResearchClient {
+    /// Create a new research client with the given configuration
     pub fn new(config: Config) -> Result<Self> {
         let http_config = HttpClientConfig::default();
         let mut client_builder = Client::builder()
-            .timeout(Duration::from_secs(config.sci_hub.timeout_secs))
+            .timeout(Duration::from_secs(config.research_source.timeout_secs))
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::limited(10))
             .gzip(true)
@@ -75,19 +75,19 @@ impl SciHubClient {
 
         // Initialize mirror manager
         let mirror_manager = Arc::new(
-            MirrorManager::new(config.sci_hub.mirrors.clone(), http_client.clone())?
+            MirrorManager::new(config.research_source.endpoints.clone(), http_client.clone())?
         );
 
         // Initialize rate limiter
         let rate_config = RateLimitConfig {
-            requests_per_second: config.sci_hub.rate_limit_per_sec,
+            requests_per_second: config.research_source.rate_limit_per_sec,
             adaptive: true,
             min_rate: 1,
-            max_rate: config.sci_hub.rate_limit_per_sec * 2,
+            max_rate: config.research_source.rate_limit_per_sec * 2,
         };
         let rate_limiter = Arc::new(RwLock::new(AdaptiveRateLimiter::new(rate_config)));
 
-        info!("Initialized Sci-Hub client with {} mirrors", config.sci_hub.mirrors.len());
+        info!("Initialized Sci-Hub client with {} mirrors", config.research_source.endpoints.len());
 
         Ok(Self {
             http_client,
@@ -99,12 +99,12 @@ impl SciHubClient {
     }
 
     /// Search for a paper by DOI
-    pub async fn search_by_doi(&self, doi: &Doi) -> Result<SciHubResponse> {
+    pub async fn search_by_doi(&self, doi: &Doi) -> Result<ResearchResponse> {
         self.search_paper(&doi.to_string()).await
     }
 
     /// Search for a paper by title
-    pub async fn search_by_title(&self, title: &str) -> Result<SciHubResponse> {
+    pub async fn search_by_title(&self, title: &str) -> Result<ResearchResponse> {
         if title.trim().is_empty() {
             return Err(crate::Error::InvalidInput {
                 field: "title".to_string(),
@@ -116,7 +116,7 @@ impl SciHubClient {
     }
 
     /// Internal method to search for a paper using various strategies
-    async fn search_paper(&self, query: &str) -> Result<SciHubResponse> {
+    async fn search_paper(&self, query: &str) -> Result<ResearchResponse> {
         let start_time = SystemTime::now();
         
         // Apply rate limiting
@@ -141,13 +141,13 @@ impl SciHubClient {
     }
 
     /// Perform the actual search with retry logic
-    async fn perform_search(&self, query: &str) -> Result<SciHubResponse> {
+    async fn perform_search(&self, query: &str) -> Result<ResearchResponse> {
         let retry_strategy = ExponentialBackoff::from_millis(1000)
             .max_delay(Duration::from_secs(30))
             .take(3); // Maximum 3 retries
 
         let config = self.config.read().await;
-        let max_retries = config.sci_hub.max_retries;
+        let max_retries = config.research_source.max_retries;
         drop(config);
 
         let query_owned = query.to_string(); // Take ownership to avoid lifetime issues
@@ -158,7 +158,7 @@ impl SciHubClient {
     }
 
     /// Try to search on an available mirror
-    async fn try_search_on_available_mirror(&self, query: &str) -> Result<SciHubResponse> {
+    async fn try_search_on_available_mirror(&self, query: &str) -> Result<ResearchResponse> {
         // Get next available mirror
         let mirror = self.mirror_manager.get_next_mirror().await
             .ok_or_else(|| crate::Error::ServiceUnavailable {
@@ -209,7 +209,7 @@ impl SciHubClient {
 
         let metadata = Self::parse_sci_hub_response(&html_content, query)?;
 
-        Ok(SciHubResponse {
+        Ok(ResearchResponse {
             metadata,
             source_mirror: mirror.url,
             response_time,
@@ -347,15 +347,15 @@ impl SciHubClient {
             let mut config = self.config.write().await;
             
             // Update rate limiter if rate changed
-            if config.sci_hub.rate_limit_per_sec != new_config.sci_hub.rate_limit_per_sec {
+            if config.research_source.rate_limit_per_sec != new_config.research_source.rate_limit_per_sec {
                 let rate_config = RateLimitConfig {
-                    requests_per_second: new_config.sci_hub.rate_limit_per_sec,
+                    requests_per_second: new_config.research_source.rate_limit_per_sec,
                     adaptive: true,
                     min_rate: 1,
-                    max_rate: new_config.sci_hub.rate_limit_per_sec * 2,
+                    max_rate: new_config.research_source.rate_limit_per_sec * 2,
                 };
                 *self.rate_limiter.write().await = AdaptiveRateLimiter::new(rate_config);
-                info!("Updated rate limit to {} requests/sec", new_config.sci_hub.rate_limit_per_sec);
+                info!("Updated rate limit to {} requests/sec", new_config.research_source.rate_limit_per_sec);
             }
 
             *config = new_config;
@@ -396,12 +396,12 @@ impl SciHubClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, SciHubConfig};
+    use crate::config::{Config, ResearchSourceConfig};
 
     fn create_test_config() -> Config {
         let mut config = Config::default();
-        config.sci_hub = SciHubConfig {
-            mirrors: vec!["https://sci-hub.se".to_string()],
+        config.research_source = ResearchSourceConfig {
+            endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
             max_retries: 2,
@@ -412,7 +412,7 @@ mod tests {
     #[tokio::test]
     async fn test_client_creation() {
         let config = create_test_config();
-        let client = SciHubClient::new(config);
+        let client = ResearchClient::new(config);
         assert!(client.is_ok());
     }
 
@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn test_search_url_building() {
         let mirror_url = Url::parse("https://sci-hub.se").unwrap();
-        let url = SciHubClient::build_search_url(&mirror_url, "10.1038/nature12373");
+        let url = ResearchClient::build_search_url(&mirror_url, "10.1038/nature12373");
         assert!(url.contains("10.1038"));
     }
 
@@ -447,7 +447,7 @@ mod tests {
             </html>
         "#;
         
-        let metadata = SciHubClient::parse_sci_hub_response(html, "10.1038/test").unwrap();
+        let metadata = ResearchClient::parse_sci_hub_response(html, "10.1038/test").unwrap();
         assert!(metadata.title.is_some());
         assert!(metadata.pdf_url.is_some());
     }

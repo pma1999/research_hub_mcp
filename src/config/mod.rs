@@ -9,8 +9,8 @@ use config;
 pub struct Config {
     /// Server configuration
     pub server: ServerConfig,
-    /// Sci-Hub client configuration  
-    pub sci_hub: SciHubConfig,
+    /// Research source configuration  
+    pub research_source: ResearchSourceConfig,
     /// Download management configuration
     pub downloads: DownloadsConfig,
     /// Logging configuration
@@ -40,9 +40,9 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
-pub struct SciHubConfig {
-    /// List of Sci-Hub mirror URLs
-    pub mirrors: Vec<String>,
+pub struct ResearchSourceConfig {
+    /// List of research source endpoints
+    pub endpoints: Vec<String>,
     /// Rate limit (requests per second)
     pub rate_limit_per_sec: u32,
     /// Request timeout in seconds
@@ -123,7 +123,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             server: ServerConfig::default(),
-            sci_hub: SciHubConfig::default(),
+            research_source: ResearchSourceConfig::default(),
             downloads: DownloadsConfig::default(),
             logging: LoggingConfig::default(),
             profile: default_profile(),
@@ -144,10 +144,10 @@ impl Default for ServerConfig {
     }
 }
 
-impl Default for SciHubConfig {
+impl Default for ResearchSourceConfig {
     fn default() -> Self {
         Self {
-            mirrors: vec![
+            endpoints: vec![
                 "https://sci-hub.se".to_string(),
                 "https://sci-hub.st".to_string(),
                 "https://sci-hub.ru".to_string(),
@@ -412,22 +412,22 @@ impl Config {
         }
         
         // Hot-reloadable: Sci-Hub rate limiting and timeouts
-        if self.sci_hub.rate_limit_per_sec != new_config.sci_hub.rate_limit_per_sec {
-            self.sci_hub.rate_limit_per_sec = new_config.sci_hub.rate_limit_per_sec;
+        if self.research_source.rate_limit_per_sec != new_config.research_source.rate_limit_per_sec {
+            self.research_source.rate_limit_per_sec = new_config.research_source.rate_limit_per_sec;
             changed = true;
-            debug!("Hot reloaded rate limit: {}", new_config.sci_hub.rate_limit_per_sec);
+            debug!("Hot reloaded rate limit: {}", new_config.research_source.rate_limit_per_sec);
         }
         
-        if self.sci_hub.timeout_secs != new_config.sci_hub.timeout_secs {
-            self.sci_hub.timeout_secs = new_config.sci_hub.timeout_secs;
+        if self.research_source.timeout_secs != new_config.research_source.timeout_secs {
+            self.research_source.timeout_secs = new_config.research_source.timeout_secs;
             changed = true;
-            debug!("Hot reloaded sci-hub timeout: {}", new_config.sci_hub.timeout_secs);
+            debug!("Hot reloaded sci-hub timeout: {}", new_config.research_source.timeout_secs);
         }
         
-        if self.sci_hub.max_retries != new_config.sci_hub.max_retries {
-            self.sci_hub.max_retries = new_config.sci_hub.max_retries;
+        if self.research_source.max_retries != new_config.research_source.max_retries {
+            self.research_source.max_retries = new_config.research_source.max_retries;
             changed = true;
-            debug!("Hot reloaded max retries: {}", new_config.sci_hub.max_retries);
+            debug!("Hot reloaded max retries: {}", new_config.research_source.max_retries);
         }
         
         // Hot-reloadable: Health check intervals
@@ -482,14 +482,14 @@ impl Config {
         }
 
         // Validate Sci-Hub configuration
-        if self.sci_hub.mirrors.is_empty() {
+        if self.research_source.endpoints.is_empty() {
             return Err(crate::Error::InvalidInput {
                 field: "sci_hub.mirrors".to_string(),
                 reason: "At least one Sci-Hub mirror must be configured".to_string(),
             });
         }
         
-        for mirror in &self.sci_hub.mirrors {
+        for mirror in &self.research_source.endpoints {
             if !mirror.starts_with("https://") {
                 return Err(crate::Error::InvalidInput {
                     field: "sci_hub.mirrors".to_string(),
@@ -498,7 +498,7 @@ impl Config {
             }
         }
 
-        if self.sci_hub.rate_limit_per_sec == 0 {
+        if self.research_source.rate_limit_per_sec == 0 {
             return Err(crate::Error::InvalidInput {
                 field: "sci_hub.rate_limit_per_sec".to_string(),
                 reason: "Rate limit must be greater than 0".to_string(),
@@ -742,13 +742,13 @@ mod tests {
 
     #[test]
     fn test_sci_hub_config_defaults() {
-        let config = SciHubConfig {
-            mirrors: vec!["https://sci-hub.se".to_string()],
+        let config = ResearchSourceConfig {
+            endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
             max_retries: 3,
         };
-        assert!(!config.mirrors.is_empty());
+        assert!(!config.endpoints.is_empty());
         assert_eq!(config.rate_limit_per_sec, 1);
         assert_eq!(config.max_retries, 3);
     }
@@ -771,7 +771,7 @@ mod tests {
         
         // Fix log level and test empty mirrors
         config.logging.level = "info".to_string();
-        config.sci_hub.mirrors.clear();
+        config.research_source.endpoints.clear();
         assert!(config.validate().is_err());
     }
 

@@ -1,4 +1,4 @@
-use crate::client::{Doi, PaperMetadata, SciHubClient};
+use crate::client::{Doi, PaperMetadata, ResearchClient};
 use crate::{Config, Result};
 use futures::StreamExt;
 use reqwest::Client;
@@ -130,7 +130,7 @@ const fn default_verify() -> bool {
 /// Paper download tool implementation
 #[derive(Clone)]
 pub struct DownloadTool {
-    client: Arc<SciHubClient>,
+    client: Arc<ResearchClient>,
     http_client: Client,
     #[allow(dead_code)] // Will be used for configuration in future features
     config: Arc<Config>,
@@ -154,11 +154,11 @@ impl std::fmt::Debug for DownloadTool {
 
 impl DownloadTool {
     /// Create a new download tool
-    pub fn new(client: Arc<SciHubClient>, config: Arc<Config>) -> Self {
+    pub fn new(client: Arc<ResearchClient>, config: Arc<Config>) -> Self {
         info!("Initializing paper download tool");
         
         let http_client = Client::builder()
-            .timeout(Duration::from_secs(config.sci_hub.timeout_secs * 2)) // Longer timeout for downloads
+            .timeout(Duration::from_secs(config.research_source.timeout_secs * 2)) // Longer timeout for downloads
             .connect_timeout(Duration::from_secs(30))
             .build()
             .expect("Failed to create HTTP client for downloads");
@@ -690,14 +690,14 @@ impl DownloadTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{Config, SciHubConfig};
+    use crate::config::{Config, ResearchSourceConfig};
     // use std::path::PathBuf; // Already imported at top level
     use tempfile::TempDir;
 
     fn create_test_config() -> Arc<Config> {
         let mut config = Config::default();
-        config.sci_hub = SciHubConfig {
-            mirrors: vec!["https://sci-hub.se".to_string()],
+        config.research_source = ResearchSourceConfig {
+            endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
             max_retries: 2,
@@ -707,7 +707,7 @@ mod tests {
 
     fn create_test_download_tool() -> Result<DownloadTool> {
         let config = create_test_config();
-        let client = Arc::new(SciHubClient::new((*config).clone())?);
+        let client = Arc::new(ResearchClient::new((*config).clone())?);
         Ok(DownloadTool::new(client, config))
     }
 

@@ -11,7 +11,7 @@ use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-pub use handler::SciHubServerHandler;
+pub use handler::ResearchServerHandler;
 
 pub struct Server {
     config: Arc<Config>,
@@ -39,7 +39,7 @@ impl Server {
         info!("Starting MCP server infrastructure");
 
         // Create server handler
-        let handler = SciHubServerHandler::new(Arc::clone(&self.config))?;
+        let handler = ResearchServerHandler::new(Arc::clone(&self.config))?;
 
         // Validate transport setup
         transport::validate_stdio_transport().map_err(|e| {
@@ -91,7 +91,7 @@ impl Server {
         server_result
     }
 
-    async fn run_mcp_server(&self, handler: SciHubServerHandler) -> Result<()> {
+    async fn run_mcp_server(&self, handler: ResearchServerHandler) -> Result<()> {
         info!("Connecting MCP server to stdio transport");
         
         // Create stdio transport 

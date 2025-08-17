@@ -1,15 +1,18 @@
 pub mod sci_hub;
 pub mod mirror;
 pub mod rate_limiter;
+pub mod providers;
+pub mod meta_search;
 
-pub use sci_hub::{SciHubClient, SciHubResponse};
+pub use sci_hub::{ResearchClient, ResearchResponse};
+pub use meta_search::{MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 pub use mirror::{Mirror, MirrorHealth, MirrorManager};
 pub use rate_limiter::RateLimiter;
 
 use crate::Result;
 use std::time::Duration;
 
-/// HTTP client configuration for Sci-Hub integration
+/// HTTP client configuration for research source integration
 #[derive(Debug, Clone)]
 pub struct HttpClientConfig {
     /// Request timeout duration
@@ -32,7 +35,7 @@ impl Default for HttpClientConfig {
             timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(10),
             max_redirects: 10,
-            user_agent: "rust-sci-hub-mcp/0.1.0 (Educational Research Tool)".to_string(),
+            user_agent: "rust-research-mcp/0.2.0 (Academic Research Tool)".to_string(),
             proxy: None,
             danger_accept_invalid_certs: false,
         }
@@ -93,7 +96,7 @@ impl std::str::FromStr for Doi {
     }
 }
 
-/// Paper metadata extracted from Sci-Hub
+/// Paper metadata extracted from research sources
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct PaperMetadata {
     /// Digital Object Identifier

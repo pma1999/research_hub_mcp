@@ -1,12 +1,12 @@
 [package]
-name = "rust-sci-hub-mcp"
-version = "0.1.0"
+name = "rust-research-mcp"
+version = "0.2.0"
 edition = "2021"
 authors = ["Your Name <your.email@example.com>"]
-description = "A Rust-based Model Context Protocol (MCP) server for Sci-Hub integration"
+description = "A Rust-based Model Context Protocol (MCP) server for academic research paper access"
 license = "MIT"
-repository = "https://github.com/yourusername/rust-sci-hub-mcp"
-keywords = ["mcp", "sci-hub", "academic", "papers", "research"]
+repository = "https://github.com/yourusername/rust-research-mcp"
+keywords = ["mcp", "academic", "papers", "research", "library"]
 categories = ["command-line-utilities", "science"]
 rust-version = "1.70"
 
@@ -36,9 +36,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # HTTP client
 reqwest = { version = "0.11", features = ["json", "stream", "gzip"] }
 
-# Sci-Hub client dependencies
+# Research client dependencies
 tokio-retry = "0.3"  # Retry mechanisms with exponential backoff
-scraper = "0.19"     # HTML parsing for Sci-Hub responses
+scraper = "0.19"     # HTML parsing for research source responses
 url = "2.0"          # URL parsing and manipulation
 urlencoding = "2.1"  # URL encoding for DOIs
 futures = "0.3"      # Async utilities
@@ -70,6 +70,9 @@ bincode = "1.3"         # Serialization for cache storage
 
 # Signal handling and I/O utilities
 tokio-util = { version = "0.7", features = ["io"] }
+
+# XML parsing for arXiv API
+roxmltree = "0.20"  # Fast XML parser for arXiv Atom feeds
 
 # Daemon and service management
 nix = { version = "0.29", features = ["signal", "process", "fs"] }
@@ -103,11 +106,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 vergen = { version = "8.0", features = ["build", "git", "gitcl"] }
 
 [[bin]]
-name = "rust-sci-hub-mcp"
+name = "rust-research-mcp"
 path = "src/main.rs"
 
 [lib]
-name = "rust_sci_hub_mcp"
+name = "rust_research_mcp"
 path = "src/lib.rs"
 
 [[bench]]

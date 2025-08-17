@@ -1,4 +1,4 @@
-use crate::{Config, Result, SciHubClient, SearchTool, DownloadTool, MetadataExtractor};
+use crate::{Config, Result, ResearchClient, SearchTool, DownloadTool, MetadataExtractor};
 use crate::tools::{
     search::SearchInput as ActualSearchInput,
     download::DownloadInput as ActualDownloadInput, 
@@ -44,22 +44,22 @@ pub struct MetadataInput {
 
 /// Main MCP server handler implementing rmcp
 #[derive(Debug, Clone)]
-pub struct SciHubServerHandler {
+pub struct ResearchServerHandler {
     config: Arc<Config>,
     search_tool: SearchTool,
     download_tool: DownloadTool,
     metadata_extractor: MetadataExtractor,
 }
 
-impl SciHubServerHandler {
+impl ResearchServerHandler {
     pub fn new(config: Arc<Config>) -> Result<Self> {
-        info!("Initializing SciHub MCP server handler");
+        info!("Initializing Research MCP server handler");
         
-        // Initialize Sci-Hub client
-        let client = Arc::new(SciHubClient::new((*config).clone())?);
+        // Initialize Research client
+        let client = Arc::new(ResearchClient::new((*config).clone())?);
         
         // Initialize search tool
-        let search_tool = SearchTool::new(client.clone(), config.clone());
+        let search_tool = SearchTool::new(config.clone())?;
         
         // Initialize download tool
         let download_tool = DownloadTool::new(client, config.clone());
@@ -83,10 +83,10 @@ impl SciHubServerHandler {
     }
 }
 
-impl ServerHandler for SciHubServerHandler {
+impl ServerHandler for ResearchServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("A Rust-based MCP server for Sci-Hub integration. Provides tools to search, download, and extract metadata from academic papers.".into()),
+            instructions: Some("A Rust-based MCP server for academic research paper access. Provides tools to search, download, and extract metadata from academic papers.".into()),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
@@ -110,10 +110,10 @@ impl ServerHandler for SciHubServerHandler {
                 protocol_version: ProtocolVersion::default(),
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info: Implementation {
-                    name: "rust-sci-hub-mcp".into(),
-                    version: "0.1.0".into(),
+                    name: "rust-research-mcp".into(),
+                    version: "0.2.0".into(),
                 },
-                instructions: Some("A Rust-based MCP server for Sci-Hub integration. Provides tools to search, download, and extract metadata from academic papers.".into()),
+                instructions: Some("A Rust-based MCP server for academic research paper access. Provides tools to search, download, and extract metadata from academic papers.".into()),
             })
         }
     }
@@ -236,15 +236,15 @@ const fn default_limit() -> u32 {
 mod tests {
     use super::*;
 
-    fn create_test_handler() -> SciHubServerHandler {
+    fn create_test_handler() -> ResearchServerHandler {
         let config = Config::default();
-        SciHubServerHandler::new(Arc::new(config)).unwrap()
+        ResearchServerHandler::new(Arc::new(config)).unwrap()
     }
 
     #[tokio::test]
     async fn test_handler_creation() {
         let handler = create_test_handler();
-        assert!(handler.config.sci_hub.mirrors.len() > 0);
+        assert!(handler.config.research_source.endpoints.len() > 0);
     }
 
     #[tokio::test]

@@ -1,12 +1,12 @@
 use anyhow::Result;
 use clap::Parser;
-use rust_sci_hub_mcp::{Config, ConfigOverrides, Server, DaemonConfig, DaemonService, PidFile};
+use rust_research_mcp::{Config, ConfigOverrides, Server, DaemonConfig, DaemonService, PidFile};
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
 #[derive(Parser)]
-#[command(name = "rust-sci-hub-mcp")]
-#[command(about = "A Rust-based MCP server for Sci-Hub integration")]
+#[command(name = "rust-research-mcp")]
+#[command(about = "A Rust-based MCP server for academic research paper access")]
 #[command(version)]
 struct Cli {
     /// Enable verbose logging

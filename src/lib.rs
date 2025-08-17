@@ -6,7 +6,7 @@ pub mod server;
 pub mod service;
 pub mod tools;
 
-pub use client::{SciHubClient, Doi, PaperMetadata};
+pub use client::{ResearchClient, Doi, PaperMetadata, MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 pub use config::{Config, ConfigOverrides};
 pub use error::{Error, Result};
 pub use resilience::{CircuitBreaker, RetryConfig, RetryPolicy, TimeoutConfig, TimeoutExt};

@@ -1,4 +1,5 @@
-use crate::client::{Doi, PaperMetadata, SciHubClient, SciHubResponse};
+use crate::client::{PaperMetadata, MetaSearchClient, MetaSearchConfig, MetaSearchResult};
+use crate::client::providers::{SearchQuery, SearchType as ProviderSearchType};
 use crate::{Config, Result};
 // use rmcp::tool; // Will be enabled when rmcp integration is complete
 use schemars::JsonSchema;
@@ -104,7 +105,7 @@ impl CacheEntry {
 /// Paper search tool implementation
 #[derive(Clone)]
 pub struct SearchTool {
-    client: Arc<SciHubClient>,
+    meta_client: Arc<MetaSearchClient>,
     cache: Arc<RwLock<HashMap<String, CacheEntry>>>,
     config: Arc<Config>,
 }
@@ -112,7 +113,7 @@ pub struct SearchTool {
 impl std::fmt::Debug for SearchTool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SearchTool")
-            .field("client", &"SciHubClient")
+            .field("meta_client", &"MetaSearchClient")
             .field("cache", &"RwLock<HashMap>")
             .field("config", &"Config")
             .finish()
@@ -120,21 +121,27 @@ impl std::fmt::Debug for SearchTool {
 }
 
 impl SearchTool {
-    /// Create a new search tool
-    pub fn new(client: Arc<SciHubClient>, config: Arc<Config>) -> Self {
-        info!("Initializing paper search tool");
-        Self {
-            client,
+    /// Create a new search tool with meta-search capabilities
+    pub fn new(config: Arc<Config>) -> Result<Self> {
+        info!("Initializing paper search tool with meta-search");
+        
+        // Create meta-search client
+        let meta_config = MetaSearchConfig::default();
+        let meta_client = MetaSearchClient::new((*config).clone(), meta_config)
+            .map_err(|e| crate::Error::Service(format!("Failed to create meta-search client: {}", e)))?;
+        
+        Ok(Self {
+            meta_client: Arc::new(meta_client),
             cache: Arc::new(RwLock::new(HashMap::new())),
             config,
-        }
+        })
     }
 
-    /// Execute a paper search
+    /// Execute a paper search using meta-search across multiple providers
     // #[tool] // Will be enabled when rmcp integration is complete
     #[instrument(skip(self), fields(query = %input.query, search_type = ?input.search_type))]
     pub async fn search_papers(&self, input: SearchInput) -> Result<SearchResult> {
-        info!("Executing paper search: query='{}', type={:?}", input.query, input.search_type);
+        info!("Executing meta-search: query='{}', type={:?}", input.query, input.search_type);
         
         // Validate input
         Self::validate_input(&input)?;
@@ -146,53 +153,35 @@ impl SearchTool {
             return Ok(cached_result);
         }
 
-        let start_time = SystemTime::now();
+        // Convert our SearchType to ProviderSearchType
+        let provider_search_type = Self::convert_search_type(&input.search_type);
         
-        // Determine actual search type
-        let search_type = Self::determine_search_type(&input.query, &input.search_type);
-        debug!("Determined search type: {:?}", search_type);
-
-        // Execute search based on type
-        let sci_hub_response = match search_type {
-            SearchType::Doi => {
-                self.search_by_doi(&input.query).await?
-            }
-            SearchType::Auto if Self::looks_like_doi(&input.query) => {
-                self.search_by_doi(&input.query).await?
-            }
-            SearchType::Title | SearchType::Auto => {
-                self.search_by_title(&input.query).await?
-            }
-            SearchType::Author => {
-                return Err(crate::Error::InvalidInput {
-                    field: "search_type".to_string(),
-                    reason: "Author search not yet implemented - use title search instead".to_string(),
-                });
-            }
-            SearchType::AuthorYear => {
-                return Err(crate::Error::InvalidInput {
-                    field: "search_type".to_string(),
-                    reason: "Author+year search not yet implemented - use title search instead".to_string(),
-                });
-            }
+        // Create search query for meta-search
+        let search_query = SearchQuery {
+            query: input.query.clone(),
+            search_type: provider_search_type,
+            max_results: input.limit,
+            offset: input.offset,
+            params: HashMap::new(),
         };
 
-        let search_time = start_time.elapsed().unwrap_or(Duration::ZERO);
-        
-        // Convert to search result
-        let result = Self::convert_to_search_result(
+        // Execute meta-search
+        let meta_result = self.meta_client.search(&search_query).await
+            .map_err(|e| crate::Error::Service(format!("Meta-search failed: {}", e)))?;
+
+        // Convert to our SearchResult format
+        let result = Self::convert_meta_result_to_search_result(
             input.query.clone(),
-            search_type,
-            sci_hub_response,
+            input.search_type.clone(),
+            meta_result,
             &input,
-            search_time,
         );
 
         // Cache the result
         self.cache_result(&cache_key, &result).await;
 
-        info!("Search completed in {}ms, found {} results", 
-              search_time.as_millis(), result.returned_count);
+        info!("Meta-search completed in {:?}, found {} results from {} providers", 
+              result.search_time_ms, result.returned_count, result.source_mirror.as_deref().unwrap_or("multiple"));
         
         Ok(result)
     }
@@ -231,72 +220,7 @@ impl SearchTool {
         Ok(())
     }
 
-    /// Determine the appropriate search type
-    fn determine_search_type(query: &str, requested_type: &SearchType) -> SearchType {
-        match requested_type {
-            SearchType::Auto => {
-                if Self::looks_like_doi(query) {
-                    SearchType::Doi
-                } else {
-                    SearchType::Title
-                }
-            }
-            other => other.clone(),
-        }
-    }
 
-    /// Check if a query looks like a DOI
-    fn looks_like_doi(query: &str) -> bool {
-        // Basic DOI pattern matching
-        let cleaned = query.trim().trim_start_matches("doi:").trim_start_matches("https://doi.org/");
-        cleaned.contains('/') && (
-            cleaned.starts_with("10.") ||
-            query.starts_with("doi:") ||
-            query.starts_with("https://doi.org/")
-        )
-    }
-
-    /// Search by DOI
-    async fn search_by_doi(&self, query: &str) -> Result<SciHubResponse> {
-        let doi = Doi::new(query)?;
-        self.client.search_by_doi(&doi).await
-    }
-
-    /// Search by title
-    async fn search_by_title(&self, query: &str) -> Result<SciHubResponse> {
-        self.client.search_by_title(query).await
-    }
-
-    /// Convert `SciHubResponse` to `SearchResult`
-    fn convert_to_search_result(
-        original_query: String,
-        search_type: SearchType,
-        response: SciHubResponse,
-        input: &SearchInput,
-        search_time: Duration,
-    ) -> SearchResult {
-        let paper_result = PaperResult {
-            metadata: response.metadata,
-            relevance_score: if response.found { 1.0 } else { 0.0 },
-            available: response.found,
-            source: "Sci-Hub".to_string(),
-        };
-
-        let papers = if response.found { vec![paper_result] } else { vec![] };
-        let returned_count = u32::try_from(papers.len()).unwrap_or(u32::MAX);
-
-        SearchResult {
-            query: original_query,
-            search_type,
-            papers,
-            total_count: returned_count, // For now, we only get single results from Sci-Hub
-            returned_count,
-            offset: input.offset,
-            has_more: false, // Sci-Hub typically returns single results
-            search_time_ms: u64::try_from(search_time.as_millis()).unwrap_or(u64::MAX),
-            source_mirror: Some(response.source_mirror.to_string()),
-        }
-    }
 
     /// Generate cache key for search input
     fn generate_cache_key(input: &SearchInput) -> String {
@@ -324,7 +248,7 @@ impl SearchTool {
     /// Cache search result
     async fn cache_result(&self, cache_key: &str, result: &SearchResult) {
         let mut cache = self.cache.write().await;
-        let ttl = Duration::from_secs(self.config.sci_hub.timeout_secs * 10); // Cache for 10x timeout
+        let ttl = Duration::from_secs(self.config.research_source.timeout_secs * 10); // Cache for 10x timeout
         cache.insert(cache_key.to_string(), CacheEntry::new(result.clone(), ttl));
         
         // Simple cache cleanup - remove expired entries
@@ -349,6 +273,68 @@ impl SearchTool {
         drop(cache);
         (total, expired)
     }
+
+    /// Convert our SearchType to provider SearchType
+    fn convert_search_type(search_type: &SearchType) -> ProviderSearchType {
+        match search_type {
+            SearchType::Auto => ProviderSearchType::Auto,
+            SearchType::Doi => ProviderSearchType::Doi,
+            SearchType::Title => ProviderSearchType::Title,
+            SearchType::Author => ProviderSearchType::Author,
+            SearchType::AuthorYear => ProviderSearchType::Keywords, // Fallback to keywords
+        }
+    }
+
+    /// Convert MetaSearchResult to our SearchResult format
+    fn convert_meta_result_to_search_result(
+        query: String,
+        search_type: SearchType,
+        meta_result: MetaSearchResult,
+        input: &SearchInput,
+    ) -> SearchResult {
+        // Convert papers to PaperResult format
+        let papers: Vec<PaperResult> = meta_result.papers
+            .into_iter()
+            .enumerate()
+            .map(|(index, paper)| {
+                // Determine source (prefer the first source that provided this paper)
+                let source = meta_result.by_source
+                    .iter()
+                    .find(|(_, papers)| papers.iter().any(|p| p.doi == paper.doi || p.title == paper.title))
+                    .map(|(source, _)| source.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                PaperResult {
+                    metadata: paper,
+                    relevance_score: 1.0 - (index as f64 * 0.01), // Simple scoring based on order
+                    available: true, // Assume available since providers returned them
+                    source,
+                }
+            })
+            .collect();
+
+        let returned_count = papers.len() as u32;
+        
+        // Create source summary
+        let source_summary = if meta_result.by_source.len() > 1 {
+            format!("Multiple sources: {}", 
+                meta_result.by_source.keys().cloned().collect::<Vec<_>>().join(", "))
+        } else {
+            meta_result.by_source.keys().next().cloned().unwrap_or_else(|| "No sources".to_string())
+        };
+
+        SearchResult {
+            query,
+            search_type,
+            papers,
+            total_count: returned_count, // We don't have true total from meta-search
+            returned_count,
+            offset: input.offset,
+            has_more: returned_count >= input.limit, // Estimate based on limit
+            search_time_ms: meta_result.total_search_time.as_millis() as u64,
+            source_mirror: Some(source_summary),
+        }
+    }
 }
 
 /// Default limit for search results
@@ -359,13 +345,14 @@ const fn default_limit() -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::PaperMetadata;
-    use crate::config::{Config, SciHubConfig};
+    use crate::client::{PaperMetadata, MetaSearchResult};
+    use crate::client::providers::SearchType as ProviderSearchType;
+    use crate::config::{Config, ResearchSourceConfig};
 
     fn create_test_config() -> Arc<Config> {
         let mut config = Config::default();
-        config.sci_hub = SciHubConfig {
-            mirrors: vec!["https://sci-hub.se".to_string()],
+        config.research_source = ResearchSourceConfig {
+            endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
             max_retries: 2,
@@ -375,8 +362,7 @@ mod tests {
 
     fn create_test_search_tool() -> Result<SearchTool> {
         let config = create_test_config();
-        let client = Arc::new(SciHubClient::new((*config).clone())?);
-        Ok(SearchTool::new(client, config))
+        SearchTool::new(config)
     }
 
     #[test]
@@ -419,27 +405,13 @@ mod tests {
     }
 
     #[test]
-    fn test_doi_detection() {
-        assert!(SearchTool::looks_like_doi("10.1038/nature12373"));
-        assert!(SearchTool::looks_like_doi("doi:10.1038/nature12373"));
-        assert!(SearchTool::looks_like_doi("https://doi.org/10.1038/nature12373"));
-        assert!(!SearchTool::looks_like_doi("Nature paper about genetics"));
-        assert!(!SearchTool::looks_like_doi("Smith et al 2023"));
-    }
-
-    #[test]
-    fn test_search_type_determination() {
-
-        // Auto detection should work
-        let doi_type = SearchTool::determine_search_type("10.1038/nature12373", &SearchType::Auto);
-        assert!(matches!(doi_type, SearchType::Doi));
-
-        let title_type = SearchTool::determine_search_type("Machine learning in biology", &SearchType::Auto);
-        assert!(matches!(title_type, SearchType::Title));
-
-        // Explicit types should be preserved
-        let explicit_title = SearchTool::determine_search_type("10.1038/nature12373", &SearchType::Title);
-        assert!(matches!(explicit_title, SearchType::Title));
+    fn test_search_type_conversion() {
+        // Test conversion from our SearchType to ProviderSearchType
+        assert!(matches!(SearchTool::convert_search_type(&SearchType::Auto), ProviderSearchType::Auto));
+        assert!(matches!(SearchTool::convert_search_type(&SearchType::Doi), ProviderSearchType::Doi));
+        assert!(matches!(SearchTool::convert_search_type(&SearchType::Title), ProviderSearchType::Title));
+        assert!(matches!(SearchTool::convert_search_type(&SearchType::Author), ProviderSearchType::Author));
+        assert!(matches!(SearchTool::convert_search_type(&SearchType::AuthorYear), ProviderSearchType::Keywords));
     }
 
     #[test]
@@ -463,13 +435,29 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_to_search_result() {
-        let metadata = PaperMetadata::new("10.1038/test".to_string());
-        let response = SciHubResponse {
-            metadata,
-            source_mirror: url::Url::parse("https://sci-hub.se").unwrap(),
-            response_time: Duration::from_millis(500),
-            found: true,
+    fn test_convert_meta_result_to_search_result() {
+        let metadata = PaperMetadata {
+            doi: "10.1038/test".to_string(),
+            title: Some("Test Paper".to_string()),
+            authors: vec!["Author 1".to_string()],
+            journal: Some("Test Journal".to_string()),
+            year: Some(2023),
+            abstract_text: None,
+            pdf_url: None,
+            file_size: None,
+        };
+
+        let mut by_source = HashMap::new();
+        by_source.insert("test_source".to_string(), vec![metadata.clone()]);
+
+        let meta_result = MetaSearchResult {
+            papers: vec![metadata],
+            by_source,
+            total_search_time: Duration::from_millis(100),
+            successful_providers: 1,
+            failed_providers: 0,
+            provider_errors: HashMap::new(),
+            provider_metadata: HashMap::new(),
         };
 
         let input = SearchInput {
@@ -479,12 +467,11 @@ mod tests {
             offset: 0,
         };
 
-        let result = SearchTool::convert_to_search_result(
+        let result = SearchTool::convert_meta_result_to_search_result(
             "test query".to_string(),
             SearchType::Title,
-            response,
+            meta_result,
             &input,
-            Duration::from_millis(100),
         );
 
         assert_eq!(result.query, "test query");
