@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "rust-research-mcp": {
+      "command": "/Users/ladvien/sci_hub_mcp/target/release/rust-research-mcp",
+      "args": [
+        "--config", "/Users/ladvien/sci_hub_mcp/config.toml",
+        "--log-level", "debug"
+      ],
+      "env": {
+        "RUST_LOG": "debug",
+        "RSH_DOWNLOAD_DIRECTORY": "/Users/ladvien/Downloads/Research-Papers"
+      }
+    }
+  }
+}

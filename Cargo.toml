@@ -42,6 +42,7 @@ scraper = "0.19"     # HTML parsing for research source responses
 url = "2.0"          # URL parsing and manipulation
 urlencoding = "2.1"  # URL encoding for DOIs
 futures = "0.3"      # Async utilities
+regex = "1.0"        # Regular expressions for pattern matching
 
 # Resilience and circuit breaker
 failsafe = "1.3"     # Circuit breaker pattern implementation
@@ -64,7 +65,6 @@ sha2 = "0.10"           # SHA256 hashing for file integrity
 
 # PDF parsing and metadata extraction
 lopdf = "0.34"          # PDF parsing and manipulation
-regex = "1.11"          # Pattern matching for metadata extraction
 sled = "0.34"           # Embedded database for caching
 bincode = "1.3"         # Serialization for cache storage
 

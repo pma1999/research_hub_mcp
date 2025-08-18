@@ -53,12 +53,14 @@ The developers of this tool do not condone or support any illegal activities. Us
 
 - 📥 **Robust Downloads**: Multi-provider fallback with zero-byte protection
 - 📊 **Metadata Extraction**: Extract bibliographic information from PDFs
-- 🤖 **MCP Integration**: Seamlessly works with Claude Desktop and other MCP-compatible AI assistants
+- 🔍 **Code Pattern Search**: Regex-powered search for algorithm implementations in papers
+- 📚 **Bibliography Generation**: Multi-format citations (BibTeX, APA, MLA, Chicago, IEEE, Harvard)
+- 🤖 **MCP Integration**: Enhanced for Claude Desktop and Claude Code workflows
 - ⚡ **High Performance**: Built with Rust for speed and reliability
 - 🔄 **Resilient**: Circuit breakers, automatic retries, and graceful error handling
 
 ## Installation
-
+****
 ### Quick Start (Recommended)
 
 **Download the latest release binary:**
@@ -101,7 +103,7 @@ Add the following to your Claude Desktop configuration file:
 {
   "mcpServers": {
     "rust-research-mcp": {
-      "command": "/usr/local/bin/rust-research-mcp",
+      "command": "/opt/homebrew/bin/rust-research-mcp",
       "args": [
         "--download-dir", "~/Downloads/Research-Papers",
         "--log-level", "info"
@@ -143,25 +145,109 @@ Options:
 
 ## Available Tools
 
-### search_papers
+### Core Research Tools
+
+#### search_papers
 Search for academic papers across multiple sources.
 
 **Parameters:**
 - `query` (required): Search query (DOI, title, or author)
 - `limit` (optional): Maximum results to return (default: 10)
 
-### download_paper
+#### download_paper
 Download a paper PDF by DOI.
 
 **Parameters:**
 - `doi` (required): The DOI of the paper to download
 - `filename` (optional): Custom filename for the downloaded PDF
 
-### extract_metadata
+#### extract_metadata
 Extract bibliographic metadata from a PDF file.
 
 **Parameters:**
 - `file_path` (required): Path to the PDF file
+
+### Claude Code Enhanced Tools
+
+#### search_code
+Search for code patterns within downloaded research papers using regex.
+
+**Parameters:**
+- `pattern` (required): Regex pattern to search for
+- `language` (optional): Programming language filter (python, javascript, rust, etc.)
+- `search_dir` (optional): Directory to search in (defaults to download directory)
+- `limit` (optional): Maximum results (default: 20)
+- `context_lines` (optional): Lines of context around matches (default: 3)
+
+**Example Usage:**
+```
+Ask Claude: "Search for 'def train_model' in my downloaded papers"
+```
+
+#### generate_bibliography
+Generate citations and bibliography from paper DOIs in various formats.
+
+**Parameters:**
+- `identifiers` (required): Array of DOIs or paper identifiers
+- `format` (optional): Citation format - `bibtex`, `apa`, `mla`, `chicago`, `ieee`, `harvard` (default: bibtex)
+- `include_abstract` (optional): Include abstract in citation (default: false)
+- `include_keywords` (optional): Include keywords in citation (default: false)
+
+**Example Usage:**
+```
+Ask Claude: "Generate a BibTeX bibliography for these DOIs: ['10.1038/nature12373', '10.1126/science.1259855']"
+```
+
+## Claude Code Integration
+
+This MCP server is specifically enhanced for **Claude Code** workflows:
+
+### Research-Driven Development
+- **Code Pattern Discovery**: Find algorithm implementations in research papers
+- **Citation Management**: Generate properly formatted references for your projects
+- **Research Documentation**: Extract and organize findings from academic sources
+
+### Common Workflows
+
+#### 1. Algorithm Research
+```bash
+# Search for papers on a topic
+"Find recent papers on transformer architectures"
+
+# Download relevant papers
+"Download the first 3 papers from the search results"
+
+# Search for implementation patterns
+"Search for 'class Transformer' in downloaded papers"
+```
+
+#### 2. Literature Review
+```bash
+# Collect papers on a research area
+"Search for papers by Yoshua Bengio on deep learning"
+
+# Generate bibliography
+"Create a BibTeX bibliography from the downloaded paper DOIs"
+
+# Extract key concepts
+"Search for 'attention mechanism' implementations"
+```
+
+#### 3. Code Documentation
+```bash
+# Find reference implementations
+"Search for 'def attention' in my research papers"
+
+# Generate proper citations
+"Create IEEE format citations for papers containing this algorithm"
+```
+
+### Integration Tips
+
+1. **Set up downloads directory**: Configure a dedicated research papers directory
+2. **Use regex patterns**: Leverage powerful pattern matching for code discovery  
+3. **Batch operations**: Process multiple papers efficiently with the bibliography tool
+4. **Context awareness**: Use context lines to understand code snippets better
 
 ## Configuration File
 

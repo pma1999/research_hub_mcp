@@ -1,0 +1,27 @@
+# Configuration for rust-research-mcp
+schema_version = "1.0"
+profile = "development"
+
+[server]
+port = 8080
+host = "127.0.0.1"
+
+[downloads]
+# Use a writable directory that Claude Desktop can access
+directory = "~/Downloads/Research-Papers"
+max_concurrent = 3
+max_file_size_mb = 100
+
+[logging]
+level = "debug"
+format = "text"
+
+[research_source]
+endpoints = [
+    "https://sci-hub.se",
+    "https://sci-hub.st", 
+    "https://sci-hub.ru"
+]
+rate_limit_per_sec = 1
+timeout_secs = 30
+max_retries = 3

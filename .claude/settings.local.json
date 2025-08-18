@@ -16,7 +16,9 @@
       "Bash(RUST_LOG=info cargo test --test e2e_test_suite test_url_resolution -- --nocapture)",
       "Bash(cargo clippy:*)",
       "Bash(cargo publish:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": [],

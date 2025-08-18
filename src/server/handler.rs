@@ -1,8 +1,11 @@
 use crate::tools::{
-    download::DownloadInput as ActualDownloadInput, metadata::MetadataInput as ActualMetadataInput,
+    download::DownloadInput as ActualDownloadInput, 
+    metadata::MetadataInput as ActualMetadataInput,
     search::SearchInput as ActualSearchInput,
+    code_search::CodeSearchInput,
+    bibliography::BibliographyInput,
 };
-use crate::{Config, DownloadTool, MetaSearchClient, MetadataExtractor, Result, SearchTool};
+use crate::{Config, DownloadTool, MetaSearchClient, MetadataExtractor, Result, SearchTool, CodeSearchTool, BibliographyTool};
 use rmcp::{
     model::{ServerInfo, ServerCapabilities, InitializeRequestParam, InitializeResult, ProtocolVersion, Implementation, PaginatedRequestParam, ListToolsResult, Tool, CallToolRequestParam, CallToolResult, Content},
     service::{RequestContext, RoleServer},
@@ -48,6 +51,8 @@ pub struct ResearchServerHandler {
     search_tool: SearchTool,
     download_tool: DownloadTool,
     metadata_extractor: MetadataExtractor,
+    code_search_tool: CodeSearchTool,
+    bibliography_tool: BibliographyTool,
 }
 
 impl ResearchServerHandler {
@@ -67,11 +72,19 @@ impl ResearchServerHandler {
         // Initialize metadata extractor
         let metadata_extractor = MetadataExtractor::new(config.clone())?;
 
+        // Initialize code search tool
+        let code_search_tool = CodeSearchTool::new(config.clone())?;
+
+        // Initialize bibliography tool
+        let bibliography_tool = BibliographyTool::new(config.clone())?;
+
         Ok(Self {
             config,
             search_tool,
             download_tool,
             metadata_extractor,
+            code_search_tool,
+            bibliography_tool,
         })
     }
 
@@ -194,6 +207,20 @@ impl ServerHandler for ResearchServerHandler {
                     output_schema: None,
                     annotations: None,
                 },
+                Tool {
+                    name: "search_code".into(),
+                    description: Some("Search for code patterns within downloaded research papers using regex".into()),
+                    input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(CodeSearchInput)).unwrap().as_object().unwrap().clone()),
+                    output_schema: None,
+                    annotations: None,
+                },
+                Tool {
+                    name: "generate_bibliography".into(),
+                    description: Some("Generate citations and bibliography from paper DOIs in various formats (BibTeX, APA, MLA, etc.)".into()),
+                    input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(BibliographyInput)).unwrap().as_object().unwrap().clone()),
+                    output_schema: None,
+                    annotations: None,
+                },
             ];
 
             Ok(ListToolsResult {
@@ -214,6 +241,8 @@ impl ServerHandler for ResearchServerHandler {
         let search_tool = self.search_tool.clone();
         let download_tool = self.download_tool.clone();
         let metadata_extractor = self.metadata_extractor.clone();
+        let code_search_tool = self.code_search_tool.clone();
+        let bibliography_tool = self.bibliography_tool.clone();
 
         async move {
             match request.name.as_ref() {
@@ -308,6 +337,7 @@ impl ServerHandler for ResearchServerHandler {
                         verify_integrity: true,
                     };
 
+                    debug!("Attempting download with input: {:?}", input);
                     match download_tool.download_paper(input).await {
                         Ok(result) => {
                             // Validate that the file actually has content
@@ -401,6 +431,118 @@ impl ServerHandler for ResearchServerHandler {
                                 )
                             })?,
                         )]),
+                        structured_content: None,
+                        is_error: Some(false),
+                    })
+                }
+                "search_code" => {
+                    let input: CodeSearchInput = serde_json::from_value(
+                        serde_json::Value::Object(request.arguments.unwrap_or_default()),
+                    )
+                    .map_err(|e| {
+                        ErrorData::invalid_params(format!("Invalid code search input: {e}"), None)
+                    })?;
+
+                    let results = code_search_tool
+                        .search(input)
+                        .await
+                        .map_err(|e| {
+                            ErrorData::internal_error(
+                                format!("Code search failed: {e}"),
+                                None,
+                            )
+                        })?;
+
+                    if results.is_empty() {
+                        Ok(CallToolResult {
+                            content: Some(vec![Content::text("🔍 No code patterns found matching your search criteria.".to_string())]),
+                            structured_content: None,
+                            is_error: Some(false),
+                        })
+                    } else {
+                        let formatted_results = results.iter()
+                            .map(|result| {
+                                let matches_text = result.matches.iter()
+                                    .take(5) // Limit to first 5 matches per file
+                                    .map(|m| {
+                                        let context_before = if !m.context_before.is_empty() {
+                                            format!("  {}\n", m.context_before.join("\n  "))
+                                        } else {
+                                            String::new()
+                                        };
+                                        
+                                        let context_after = if !m.context_after.is_empty() {
+                                            format!("\n  {}", m.context_after.join("\n  "))
+                                        } else {
+                                            String::new()
+                                        };
+                                        
+                                        let lang_info = m.language.as_ref()
+                                            .map(|l| format!(" [{}]", l))
+                                            .unwrap_or_default();
+                                        
+                                        format!("{}► Line {}{}: {}{}", 
+                                               context_before, 
+                                               m.line_number, 
+                                               lang_info,
+                                               m.line, 
+                                               context_after)
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n");
+                                
+                                let title_info = result.paper_title.as_ref()
+                                    .map(|t| format!("📄 Paper: {}\n", t))
+                                    .unwrap_or_default();
+                                    
+                                format!("📁 File: {}\n{}🎯 {} matches found:\n\n{}", 
+                                       result.file_path,
+                                       title_info,
+                                       result.total_matches,
+                                       matches_text)
+                            })
+                            .collect::<Vec<_>>()
+                            .join(&format!("\n\n{}\n\n", "─".repeat(60)));
+
+                        Ok(CallToolResult {
+                            content: Some(vec![Content::text(format!("🔍 Found {} files with matching code patterns:\n\n{}", results.len(), formatted_results))]),
+                            structured_content: None,
+                            is_error: Some(false),
+                        })
+                    }
+                }
+                "generate_bibliography" => {
+                    let input: BibliographyInput = serde_json::from_value(
+                        serde_json::Value::Object(request.arguments.unwrap_or_default()),
+                    )
+                    .map_err(|e| {
+                        ErrorData::invalid_params(format!("Invalid bibliography input: {e}"), None)
+                    })?;
+
+                    let result = bibliography_tool
+                        .generate(input)
+                        .await
+                        .map_err(|e| {
+                            ErrorData::internal_error(
+                                format!("Bibliography generation failed: {e}"),
+                                None,
+                            )
+                        })?;
+
+                    let mut output = format!("📚 Generated {} citations in {:?} format:\n\n", 
+                                           result.citations.len(), result.format);
+                    
+                    output.push_str(&result.bibliography);
+                    
+                    if !result.errors.is_empty() {
+                        output.push_str("\n\n⚠️ Errors encountered:\n");
+                        for error in &result.errors {
+                            output.push_str(&format!("• {}: {}\n", error.identifier, error.message));
+                        }
+                    }
+
+                    Ok(CallToolResult {
+                        content: Some(vec![Content::text(output)]),
                         structured_content: None,
                         is_error: Some(false),
                     })

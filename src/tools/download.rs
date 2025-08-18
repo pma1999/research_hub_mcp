@@ -407,15 +407,39 @@ impl DownloadTool {
         download_url: &str,
     ) -> Result<PathBuf> {
         // Get base directory
-        let base_dir = input
+        let mut base_dir = input
             .directory
             .as_ref()
             .map_or_else(|| self.get_default_download_directory(), PathBuf::from);
 
-        // Ensure directory exists
-        tokio::fs::create_dir_all(&base_dir)
-            .await
-            .map_err(crate::Error::Io)?;
+        // Ensure directory exists with better error handling
+        if let Err(e) = tokio::fs::create_dir_all(&base_dir).await {
+            warn!("Failed to create directory {:?}: {}", base_dir, e);
+            
+            // Try to create in a fallback location if the configured one fails
+            let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
+                home_dir.join("Downloads").join("papers")
+            } else {
+                PathBuf::from("/tmp/papers")
+            };
+            
+            warn!("Attempting fallback directory: {:?}", fallback_dir);
+            
+            tokio::fs::create_dir_all(&fallback_dir)
+                .await
+                .map_err(|fallback_err| {
+                    crate::Error::InvalidInput {
+                        field: "download_directory".to_string(),
+                        reason: format!(
+                            "Cannot create download directory. Primary error: {}. Fallback error: {}. Configured: {:?}, Fallback: {:?}",
+                            e, fallback_err, base_dir, fallback_dir
+                        ),
+                    }
+                })?;
+                
+            // Update the base_dir to the fallback
+            base_dir = fallback_dir;
+        }
 
         // Determine filename
         let filename = input.filename.as_ref().map_or_else(
