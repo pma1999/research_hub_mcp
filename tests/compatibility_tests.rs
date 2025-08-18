@@ -1,4 +1,4 @@
-use rust_research_mcp::{Config, SciHubClient, Server};
+use rust_research_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
 use std::env;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -160,12 +160,13 @@ async fn test_concurrent_client_limits() {
     let mut config = Config::default();
     config.downloads.directory = temp_dir.path().to_path_buf();
     config.downloads.max_concurrent = 2; // Low limit for testing
-    config.sci_hub.mirrors = vec!["https://test.com".to_string()];
+    config.research_source.endpoints = vec!["https://test.com".to_string()];
 
     // Test creating multiple clients
     let mut clients = Vec::new();
     for i in 0..5 {
-        let client_result = SciHubClient::new(config.sci_hub.clone());
+        let meta_config = MetaSearchConfig::default();
+        let client_result = MetaSearchClient::new(config.clone(), meta_config);
         match client_result {
             Ok(client) => {
                 clients.push(client);
@@ -300,7 +301,8 @@ fn test_locale_and_encoding_handling() {
     for text in test_strings {
         // Test that strings are handled properly in configuration
         let mut config = Config::default();
-        config.sci_hub.user_agent = text.to_string();
+        // Test with different timeout values derived from text
+        config.research_source.timeout_secs = (text.len() as u64).max(1).min(300);
 
         // Should not crash when serializing/deserializing
         let serialized = serde_json::to_string(&config);

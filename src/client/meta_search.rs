@@ -1,7 +1,7 @@
 use crate::client::providers::{
-    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, ProviderError, ProviderResult, SciHubProvider, 
-    SemanticScholarProvider, SsrnProvider, SearchContext, SearchQuery, SearchType, SourceProvider,
-    UnpaywallProvider,
+    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, MdpiProvider, OpenReviewProvider, ProviderError, ProviderResult, 
+    PubMedCentralProvider, ResearchGateProvider, SciHubProvider, SemanticScholarProvider, SsrnProvider, 
+    SearchContext, SearchQuery, SearchType, SourceProvider, UnpaywallProvider,
 };
 use crate::client::PaperMetadata;
 use crate::Config;
@@ -79,6 +79,9 @@ impl MetaSearchClient {
         // Add Unpaywall provider (high priority for legal free PDF discovery)
         providers.push(Arc::new(UnpaywallProvider::new_with_default_email()?)); // TODO: Get email from config
 
+        // Add PubMed Central provider (very high priority for biomedical papers)
+        providers.push(Arc::new(PubMedCentralProvider::new(None)?)); // TODO: Get API key from config
+
         // Add CORE provider (high priority for open access collection)
         providers.push(Arc::new(CoreProvider::new(None)?)); // TODO: Get API key from config
 
@@ -90,6 +93,15 @@ impl MetaSearchClient {
 
         // Add bioRxiv provider (biology preprints)
         providers.push(Arc::new(BiorxivProvider::new()?));
+
+        // Add OpenReview provider (high priority for ML conference papers)
+        providers.push(Arc::new(OpenReviewProvider::new()?));
+
+        // Add MDPI provider (good priority for open access journals)
+        providers.push(Arc::new(MdpiProvider::new()?));
+
+        // Add ResearchGate provider (lower priority due to access limitations)
+        providers.push(Arc::new(ResearchGateProvider::new()?));
 
         // Add Sci-Hub provider (lowest priority, for full-text access)
         providers.push(Arc::new(SciHubProvider::new()?));
@@ -294,10 +306,293 @@ impl MetaSearchClient {
             }
         }
 
-        // Sort by priority (highest first)
-        suitable.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+        // Apply intelligent priority ordering based on query characteristics
+        self.apply_intelligent_priority_ordering(&mut suitable, query).await;
 
         suitable
+    }
+
+    /// Apply intelligent priority ordering based on query characteristics
+    async fn apply_intelligent_priority_ordering(
+        &self,
+        providers: &mut Vec<Arc<dyn SourceProvider>>,
+        query: &SearchQuery,
+    ) {
+        let query_lower = query.query.to_lowercase();
+        
+        // Create priority adjustments based on query analysis
+        let mut provider_scores: Vec<(Arc<dyn SourceProvider>, i32)> = providers
+            .iter()
+            .map(|provider| {
+                let base_priority = provider.priority() as i32;
+                let mut adjusted_priority = base_priority;
+                
+                // Domain-specific priority adjustments
+                adjusted_priority += self.calculate_domain_priority_boost(provider, &query_lower);
+                
+                // Search type priority adjustments
+                adjusted_priority += self.calculate_search_type_priority_boost(provider, query);
+                
+                // Content availability priority adjustments
+                adjusted_priority += self.calculate_content_priority_boost(provider, &query_lower);
+                
+                // Time-sensitive priority adjustments
+                adjusted_priority += self.calculate_temporal_priority_boost(provider, &query_lower);
+                
+                (provider.clone(), adjusted_priority)
+            })
+            .collect();
+        
+        // Sort by adjusted priority (highest first)
+        provider_scores.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
+        
+        // Update the providers vector with the new ordering
+        *providers = provider_scores.into_iter().map(|(provider, _)| provider).collect();
+        
+        debug!(
+            "Reordered providers based on query analysis: {:?}",
+            providers.iter().map(|p| p.name()).collect::<Vec<_>>()
+        );
+    }
+    
+    /// Calculate domain-specific priority boost
+    fn calculate_domain_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+        let provider_name = provider.name();
+        
+        // Computer Science & Machine Learning
+        if self.contains_cs_ml_keywords(query) {
+            match provider_name {
+                "arxiv" => 15,        // arXiv is primary for CS papers
+                "openreview" => 12,   // OpenReview for ML conference papers
+                "semantic_scholar" => 8, // Good for CS papers
+                "core" => 5,          // Open access CS papers
+                _ => 0,
+            }
+        }
+        // Biomedical & Life Sciences
+        else if self.contains_biomedical_keywords(query) {
+            match provider_name {
+                "pubmed_central" => 15, // Primary for biomedical
+                "biorxiv" => 12,       // Biology preprints
+                "semantic_scholar" => 8, // Good coverage
+                "unpaywall" => 5,      // Often has biomedical papers
+                _ => 0,
+            }
+        }
+        // Physics & Mathematics
+        else if self.contains_physics_math_keywords(query) {
+            match provider_name {
+                "arxiv" => 20,        // Primary for physics/math
+                "crossref" => 8,      // Good metadata
+                "semantic_scholar" => 5,
+                _ => 0,
+            }
+        }
+        // Social Sciences & Economics
+        else if self.contains_social_science_keywords(query) {
+            match provider_name {
+                "ssrn" => 15,         // Primary for social sciences
+                "crossref" => 8,      // Good metadata
+                "semantic_scholar" => 5,
+                _ => 0,
+            }
+        }
+        // Open Access & General Academic
+        else if self.contains_open_access_keywords(query) {
+            match provider_name {
+                "unpaywall" => 12,    // Specialized in open access
+                "core" => 10,         // Large open access collection
+                "mdpi" => 8,          // Open access publisher
+                "biorxiv" => 5,       // Open preprints
+                "arxiv" => 5,         // Open preprints
+                _ => 0,
+            }
+        }
+        else {
+            0 // No domain-specific boost
+        }
+    }
+    
+    /// Calculate search type priority boost
+    fn calculate_search_type_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &SearchQuery) -> i32 {
+        let provider_name = provider.name();
+        
+        match query.search_type {
+            SearchType::Doi => {
+                // DOI searches work best with metadata providers
+                match provider_name {
+                    "crossref" => 10,     // Best for DOI resolution
+                    "unpaywall" => 8,     // Good DOI support
+                    "semantic_scholar" => 6,
+                    "pubmed_central" => 5, // Good for biomedical DOIs
+                    _ => 0,
+                }
+            }
+            SearchType::Author => {
+                // Author searches work best with comprehensive databases
+                match provider_name {
+                    "semantic_scholar" => 10, // Excellent author disambiguation
+                    "crossref" => 8,          // Good author metadata
+                    "pubmed_central" => 6,    // Good for biomedical authors
+                    "core" => 5,              // Large author database
+                    _ => 0,
+                }
+            }
+            SearchType::Title => {
+                // All providers are generally good for title searches
+                2 // Small boost for all
+            }
+            SearchType::Keywords => {
+                // Keyword searches benefit from full-text providers
+                match provider_name {
+                    "semantic_scholar" => 8,  // Good semantic search
+                    "core" => 6,              // Full-text search
+                    "unpaywall" => 4,         // Good coverage
+                    _ => 0,
+                }
+            }
+            SearchType::Subject => {
+                // Subject searches benefit from specialized providers
+                match provider_name {
+                    "arxiv" => 8,             // Good subject classification
+                    "pubmed_central" => 8,    // Medical subjects
+                    "semantic_scholar" => 6,  // AI-powered classification
+                    _ => 0,
+                }
+            }
+            SearchType::Auto => {
+                0 // No specific boost for auto searches
+            }
+        }
+    }
+    
+    /// Calculate content availability priority boost
+    fn calculate_content_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+        let provider_name = provider.name();
+        
+        // If query suggests need for full-text/PDF access
+        if query.contains("pdf") || query.contains("full text") || query.contains("download") {
+            match provider_name {
+                "arxiv" => 12,            // Always has PDFs
+                "biorxiv" => 12,          // Always has PDFs
+                "unpaywall" => 10,        // Specialized in free PDFs
+                "semantic_scholar" => 8,  // Often has PDF links
+                "pubmed_central" => 8,    // Often has full text
+                "mdpi" => 8,              // Open access PDFs
+                "ssrn" => 6,              // Often has PDFs
+                "core" => 6,              // Often has full text
+                "sci_hub" => 15,          // Always tries for PDFs (but lowest base priority)
+                _ => 0,
+            }
+        }
+        // If query suggests need for recent/preprint content
+        else if query.contains("recent") || query.contains("preprint") || query.contains("2024") || query.contains("2023") {
+            match provider_name {
+                "arxiv" => 10,            // Latest preprints
+                "biorxiv" => 10,          // Latest biology preprints
+                "ssrn" => 8,              // Recent working papers
+                "openreview" => 6,        // Recent ML papers
+                _ => 0,
+            }
+        }
+        else {
+            0
+        }
+    }
+    
+    /// Calculate temporal priority boost for time-sensitive queries
+    fn calculate_temporal_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+        let provider_name = provider.name();
+        
+        // Boost for recent year mentions
+        if query.contains("2024") || query.contains("2023") {
+            match provider_name {
+                "arxiv" => 8,             // Best for recent preprints
+                "biorxiv" => 8,           // Recent biology papers
+                "ssrn" => 6,              // Recent working papers
+                "openreview" => 6,        // Recent ML conference papers
+                "semantic_scholar" => 4,  // Good recent coverage
+                _ => 0,
+            }
+        }
+        // Boost for historical content
+        else if query.contains("historical") || query.contains("classic") || query.contains("1990") || query.contains("2000") {
+            match provider_name {
+                "crossref" => 8,          // Comprehensive historical metadata
+                "pubmed_central" => 6,    // Long history for biomedical
+                "semantic_scholar" => 4,  // Good historical coverage
+                _ => 0,
+            }
+        }
+        else {
+            0
+        }
+    }
+    
+    /// Check if query contains computer science/ML keywords
+    fn contains_cs_ml_keywords(&self, query: &str) -> bool {
+        let cs_keywords = [
+            "computer science", "machine learning", "deep learning", "neural network", 
+            "artificial intelligence", "ai", "ml", "algorithm", "data structure",
+            "programming", "software", "computer vision", "nlp", "natural language",
+            "database", "distributed system", "security", "cryptography", "compiler",
+            "operating system", "network", "internet", "web", "mobile", "app",
+            "tensorflow", "pytorch", "keras", "python", "java", "c++", "javascript",
+            "transformer", "bert", "gpt", "lstm", "cnn", "gan", "reinforcement learning"
+        ];
+        
+        cs_keywords.iter().any(|&keyword| query.contains(keyword))
+    }
+    
+    /// Check if query contains biomedical keywords
+    fn contains_biomedical_keywords(&self, query: &str) -> bool {
+        let bio_keywords = [
+            "medicine", "medical", "biology", "biomedical", "clinical", "patient",
+            "disease", "cancer", "drug", "therapy", "treatment", "diagnosis",
+            "gene", "genome", "protein", "dna", "rna", "cell", "molecular",
+            "pharmaceutical", "clinical trial", "epidemiology", "public health",
+            "neuroscience", "cardiology", "oncology", "immunology", "microbiology",
+            "biochemistry", "genetics", "pathology", "pharmacology", "physiology"
+        ];
+        
+        bio_keywords.iter().any(|&keyword| query.contains(keyword))
+    }
+    
+    /// Check if query contains physics/math keywords
+    fn contains_physics_math_keywords(&self, query: &str) -> bool {
+        let physics_math_keywords = [
+            "physics", "quantum", "relativity", "mechanics", "thermodynamics",
+            "electromagnetism", "optics", "astronomy", "astrophysics", "cosmology",
+            "mathematics", "algebra", "calculus", "geometry", "topology", "statistics",
+            "probability", "number theory", "differential equation", "linear algebra",
+            "mathematical", "theorem", "proof", "formula", "equation"
+        ];
+        
+        physics_math_keywords.iter().any(|&keyword| query.contains(keyword))
+    }
+    
+    /// Check if query contains social science keywords
+    fn contains_social_science_keywords(&self, query: &str) -> bool {
+        let social_keywords = [
+            "economics", "economic", "finance", "financial", "business", "management",
+            "psychology", "sociology", "political science", "anthropology", "education",
+            "law", "legal", "policy", "social", "society", "culture", "history",
+            "literature", "philosophy", "linguistics", "communication", "media",
+            "marketing", "accounting", "organization", "leadership", "strategy"
+        ];
+        
+        social_keywords.iter().any(|&keyword| query.contains(keyword))
+    }
+    
+    /// Check if query contains open access keywords
+    fn contains_open_access_keywords(&self, query: &str) -> bool {
+        let oa_keywords = [
+            "open access", "free", "libre", "creative commons", "cc by", "cc0",
+            "public domain", "open source", "preprint", "repository", "institutional",
+            "self-archived", "green oa", "gold oa", "hybrid", "subscription"
+        ];
+        
+        oa_keywords.iter().any(|&keyword| query.contains(keyword))
     }
 
     /// Apply rate limiting for a provider

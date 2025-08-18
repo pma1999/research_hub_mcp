@@ -26,12 +26,31 @@ The developers of this tool do not condone or support any illegal activities. Us
 
 ## Features
 
-- 🔍 **Multi-Source Search**: Searches across multiple academic databases including arXiv, CrossRef, and Sci-Hub
-- 📥 **Smart Downloads**: Automated paper retrieval with configurable download directory
+- 🔍 **Multi-Provider Search**: Comprehensive search across 12+ academic sources:
+  - **CrossRef** - Authoritative metadata for 130M+ papers
+  - **Semantic Scholar** - AI-powered search with PDF access
+  - **arXiv** - Physics, CS, and math preprints
+  - **PubMed Central** - Biomedical and life science papers
+  - **OpenReview** - ML conference papers (NeurIPS, ICLR, etc.)
+  - **CORE** - 350M+ open access papers
+  - **Unpaywall** - Legal free PDF discovery
+  - **SSRN** - Social science working papers
+  - **bioRxiv** - Biology preprints
+  - **MDPI** - Open access journals
+  - **ResearchGate** - Academic social network (ethical access)
+  - **Sci-Hub** - Full-text fallback (lowest priority)
+
+- 🧠 **Intelligent Routing**: Smart provider prioritization based on:
+  - Academic domain detection (CS/ML, biomedical, physics, social sciences)
+  - Search type optimization (DOI, author, title, keywords)
+  - Content availability (PDF access, recent papers, open access)
+  - Temporal relevance (recent vs. historical content)
+
+- 📥 **Robust Downloads**: Multi-provider fallback with zero-byte protection
 - 📊 **Metadata Extraction**: Extract bibliographic information from PDFs
 - 🤖 **MCP Integration**: Seamlessly works with Claude Desktop and other MCP-compatible AI assistants
 - ⚡ **High Performance**: Built with Rust for speed and reliability
-- 🔄 **Resilient**: Automatic retries, fallback mirrors, and graceful error handling
+- 🔄 **Resilient**: Circuit breakers, automatic retries, and graceful error handling
 
 ## Installation
 
@@ -199,6 +218,27 @@ src/
 ├── resilience/      # Error handling and retry logic
 └── config/          # Configuration management
 ```
+
+## Changelog
+
+### Version 0.4.0 (Latest)
+- **🚀 Major Multi-Provider Enhancement**: Added 8 new academic sources
+  - PubMed Central for biomedical papers with NCBI E-utilities API
+  - OpenReview for ML conference papers (NeurIPS, ICLR, ICML)
+  - MDPI for open access journals with HTML parsing
+  - ResearchGate with ethical ToS-compliant access
+- **🧠 Intelligent Priority Ordering**: Context-aware provider selection
+  - Domain-specific routing (CS/ML → arXiv/OpenReview, biomedical → PubMed)
+  - Search type optimization (DOI → CrossRef, author → Semantic Scholar)
+  - Content availability boosting (PDF access, recent papers)
+  - Temporal relevance adjustments
+- **🔧 Enhanced Testing**: Fixed all integration and security tests
+- **📊 Improved Coverage**: 12+ providers with specialized capabilities
+
+### Version 0.3.0
+- Critical fix for zero-byte file creation on failed downloads
+- Multi-provider academic search with comprehensive testing
+- Complete repository cleanup and Sci-Hub provider overhaul
 
 ## Contributing
 

@@ -62,7 +62,7 @@ mod config_validation_props {
         fn test_rate_limit_validation(rate_limit in 1u32..=1000) {
             // Valid rate limits should be accepted
             let mut config = Config::default();
-            config.sci_hub.rate_limit_per_sec = rate_limit;
+            config.research_source.rate_limit_per_sec = rate_limit;
             prop_assert!(config.validate().is_ok(), "Valid rate limit should be accepted: {}", rate_limit);
         }
 
@@ -79,7 +79,7 @@ mod config_validation_props {
             // Valid timeout values should be accepted
             let mut config = Config::default();
             config.server.timeout_secs = timeout;
-            config.sci_hub.timeout_secs = timeout;
+            config.research_source.timeout_secs = timeout;
             prop_assert!(config.validate().is_ok(), "Valid timeout should be accepted: {}", timeout);
         }
     }
