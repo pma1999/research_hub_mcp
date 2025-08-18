@@ -414,31 +414,63 @@ impl DownloadTool {
 
         // Ensure directory exists with better error handling
         if let Err(e) = tokio::fs::create_dir_all(&base_dir).await {
-            warn!("Failed to create directory {:?}: {}", base_dir, e);
-            
-            // Try to create in a fallback location if the configured one fails
-            let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
-                home_dir.join("Downloads").join("papers")
+            // Check if this is a permissions issue (common with Claude Desktop sandbox)
+            if e.to_string().contains("Read-only file system") || 
+               e.to_string().contains("Permission denied") ||
+               e.to_string().contains("Operation not permitted") {
+                return Err(crate::Error::InvalidInput {
+                    field: "permissions".to_string(),
+                    reason: format!(
+                        "❌ Claude Desktop Permission Required ❌\n\n\
+                        Claude Desktop needs permission to access your Downloads folder.\n\n\
+                        📋 To fix this:\n\
+                        1. Open System Settings → Privacy & Security → Files and Folders\n\
+                        2. Find 'Claude' in the list\n\
+                        3. Enable 'Downloads Folder' permission\n\
+                        4. Restart Claude Desktop\n\n\
+                        💡 Alternative: Create a folder like ~/Documents/Research-Papers and update your config:\n\
+                        • In config.toml: directory = \"~/Documents/Research-Papers\"\n\
+                        • Or set environment variable: RSH_DOWNLOAD_DIRECTORY\n\n\
+                        📁 Attempted directory: {:?}\n\
+                        🔧 Error details: {}",
+                        base_dir, e
+                    ),
+                });
             } else {
-                PathBuf::from("/tmp/papers")
-            };
-            
-            warn!("Attempting fallback directory: {:?}", fallback_dir);
-            
-            tokio::fs::create_dir_all(&fallback_dir)
-                .await
-                .map_err(|fallback_err| {
-                    crate::Error::InvalidInput {
-                        field: "download_directory".to_string(),
-                        reason: format!(
-                            "Cannot create download directory. Primary error: {}. Fallback error: {}. Configured: {:?}, Fallback: {:?}",
-                            e, fallback_err, base_dir, fallback_dir
-                        ),
-                    }
-                })?;
+                // For other errors, still try fallback but with clearer messaging
+                let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
+                    home_dir.join("Documents").join("Research-Papers")
+                } else {
+                    PathBuf::from("/tmp/papers")
+                };
                 
-            // Update the base_dir to the fallback
-            base_dir = fallback_dir;
+                warn!("Primary directory failed, trying fallback: {:?}", fallback_dir);
+                
+                tokio::fs::create_dir_all(&fallback_dir)
+                    .await
+                    .map_err(|fallback_err| {
+                        crate::Error::InvalidInput {
+                            field: "download_directory".to_string(),
+                            reason: format!(
+                                "❌ Cannot create download directory ❌\n\n\
+                                Neither the configured directory nor fallback location worked.\n\n\
+                                💡 Try these solutions:\n\
+                                1. Grant Claude Desktop folder permissions in System Settings\n\
+                                2. Use a different directory: ~/Documents/Research-Papers\n\
+                                3. Check disk space and permissions\n\n\
+                                📁 Configured: {:?}\n\
+                                📁 Fallback tried: {:?}\n\
+                                🔧 Original error: {}\n\
+                                🔧 Fallback error: {}",
+                                base_dir, fallback_dir, e, fallback_err
+                            ),
+                        }
+                    })?;
+                    
+                // Update the base_dir to the fallback
+                base_dir = fallback_dir;
+                info!("Using fallback directory: {:?}", base_dir);
+            }
         }
 
         // Determine filename

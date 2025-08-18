@@ -7,8 +7,8 @@ port = 8080
 host = "127.0.0.1"
 
 [downloads]
-# Use a writable directory that Claude Desktop can access
-directory = "~/Downloads/Research-Papers"
+# Use Documents folder which typically has fewer permissions restrictions
+directory = "~/Documents/Research-Papers"
 max_concurrent = 3
 max_file_size_mb = 100
 

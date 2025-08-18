@@ -8,7 +8,7 @@
       ],
       "env": {
         "RUST_LOG": "debug",
-        "RSH_DOWNLOAD_DIRECTORY": "/Users/ladvien/Downloads/Research-Papers"
+        "RSH_DOWNLOAD_DIRECTORY": "/Users/ladvien/Documents/Research-Papers"
       }
     }
   }
