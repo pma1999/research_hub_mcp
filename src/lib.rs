@@ -1,3 +1,8 @@
+//! Rust Research MCP - Academic Paper Search and Metadata Extraction
+//!
+//! This crate provides a Model Context Protocol (MCP) server for searching and downloading
+//! academic papers from multiple sources including `arXiv`, `Semantic Scholar`, `CrossRef`, and more.
+
 pub mod client;
 pub mod config;
 pub mod error;

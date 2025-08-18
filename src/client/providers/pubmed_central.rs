@@ -1,5 +1,5 @@
 use crate::client::providers::{
-    SearchContext, SearchQuery, SearchType, SourceProvider, ProviderError, ProviderResult,
+    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
@@ -9,8 +9,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
 
-/// PubMed Central provider for biomedical and life science papers
-/// 
+/// `PubMed Central` provider for biomedical and life science papers
+///
 /// PMC provides free access to full-text biomedical and life science journal articles
 /// that have been deposited in the PMC repository. This provider searches the PMC
 /// database and provides access to open access papers.
@@ -28,24 +28,30 @@ struct PmcSearchResponse {
 #[derive(Debug, Deserialize)]
 struct ESearchResult {
     count: String,
+    #[allow(dead_code)]
     retmax: String,
+    #[allow(dead_code)]
     retstart: String,
     idlist: Vec<String>,
     #[serde(default)]
     errorlist: Option<ErrorList>,
     #[serde(default)]
+    #[allow(dead_code)]
     warninglist: Option<WarningList>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ErrorList {
     phrasesnotfound: Option<Vec<String>>,
+    #[allow(dead_code)]
     fieldsnotfound: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct WarningList {
+    #[allow(dead_code)]
     phrasesignored: Option<Vec<String>>,
+    #[allow(dead_code)]
     quotedphrasenotfound: Option<Vec<String>>,
 }
 
@@ -56,6 +62,7 @@ struct PmcFetchResponse {
 
 #[derive(Debug, Deserialize)]
 struct PmcArticle {
+    #[allow(dead_code)]
     uid: Option<String>,
     title: Option<String>,
     authors: Option<Vec<PmcAuthor>>,
@@ -64,12 +71,14 @@ struct PmcArticle {
     #[serde(rename = "pubdate")]
     pub_date: Option<String>,
     doi: Option<String>,
+    #[allow(dead_code)]
     pmid: Option<String>,
     #[serde(rename = "pmcid")]
     pmc_id: Option<String>,
     #[serde(rename = "articleids")]
     article_ids: Option<Vec<ArticleId>>,
     #[serde(rename = "hasabstract")]
+    #[allow(dead_code)]
     has_abstract: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
@@ -78,6 +87,7 @@ struct PmcArticle {
 #[derive(Debug, Deserialize)]
 struct PmcAuthor {
     name: Option<String>,
+    #[allow(dead_code)]
     authtype: Option<String>,
 }
 
@@ -88,7 +98,7 @@ struct ArticleId {
 }
 
 impl PubMedCentralProvider {
-    /// Create a new PubMed Central provider
+    /// Create a new `PubMed Central` provider
     pub fn new(api_key: Option<String>) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .user_agent("rust-research-mcp/0.3.0 (https://github.com/Ladvien/research_hub_mcp)")
@@ -111,7 +121,7 @@ impl PubMedCentralProvider {
         context: &SearchContext,
     ) -> Result<Vec<String>, ProviderError> {
         let search_url = format!("{}/entrez/eutils/esearch.fcgi", self.base_url);
-        
+
         let max_results_str = max_results.to_string();
         let mut params = vec![
             ("db", "pmc"),
@@ -142,10 +152,9 @@ impl PubMedCentralProvider {
             )));
         }
 
-        let search_result: PmcSearchResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse PMC search response: {e}")))?;
+        let search_result: PmcSearchResponse = response.json().await.map_err(|e| {
+            ProviderError::Parse(format!("Failed to parse PMC search response: {e}"))
+        })?;
 
         // Check for errors in the response
         if let Some(ref error_list) = search_result.esearchresult.errorlist {
@@ -156,8 +165,7 @@ impl PubMedCentralProvider {
 
         debug!(
             "PMC search found {} results for query: '{}'",
-            search_result.esearchresult.count,
-            query
+            search_result.esearchresult.count, query
         );
 
         Ok(search_result.esearchresult.idlist)
@@ -176,11 +184,7 @@ impl PubMedCentralProvider {
         let fetch_url = format!("{}/entrez/eutils/esummary.fcgi", self.base_url);
         let ids_str = pmc_ids.join(",");
 
-        let mut params = vec![
-            ("db", "pmc"),
-            ("id", &ids_str),
-            ("retmode", "json"),
-        ];
+        let mut params = vec![("db", "pmc"), ("id", &ids_str), ("retmode", "json")];
 
         if let Some(ref api_key) = self.api_key {
             params.push(("api_key", api_key));
@@ -202,16 +206,15 @@ impl PubMedCentralProvider {
             )));
         }
 
-        let fetch_result: PmcFetchResponse = response
-            .json()
-            .await
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse PMC fetch response: {e}")))?;
+        let fetch_result: PmcFetchResponse = response.json().await.map_err(|e| {
+            ProviderError::Parse(format!("Failed to parse PMC fetch response: {e}"))
+        })?;
 
         Ok(fetch_result.result.into_values().collect())
     }
 
     /// Build query string for different search types
-    fn build_query(&self, query: &SearchQuery) -> String {
+    fn build_query(query: &SearchQuery) -> String {
         match query.search_type {
             SearchType::Doi => {
                 // Search by DOI
@@ -232,29 +235,31 @@ impl PubMedCentralProvider {
         }
     }
 
-    /// Convert PMC article to PaperMetadata
-    fn convert_to_paper(&self, article: &PmcArticle) -> PaperMetadata {
+    /// Convert PMC article to `PaperMetadata`
+    fn convert_to_paper(article: &PmcArticle) -> PaperMetadata {
         let mut authors = Vec::new();
         if let Some(ref author_list) = article.authors {
-            authors = author_list
-                .iter()
-                .filter_map(|a| a.name.clone())
-                .collect();
+            authors = author_list.iter().filter_map(|a| a.name.clone()).collect();
         }
 
         // Extract DOI from article IDs if not in main DOI field
-        let doi = article.doi.clone().or_else(|| {
-            article.article_ids.as_ref().and_then(|ids| {
-                ids.iter()
-                    .find(|id| id.idtype == "doi")
-                    .map(|id| id.value.clone())
+        let doi = article
+            .doi
+            .clone()
+            .or_else(|| {
+                article.article_ids.as_ref().and_then(|ids| {
+                    ids.iter()
+                        .find(|id| id.idtype == "doi")
+                        .map(|id| id.value.clone())
+                })
             })
-        }).unwrap_or_default();
+            .unwrap_or_default();
 
         // Build PMC URL for PDF access
-        let pdf_url = article.pmc_id.as_ref().map(|pmc_id| {
-            format!("https://www.ncbi.nlm.nih.gov/pmc/articles/{}/pdf/", pmc_id)
-        });
+        let pdf_url = article
+            .pmc_id
+            .as_ref()
+            .map(|pmc_id| format!("https://www.ncbi.nlm.nih.gov/pmc/articles/{pmc_id}/pdf/"));
 
         PaperMetadata {
             doi,
@@ -295,13 +300,15 @@ impl PubMedCentralProvider {
             "10.1126", // Science
         ];
 
-        biomedical_prefixes.iter().any(|prefix| doi.starts_with(prefix))
+        biomedical_prefixes
+            .iter()
+            .any(|prefix| doi.starts_with(prefix))
     }
 }
 
 #[async_trait]
 impl SourceProvider for PubMedCentralProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "pubmed_central"
     }
 
@@ -313,7 +320,7 @@ impl SourceProvider for PubMedCentralProvider {
         true
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "PubMed Central provider for biomedical and life science papers"
     }
 
@@ -335,8 +342,10 @@ impl SourceProvider for PubMedCentralProvider {
     ) -> Result<ProviderResult, ProviderError> {
         info!("Searching PMC for: '{}'", query.query);
 
-        let search_query = self.build_query(query);
-        let pmc_ids = self.search_pmc(&search_query, query.max_results as usize, context).await?;
+        let search_query = Self::build_query(query);
+        let pmc_ids = self
+            .search_pmc(&search_query, query.max_results as usize, context)
+            .await?;
 
         if pmc_ids.is_empty() {
             info!("No results found in PMC for query: '{}'", query.query);
@@ -353,14 +362,17 @@ impl SourceProvider for PubMedCentralProvider {
         let start_time = std::time::Instant::now();
         let articles = self.fetch_articles(&pmc_ids, context).await?;
         let search_time = start_time.elapsed();
-        
+
         let papers: Vec<PaperMetadata> = articles
             .iter()
-            .map(|article| self.convert_to_paper(article))
+            .map(Self::convert_to_paper)
             .collect();
 
-        let papers_count = papers.len() as u32;
-        info!("PMC found {} papers for query: '{}'", papers_count, query.query);
+        let papers_count = u32::try_from(papers.len()).unwrap_or(u32::MAX);
+        info!(
+            "PMC found {} papers for query: '{}'",
+            papers_count, query.query
+        );
 
         Ok(ProviderResult {
             papers,
@@ -396,8 +408,11 @@ impl SourceProvider for PubMedCentralProvider {
     }
 
     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
-        let health_url = format!("{}/entrez/eutils/einfo.fcgi?db=pmc&retmode=json", self.base_url);
-        
+        let health_url = format!(
+            "{}/entrez/eutils/einfo.fcgi?db=pmc&retmode=json",
+            self.base_url
+        );
+
         let response = self
             .client
             .get(&health_url)
@@ -439,7 +454,7 @@ mod tests {
     #[tokio::test]
     async fn test_biomedical_doi_detection() {
         let provider = PubMedCentralProvider::new(None).unwrap();
-        
+
         assert!(provider.is_biomedical_doi("10.1371/journal.pone.0000001"));
         assert!(provider.is_biomedical_doi("10.1038/nature12345"));
         assert!(!provider.is_biomedical_doi("10.1109/computer.science.123"));
@@ -448,7 +463,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_building() {
         let provider = PubMedCentralProvider::new(None).unwrap();
-        
+
         let doi_query = SearchQuery {
             query: "10.1371/journal.pone.0000001".to_string(),
             search_type: SearchType::Doi,
@@ -456,12 +471,12 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         assert_eq!(
             provider.build_query(&doi_query),
             "10.1371/journal.pone.0000001[doi]"
         );
-        
+
         let title_query = SearchQuery {
             query: "CRISPR gene editing".to_string(),
             search_type: SearchType::Title,
@@ -469,7 +484,7 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         assert_eq!(
             provider.build_query(&title_query),
             "CRISPR gene editing[title]"
@@ -479,11 +494,11 @@ mod tests {
     #[test]
     fn test_provider_metadata() {
         let provider = PubMedCentralProvider::new(None).unwrap();
-        
+
         assert_eq!(provider.name(), "pubmed_central");
         assert_eq!(provider.priority(), 89);
         assert!(provider.supports_full_text());
-        
+
         let supported_types = provider.supported_search_types();
         assert!(supported_types.contains(&SearchType::Doi));
         assert!(supported_types.contains(&SearchType::Title));

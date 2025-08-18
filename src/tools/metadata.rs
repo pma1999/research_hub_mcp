@@ -293,7 +293,7 @@ impl MetadataExtractor {
             return Ok(MetadataResult {
                 status: ExtractionStatus::Failed,
                 metadata: None,
-                error: Some(format!("File not found: {}", input.file_path)),
+                error: Some(format!("File not found: {file_path}", file_path = input.file_path)),
                 processing_time_ms: 0,
                 file_path: input.file_path,
             });

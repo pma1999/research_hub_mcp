@@ -1,6 +1,6 @@
 use rust_research_mcp::client::providers::{
-    ArxivProvider, CoreProvider, CrossRefProvider, SciHubProvider, SemanticScholarProvider, SsrnProvider,
-    SearchContext, SearchQuery, SearchType, SourceProvider, UnpaywallProvider,
+    ArxivProvider, CoreProvider, CrossRefProvider, SciHubProvider, SearchContext, SearchQuery,
+    SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider, UnpaywallProvider,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -79,7 +79,7 @@ fn create_keyword_query(keywords: &str, max_results: u32) -> SearchQuery {
 async fn test_arxiv_provider_creation() {
     let provider = ArxivProvider::new();
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "arxiv");
     assert_eq!(provider.priority(), 80);
@@ -98,22 +98,22 @@ async fn test_arxiv_search_by_title() {
     let context = create_test_context();
     let query = create_title_query("quantum computing", 5);
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
     assert!(result.is_ok(), "Search failed: {:?}", result.err());
-    
+
     let result = result.unwrap();
     assert!(!result.papers.is_empty(), "No papers found");
     assert!(result.papers.len() <= 5, "Too many papers returned");
-    
+
     // Check that papers have expected fields
     for paper in &result.papers {
-        assert!(!paper.doi.is_empty() || paper.title.is_some(), "Paper missing identifier");
+        assert!(
+            !paper.doi.is_empty() || paper.title.is_some(),
+            "Paper missing identifier"
+        );
         println!("Found paper: {:?}", paper.title);
     }
 }
@@ -131,14 +131,11 @@ async fn test_arxiv_search_by_doi() {
     // Use a known arXiv paper ID
     let query = create_doi_query("2103.14030"); // arXiv ID format
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             assert_eq!(result.papers.len(), 1, "Should find exactly one paper");
@@ -160,10 +157,7 @@ async fn test_arxiv_health_check() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
     let context = create_test_context();
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.health_check(&context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.health_check(&context)).await;
 
     assert!(result.is_ok(), "Health check timed out");
     let result = result.unwrap();
@@ -179,7 +173,7 @@ async fn test_arxiv_health_check() {
 async fn test_crossref_provider_creation() {
     let provider = CrossRefProvider::new(None);
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "crossref");
     assert_eq!(provider.priority(), 90);
@@ -198,14 +192,11 @@ async fn test_crossref_search_by_doi() {
     let context = create_test_context();
     let query = create_doi_query("10.1038/nature12373"); // Known DOI
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             assert_eq!(result.papers.len(), 1, "Should find exactly one paper");
@@ -228,18 +219,15 @@ async fn test_crossref_search_by_title() {
     let context = create_test_context();
     let query = create_title_query("machine learning", 3);
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         assert!(!result.papers.is_empty(), "Should find some papers");
         assert!(result.papers.len() <= 3, "Should respect max_results");
-        
+
         for paper in &result.papers {
             assert!(!paper.doi.is_empty(), "CrossRef papers should have DOIs");
             println!("Found CrossRef paper: {} - {:?}", paper.doi, paper.title);
@@ -255,7 +243,7 @@ async fn test_crossref_search_by_title() {
 async fn test_ssrn_provider_creation() {
     let provider = SsrnProvider::new();
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "ssrn");
     assert_eq!(provider.priority(), 85);
@@ -275,14 +263,11 @@ async fn test_ssrn_search_by_doi() {
     // Use a known SSRN DOI format
     let query = create_doi_query("10.2139/ssrn.3580300"); // Example SSRN paper
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             let paper = &result.papers[0];
@@ -295,19 +280,19 @@ async fn test_ssrn_search_by_doi() {
 #[tokio::test]
 async fn test_ssrn_extract_id() {
     let provider = SsrnProvider::new().expect("Failed to create SSRN provider");
-    
+
     // Test the ID extraction logic
     let test_cases = vec![
         ("10.2139/ssrn.5290350", Some("5290350")),
         ("10.2139/ssrn.1234567", Some("1234567")),
         ("10.1038/nature12373", None), // Not an SSRN DOI
     ];
-    
+
     for (doi, expected) in test_cases {
         // We'd need to make extract_ssrn_id public or test through the public API
         let _context = create_test_context();
         let _query = create_doi_query(doi);
-        
+
         if expected.is_some() {
             // Should be able to search for SSRN DOIs
             assert!(provider.supported_search_types().contains(&SearchType::Doi));
@@ -323,7 +308,7 @@ async fn test_ssrn_extract_id() {
 async fn test_semantic_scholar_provider_creation() {
     let provider = SemanticScholarProvider::new(None);
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "semantic_scholar");
     assert_eq!(provider.priority(), 88);
@@ -338,23 +323,21 @@ async fn test_semantic_scholar_search_by_title() {
         return;
     }
 
-    let provider = SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
+    let provider =
+        SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
     let context = create_test_context();
     let query = create_title_query("machine learning", 3);
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
     assert!(result.is_ok(), "Search failed: {:?}", result.err());
-    
+
     let result = result.unwrap();
     assert!(!result.papers.is_empty(), "No papers found");
     assert!(result.papers.len() <= 3, "Too many papers returned");
-    
+
     // Check that papers have expected fields
     for paper in &result.papers {
         assert!(!paper.doi.is_empty(), "Paper missing DOI/ID");
@@ -374,25 +357,26 @@ async fn test_semantic_scholar_search_by_doi() {
         return;
     }
 
-    let provider = SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
+    let provider =
+        SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
     let context = create_test_context();
     // Use a known DOI that should be in Semantic Scholar
     let query = create_doi_query("10.1038/nature12373");
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             let paper = &result.papers[0];
             assert!(paper.title.is_some(), "Paper should have a title");
-            println!("Found paper on Semantic Scholar: {} - {:?}", paper.doi, paper.title);
-            
+            println!(
+                "Found paper on Semantic Scholar: {} - {:?}",
+                paper.doi, paper.title
+            );
+
             // Check if it has PDF access
             if let Some(pdf_url) = &paper.pdf_url {
                 println!("  📄 Open access PDF available: {}", pdf_url);
@@ -409,13 +393,11 @@ async fn test_semantic_scholar_health_check() {
         return;
     }
 
-    let provider = SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
+    let provider =
+        SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
     let context = create_test_context();
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.health_check(&context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.health_check(&context)).await;
 
     assert!(result.is_ok(), "Health check timed out");
     let result = result.unwrap();
@@ -431,7 +413,7 @@ async fn test_semantic_scholar_health_check() {
 async fn test_unpaywall_provider_creation() {
     let provider = UnpaywallProvider::new_with_default_email();
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "unpaywall");
     assert_eq!(provider.priority(), 87);
@@ -446,25 +428,26 @@ async fn test_unpaywall_search_by_doi() {
         return;
     }
 
-    let provider = UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
+    let provider =
+        UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
     let context = create_test_context();
     // Use a DOI that's likely to have open access
     let query = create_doi_query("10.1371/journal.pone.0000308"); // PLOS ONE paper (open access)
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             let paper = &result.papers[0];
             assert!(paper.title.is_some(), "Paper should have a title");
-            println!("Found open access paper on Unpaywall: {} - {:?}", paper.doi, paper.title);
-            
+            println!(
+                "Found open access paper on Unpaywall: {} - {:?}",
+                paper.doi, paper.title
+            );
+
             // Unpaywall should provide PDF URL for open access papers
             if let Some(pdf_url) = &paper.pdf_url {
                 println!("  📄 Open access PDF available: {}", pdf_url);
@@ -483,13 +466,11 @@ async fn test_unpaywall_health_check() {
         return;
     }
 
-    let provider = UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
+    let provider =
+        UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
     let context = create_test_context();
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.health_check(&context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.health_check(&context)).await;
 
     assert!(result.is_ok(), "Health check timed out");
     let result = result.unwrap();
@@ -499,16 +480,20 @@ async fn test_unpaywall_health_check() {
 
 #[tokio::test]
 async fn test_unpaywall_non_doi_search() {
-    let provider = UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
+    let provider =
+        UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
     let context = create_test_context();
     let query = create_title_query("machine learning", 1);
 
     let result = provider.search(&query, &context).await;
-    
+
     // Should succeed but return empty results since Unpaywall only supports DOI
     assert!(result.is_ok());
     let result = result.unwrap();
-    assert!(result.papers.is_empty(), "Should return empty for non-DOI searches");
+    assert!(
+        result.papers.is_empty(),
+        "Should return empty for non-DOI searches"
+    );
 }
 
 // ============================================================================
@@ -519,7 +504,7 @@ async fn test_unpaywall_non_doi_search() {
 async fn test_core_provider_creation() {
     let provider = CoreProvider::new(None);
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "core");
     assert_eq!(provider.priority(), 86);
@@ -538,19 +523,16 @@ async fn test_core_search_by_title() {
     let context = create_test_context();
     let query = create_title_query("machine learning", 3);
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
     assert!(result.is_ok(), "Search failed: {:?}", result.err());
-    
+
     let result = result.unwrap();
     assert!(!result.papers.is_empty(), "No papers found");
     assert!(result.papers.len() <= 3, "Too many papers returned");
-    
+
     // Check that papers have expected fields
     for paper in &result.papers {
         assert!(!paper.doi.is_empty(), "Paper missing DOI/ID");
@@ -575,20 +557,17 @@ async fn test_core_search_by_doi() {
     // Use a DOI that's likely to be in CORE's open access collection
     let query = create_doi_query("10.1371/journal.pone.0000308"); // PLOS ONE paper
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     if let Ok(result) = result {
         if !result.papers.is_empty() {
             let paper = &result.papers[0];
             assert!(paper.title.is_some(), "Paper should have a title");
             println!("Found paper on CORE: {} - {:?}", paper.doi, paper.title);
-            
+
             // Check if it has PDF access
             if let Some(pdf_url) = &paper.pdf_url {
                 println!("  📄 Open access PDF available: {}", pdf_url);
@@ -608,10 +587,7 @@ async fn test_core_health_check() {
     let provider = CoreProvider::new(None).expect("Failed to create CORE provider");
     let context = create_test_context();
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.health_check(&context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.health_check(&context)).await;
 
     assert!(result.is_ok(), "Health check timed out");
     let result = result.unwrap();
@@ -627,7 +603,7 @@ async fn test_core_health_check() {
 async fn test_scihub_provider_creation() {
     let provider = SciHubProvider::new();
     assert!(provider.is_ok());
-    
+
     let provider = provider.unwrap();
     assert_eq!(provider.name(), "sci_hub");
     assert_eq!(provider.priority(), 10); // Lowest priority
@@ -647,14 +623,11 @@ async fn test_scihub_search_by_doi() {
     // Use a well-known older paper that's likely to be on Sci-Hub
     let query = create_doi_query("10.1038/nature12373");
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.search(&query, &context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
     assert!(result.is_ok(), "Search timed out");
     let result = result.unwrap();
-    
+
     // Sci-Hub might be blocked or down, so we just check it doesn't panic
     match result {
         Ok(result) => {
@@ -684,18 +657,18 @@ async fn test_scihub_health_check() {
     let provider = SciHubProvider::new().expect("Failed to create Sci-Hub provider");
     let context = create_test_context();
 
-    let result = tokio::time::timeout(
-        config.test_timeout,
-        provider.health_check(&context)
-    ).await;
+    let result = tokio::time::timeout(config.test_timeout, provider.health_check(&context)).await;
 
     assert!(result.is_ok(), "Health check timed out");
     let result = result.unwrap();
-    
+
     // Sci-Hub might be blocked, so we just check it returns a result
     match result {
         Ok(healthy) => {
-            println!("Sci-Hub health check: {}", if healthy { "OK" } else { "DOWN" });
+            println!(
+                "Sci-Hub health check: {}",
+                if healthy { "OK" } else { "DOWN" }
+            );
         }
         Err(e) => {
             println!("Sci-Hub health check error: {:?}", e);
@@ -733,20 +706,23 @@ async fn test_all_providers_with_same_query() {
     println!("{}", "=".repeat(60));
 
     for provider in providers {
-        println!("\nProvider: {} (priority: {})", provider.name(), provider.priority());
+        println!(
+            "\nProvider: {} (priority: {})",
+            provider.name(),
+            provider.priority()
+        );
         println!("{}", "-".repeat(40));
 
-        let result = tokio::time::timeout(
-            config.test_timeout,
-            provider.search(&query, &context)
-        ).await;
+        let result =
+            tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
 
         match result {
             Ok(Ok(result)) => {
                 println!("✅ Success: Found {} papers", result.papers.len());
                 for (i, paper) in result.papers.iter().enumerate() {
-                    println!("  {}. {} - {:?}", 
-                        i + 1, 
+                    println!(
+                        "  {}. {} - {:?}",
+                        i + 1,
                         paper.doi.split('/').last().unwrap_or(&paper.doi),
                         paper.title.as_ref().map(|t| {
                             if t.len() > 50 {
@@ -775,20 +751,42 @@ async fn test_all_providers_with_same_query() {
 async fn test_provider_priorities_ordering() {
     // Verify that providers have the expected priority ordering
     let providers: Vec<(String, u8)> = vec![
-        (CrossRefProvider::new(None).unwrap().name().to_string(), 
-         CrossRefProvider::new(None).unwrap().priority()),
-        (SemanticScholarProvider::new(None).unwrap().name().to_string(), 
-         SemanticScholarProvider::new(None).unwrap().priority()),
-        (UnpaywallProvider::new_with_default_email().unwrap().name().to_string(), 
-         UnpaywallProvider::new_with_default_email().unwrap().priority()),
-        (CoreProvider::new(None).unwrap().name().to_string(), 
-         CoreProvider::new(None).unwrap().priority()),
-        (SsrnProvider::new().unwrap().name().to_string(), 
-         SsrnProvider::new().unwrap().priority()),
-        (ArxivProvider::new().unwrap().name().to_string(), 
-         ArxivProvider::new().unwrap().priority()),
-        (SciHubProvider::new().unwrap().name().to_string(), 
-         SciHubProvider::new().unwrap().priority()),
+        (
+            CrossRefProvider::new(None).unwrap().name().to_string(),
+            CrossRefProvider::new(None).unwrap().priority(),
+        ),
+        (
+            SemanticScholarProvider::new(None)
+                .unwrap()
+                .name()
+                .to_string(),
+            SemanticScholarProvider::new(None).unwrap().priority(),
+        ),
+        (
+            UnpaywallProvider::new_with_default_email()
+                .unwrap()
+                .name()
+                .to_string(),
+            UnpaywallProvider::new_with_default_email()
+                .unwrap()
+                .priority(),
+        ),
+        (
+            CoreProvider::new(None).unwrap().name().to_string(),
+            CoreProvider::new(None).unwrap().priority(),
+        ),
+        (
+            SsrnProvider::new().unwrap().name().to_string(),
+            SsrnProvider::new().unwrap().priority(),
+        ),
+        (
+            ArxivProvider::new().unwrap().name().to_string(),
+            ArxivProvider::new().unwrap().priority(),
+        ),
+        (
+            SciHubProvider::new().unwrap().name().to_string(),
+            SciHubProvider::new().unwrap().priority(),
+        ),
     ];
 
     // Sort by priority (descending)
@@ -801,13 +799,22 @@ async fn test_provider_priorities_ordering() {
     }
 
     // Verify expected order
-    assert_eq!(sorted[0].0, "crossref", "CrossRef should have highest priority");
-    assert_eq!(sorted[1].0, "semantic_scholar", "Semantic Scholar should be second");
+    assert_eq!(
+        sorted[0].0, "crossref",
+        "CrossRef should have highest priority"
+    );
+    assert_eq!(
+        sorted[1].0, "semantic_scholar",
+        "Semantic Scholar should be second"
+    );
     assert_eq!(sorted[2].0, "unpaywall", "Unpaywall should be third");
     assert_eq!(sorted[3].0, "core", "CORE should be fourth");
     assert_eq!(sorted[4].0, "ssrn", "SSRN should be fifth");
     assert_eq!(sorted[5].0, "arxiv", "arXiv should be sixth");
-    assert_eq!(sorted[6].0, "sci_hub", "Sci-Hub should have lowest priority");
+    assert_eq!(
+        sorted[6].0, "sci_hub",
+        "Sci-Hub should have lowest priority"
+    );
 }
 
 // ============================================================================
@@ -830,16 +837,22 @@ async fn test_provider_invalid_doi_handling() {
 
     for provider in providers {
         let result = provider.search(&query, &context).await;
-        
+
         // Should either return empty results or an error, but not panic
         match result {
             Ok(result) => {
-                println!("{}: Returned {} results for invalid DOI", 
-                    provider.name(), result.papers.len());
+                println!(
+                    "{}: Returned {} results for invalid DOI",
+                    provider.name(),
+                    result.papers.len()
+                );
             }
             Err(e) => {
-                println!("{}: Properly errored on invalid DOI: {:?}", 
-                    provider.name(), e);
+                println!(
+                    "{}: Properly errored on invalid DOI: {:?}",
+                    provider.name(),
+                    e
+                );
             }
         }
     }
@@ -861,16 +874,22 @@ async fn test_provider_empty_query_handling() {
 
     for provider in providers {
         let result = provider.search(&query, &context).await;
-        
+
         // Should handle empty queries gracefully
         match result {
             Ok(result) => {
-                println!("{}: Returned {} results for empty query", 
-                    provider.name(), result.papers.len());
+                println!(
+                    "{}: Returned {} results for empty query",
+                    provider.name(),
+                    result.papers.len()
+                );
             }
             Err(e) => {
-                println!("{}: Properly errored on empty query: {:?}", 
-                    provider.name(), e);
+                println!(
+                    "{}: Properly errored on empty query: {:?}",
+                    provider.name(),
+                    e
+                );
             }
         }
     }

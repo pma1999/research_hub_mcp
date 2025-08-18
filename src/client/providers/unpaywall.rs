@@ -17,6 +17,7 @@ struct UnpaywallResponse {
     #[serde(rename = "z_authors")]
     authors: Option<Vec<UnpaywallAuthor>>,
     year: Option<u32>,
+    #[allow(dead_code)]
     genre: Option<String>,
     journal_name: Option<String>,
     #[serde(rename = "is_oa")]
@@ -26,6 +27,7 @@ struct UnpaywallResponse {
     #[serde(rename = "oa_locations")]
     oa_locations: Option<Vec<OALocation>>,
     #[serde(rename = "oa_date")]
+    #[allow(dead_code)]
     oa_date: Option<String>,
 }
 
@@ -37,18 +39,30 @@ struct UnpaywallAuthor {
 
 #[derive(Debug, Deserialize)]
 struct OALocation {
+    #[allow(dead_code)]
     endpoint_id: Option<String>,
+    #[allow(dead_code)]
     evidence: Option<String>,
+    #[allow(dead_code)]
     has_repository_copy: Option<bool>,
+    #[allow(dead_code)]
     is_best: Option<bool>,
+    #[allow(dead_code)]
     license: Option<String>,
+    #[allow(dead_code)]
     oa_date: Option<String>,
+    #[allow(dead_code)]
     pmh_id: Option<String>,
+    #[allow(dead_code)]
     repository_institution: Option<String>,
+    #[allow(dead_code)]
     updated: Option<String>,
+    #[allow(dead_code)]
     url: Option<String>,
+    #[allow(dead_code)]
     url_for_landing_page: Option<String>,
     url_for_pdf: Option<String>,
+    #[allow(dead_code)]
     version: Option<String>,
 }
 
@@ -73,7 +87,7 @@ impl UnpaywallProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -98,7 +112,7 @@ impl UnpaywallProvider {
         )
     }
 
-    /// Convert Unpaywall response to PaperMetadata
+    /// Convert Unpaywall response to `PaperMetadata`
     fn convert_response(&self, response: UnpaywallResponse) -> PaperMetadata {
         // Build author list from Unpaywall format
         let authors = response
@@ -115,7 +129,7 @@ impl UnpaywallProvider {
                 } else if family.is_empty() {
                     given
                 } else {
-                    format!("{} {}", given, family)
+                    format!("{given} {family}")
                 }
             })
             .collect();
@@ -130,11 +144,7 @@ impl UnpaywallProvider {
                 response
                     .oa_locations
                     .as_ref()
-                    .and_then(|locations| {
-                        locations
-                            .iter()
-                            .find_map(|loc| loc.url_for_pdf.clone())
-                    })
+                    .and_then(|locations| locations.iter().find_map(|loc| loc.url_for_pdf.clone()))
             });
 
         PaperMetadata {
@@ -159,7 +169,7 @@ impl UnpaywallProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if response.status().as_u16() == 404 {
             debug!("Paper not found in Unpaywall for DOI: {}", doi);
@@ -176,14 +186,14 @@ impl UnpaywallProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("Unpaywall response: {}", response_text);
 
-        let unpaywall_response: UnpaywallResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
+        let unpaywall_response: UnpaywallResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
                 warn!("Failed to parse Unpaywall response: {}", response_text);
-                ProviderError::Parse(format!("Failed to parse JSON: {}", e))
+                ProviderError::Parse(format!("Failed to parse JSON: {e}"))
             })?;
 
         // Only return papers that have open access
@@ -198,11 +208,11 @@ impl UnpaywallProvider {
 
 #[async_trait]
 impl SourceProvider for UnpaywallProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "unpaywall"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Unpaywall - Database of open access research papers"
     }
 
@@ -229,22 +239,25 @@ impl SourceProvider for UnpaywallProvider {
     ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
 
-        info!("Searching Unpaywall for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Searching Unpaywall for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
-        let papers = match query.search_type {
-            SearchType::Doi => {
-                // Unpaywall only supports DOI lookups
-                if let Some(paper) = self.get_paper_by_doi(&query.query).await? {
-                    vec![paper]
-                } else {
-                    Vec::new()
-                }
-            }
-            _ => {
-                // Unpaywall doesn't support other search types
-                warn!("Unpaywall only supports DOI searches, ignoring query: {}", query.query);
+        let papers = if query.search_type == SearchType::Doi {
+            // Unpaywall only supports DOI lookups
+            if let Some(paper) = self.get_paper_by_doi(&query.query).await? {
+                vec![paper]
+            } else {
                 Vec::new()
             }
+        } else {
+            // Unpaywall doesn't support other search types
+            warn!(
+                "Unpaywall only supports DOI searches, ignoring query: {}",
+                query.query
+            );
+            Vec::new()
         };
 
         let search_time = start_time.elapsed();
@@ -253,7 +266,7 @@ impl SourceProvider for UnpaywallProvider {
         let result = ProviderResult {
             papers,
             source: "Unpaywall".to_string(),
-            total_available: Some(papers_count as u32),
+            total_available: Some(u32::try_from(papers_count).unwrap_or(u32::MAX)),
             search_time,
             has_more: false, // Single DOI lookup can't have more results
             metadata: HashMap::new(),
@@ -289,7 +302,10 @@ impl SourceProvider for UnpaywallProvider {
                 Ok(true)
             }
             Ok(response) => {
-                warn!("Unpaywall health check failed with status: {}", response.status());
+                warn!(
+                    "Unpaywall health check failed with status: {}",
+                    response.status()
+                );
                 Ok(false)
             }
             Err(e) => {
@@ -325,18 +341,20 @@ mod tests {
     #[test]
     fn test_provider_interface() {
         let provider = UnpaywallProvider::new("test@example.com".to_string()).unwrap();
-        
+
         assert_eq!(provider.name(), "unpaywall");
         assert!(provider.supports_full_text());
         assert_eq!(provider.priority(), 87);
         assert!(provider.supported_search_types().contains(&SearchType::Doi));
-        assert!(!provider.supported_search_types().contains(&SearchType::Title));
+        assert!(!provider
+            .supported_search_types()
+            .contains(&SearchType::Title));
     }
 
     #[test]
     fn test_url_building() {
         let provider = UnpaywallProvider::new("test@example.com".to_string()).unwrap();
-        
+
         let doi_url = provider.build_doi_url("10.1038/nature12373");
         assert!(doi_url.contains("10.1038%2Fnature12373"));
         assert!(doi_url.contains("email=test%40example.com"));

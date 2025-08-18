@@ -13,7 +13,10 @@
       "WebSearch",
       "Bash(python3:*)",
       "Bash(rm:*)",
-      "Bash(RUST_LOG=info cargo test --test e2e_test_suite test_url_resolution -- --nocapture)"
+      "Bash(RUST_LOG=info cargo test --test e2e_test_suite test_url_resolution -- --nocapture)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo publish:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": [],

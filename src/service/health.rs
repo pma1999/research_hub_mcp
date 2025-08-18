@@ -46,7 +46,7 @@ pub struct HealthCheck {
 
 impl HealthCheck {
     /// Create a new health check service
-    pub fn new(port: u16) -> Self {
+    #[must_use] pub fn new(port: u16) -> Self {
         let status = HealthStatus {
             healthy: true,
             message: "Service is healthy".to_string(),
@@ -70,13 +70,13 @@ impl HealthCheck {
 
         let listener = tokio::net::TcpListener::bind(addr)
             .await
-            .map_err(|e| crate::Error::Service(format!("Failed to bind health port: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to bind health port: {e}")))?;
 
         info!("Health check endpoint listening on {}", addr);
 
         axum::serve(listener, app)
             .await
-            .map_err(|e| crate::Error::Service(format!("Health check server error: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Health check server error: {e}")))?;
 
         Ok(())
     }
@@ -134,10 +134,10 @@ impl HealthCheck {
 
         status.timestamp = SystemTime::now();
 
-        if !status.healthy {
-            status.message = "One or more health checks failed".to_string();
-        } else {
+        if status.healthy {
             status.message = "Service is healthy".to_string();
+        } else {
+            status.message = "One or more health checks failed".to_string();
         }
     }
 

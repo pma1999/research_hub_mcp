@@ -1,29 +1,25 @@
+use rmcp::{model::*, ServerHandler};
 use rust_research_mcp::{
     client::{
         providers::{
-            ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, 
-            SemanticScholarProvider, SsrnProvider, UnpaywallProvider,
-            SearchQuery, SearchType, SourceProvider,
+            ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, SearchQuery,
+            SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider, UnpaywallProvider,
         },
         MetaSearchClient, MetaSearchConfig,
     },
-    Config, SearchTool, DownloadTool, MetadataExtractor,
+    server::ResearchServerHandler,
     tools::{
-        search::{SearchInput as ActualSearchInput, SearchType as ToolSearchType},
         download::DownloadInput as ActualDownloadInput,
         metadata::MetadataInput as ActualMetadataInput,
+        search::{SearchInput as ActualSearchInput, SearchType as ToolSearchType},
     },
-    server::ResearchServerHandler,
+    Config, DownloadTool, MetadataExtractor, SearchTool,
 };
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio;
-use tracing::{info, debug};
-use rmcp::{
-    model::*,
-    ServerHandler,
-};
+use tracing::{debug, info};
 
 /// Test configuration that works offline
 fn create_test_config() -> Arc<Config> {
@@ -58,28 +54,31 @@ fn create_search_context() -> rust_research_mcp::client::providers::SearchContex
 async fn test_arxiv_provider() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "arxiv");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 80);
-    
+
     // Test search types
     let supported = provider.supported_search_types();
     assert!(supported.contains(&SearchType::Title));
     assert!(supported.contains(&SearchType::Author));
-    
+
     // Test health check
     let health = provider.health_check(&context).await;
     assert!(health.is_ok());
-    
+
     // Test search with known paper
     let query = create_search_query("quantum computing", SearchType::Keywords);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
-            info!("ArXiv search returned {} papers", search_result.papers.len());
+            info!(
+                "ArXiv search returned {} papers",
+                search_result.papers.len()
+            );
             assert!(search_result.papers.len() <= 5);
         }
         Err(e) => {
@@ -93,16 +92,16 @@ async fn test_arxiv_provider() {
 async fn test_crossref_provider() {
     let provider = CrossRefProvider::new(None).expect("Failed to create CrossRef provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "crossref");
     assert!(!provider.supports_full_text()); // CrossRef doesn't provide PDFs
     assert_eq!(provider.priority(), 90); // High priority
-    
+
     // Test DOI search
     let query = create_search_query("10.1038/nature12373", SearchType::Doi);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
             if !search_result.papers.is_empty() {
@@ -119,21 +118,25 @@ async fn test_crossref_provider() {
 
 #[tokio::test]
 async fn test_semantic_scholar_provider() {
-    let provider = SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
+    let provider =
+        SemanticScholarProvider::new(None).expect("Failed to create Semantic Scholar provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "semantic_scholar");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 88);
-    
+
     // Test title search
     let query = create_search_query("deep learning", SearchType::Title);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
-            info!("Semantic Scholar returned {} papers", search_result.papers.len());
+            info!(
+                "Semantic Scholar returned {} papers",
+                search_result.papers.len()
+            );
             // Check that papers have expected fields
             for paper in search_result.papers.iter().take(1) {
                 assert!(!paper.doi.is_empty() || paper.title.is_some());
@@ -147,22 +150,23 @@ async fn test_semantic_scholar_provider() {
 
 #[tokio::test]
 async fn test_unpaywall_provider() {
-    let provider = UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
+    let provider =
+        UnpaywallProvider::new_with_default_email().expect("Failed to create Unpaywall provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "unpaywall");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 87);
-    
+
     // Unpaywall only supports DOI search
     let supported = provider.supported_search_types();
     assert!(supported.contains(&SearchType::Doi));
-    
+
     // Test with a known open access DOI
     let query = create_search_query("10.1371/journal.pone.0000308", SearchType::Doi);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
             if !search_result.papers.is_empty() {
@@ -182,16 +186,16 @@ async fn test_unpaywall_provider() {
 async fn test_core_provider() {
     let provider = CoreProvider::new(None).expect("Failed to create CORE provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "core");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 86);
-    
+
     // Test keyword search
     let query = create_search_query("machine learning", SearchType::Keywords);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
             info!("CORE returned {} papers", search_result.papers.len());
@@ -207,16 +211,16 @@ async fn test_core_provider() {
 async fn test_biorxiv_provider() {
     let provider = BiorxivProvider::new().expect("Failed to create bioRxiv provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "biorxiv");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 75);
-    
+
     // bioRxiv has limited search capabilities
     let query = create_search_query("covid", SearchType::Keywords);
     let result = provider.search(&query, &context).await;
-    
+
     match result {
         Ok(search_result) => {
             info!("bioRxiv returned {} papers", search_result.papers.len());
@@ -235,16 +239,16 @@ async fn test_biorxiv_provider() {
 async fn test_ssrn_provider() {
     let provider = SsrnProvider::new().expect("Failed to create SSRN provider");
     let context = create_search_context();
-    
+
     // Test provider metadata
     assert_eq!(provider.name(), "ssrn");
     assert!(provider.supports_full_text());
     assert_eq!(provider.priority(), 85);
-    
+
     // Test SSRN DOI extraction
     let _query = create_search_query("10.2139/ssrn.1234567", SearchType::Doi);
     let result = provider.get_by_doi("10.2139/ssrn.1234567", &context).await;
-    
+
     // SSRN may block automated requests
     match result {
         Ok(Some(paper)) => {
@@ -265,7 +269,7 @@ async fn test_meta_search_client() {
     let meta_config = MetaSearchConfig::default();
     let client = MetaSearchClient::new((*config).clone(), meta_config)
         .expect("Failed to create MetaSearchClient");
-    
+
     // Test search across all providers
     let query = SearchQuery {
         query: "artificial intelligence".to_string(),
@@ -274,18 +278,20 @@ async fn test_meta_search_client() {
         offset: 0,
         params: HashMap::new(),
     };
-    
+
     let result = client.search(&query).await;
-    
+
     match result {
         Ok(search_result) => {
-            info!("Meta search found {} papers from {} providers", 
-                search_result.papers.len(), 
-                search_result.successful_providers);
-            
+            info!(
+                "Meta search found {} papers from {} providers",
+                search_result.papers.len(),
+                search_result.successful_providers
+            );
+
             // Should have results from multiple providers
             assert!(search_result.successful_providers > 0);
-            
+
             // Check deduplication
             let mut seen_dois = std::collections::HashSet::new();
             for paper in &search_result.papers {
@@ -304,7 +310,7 @@ async fn test_meta_search_client() {
 async fn test_search_tool() {
     let config = create_test_config();
     let search_tool = SearchTool::new(config).expect("Failed to create SearchTool");
-    
+
     // Test search with auto type detection
     let input = ActualSearchInput {
         query: "10.1038/nature12373".to_string(),
@@ -312,13 +318,13 @@ async fn test_search_tool() {
         limit: 1,
         offset: 0,
     };
-    
+
     let result = search_tool.search_papers(input).await;
-    
+
     match result {
         Ok(search_result) => {
             info!("Search tool found {} papers", search_result.returned_count);
-            
+
             if search_result.returned_count > 0 {
                 let paper = &search_result.papers[0];
                 // Auto-detection should recognize this as a DOI
@@ -335,10 +341,12 @@ async fn test_search_tool() {
 async fn test_download_tool() {
     let config = create_test_config();
     let meta_config = MetaSearchConfig::default();
-    let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)
-        .expect("Failed to create MetaSearchClient"));
+    let client = Arc::new(
+        MetaSearchClient::new((*config).clone(), meta_config)
+            .expect("Failed to create MetaSearchClient"),
+    );
     let download_tool = DownloadTool::new(client, config);
-    
+
     // Test input validation
     let invalid_input = ActualDownloadInput {
         doi: None,
@@ -348,10 +356,10 @@ async fn test_download_tool() {
         overwrite: false,
         verify_integrity: false,
     };
-    
+
     let result = download_tool.download_paper(invalid_input).await;
     assert!(result.is_err(), "Should fail with no DOI or URL");
-    
+
     // Test with both DOI and URL (should fail)
     let both_input = ActualDownloadInput {
         doi: Some("10.1038/test".to_string()),
@@ -361,7 +369,7 @@ async fn test_download_tool() {
         overwrite: false,
         verify_integrity: false,
     };
-    
+
     let result = download_tool.download_paper(both_input).await;
     assert!(result.is_err(), "Should fail with both DOI and URL");
 }
@@ -370,7 +378,7 @@ async fn test_download_tool() {
 async fn test_metadata_extractor() {
     let config = create_test_config();
     let extractor = MetadataExtractor::new(config).expect("Failed to create MetadataExtractor");
-    
+
     // Test with file path input
     let input = ActualMetadataInput {
         file_path: "/tmp/test.pdf".to_string(),
@@ -379,9 +387,9 @@ async fn test_metadata_extractor() {
         extract_references: false,
         batch_files: None,
     };
-    
+
     let result = extractor.extract_metadata(input).await;
-    
+
     match result {
         Ok(metadata_result) => {
             if let Some(metadata) = metadata_result.metadata {
@@ -391,7 +399,10 @@ async fn test_metadata_extractor() {
             }
         }
         Err(e) => {
-            info!("Metadata extraction failed (expected for non-existent file): {}", e);
+            info!(
+                "Metadata extraction failed (expected for non-existent file): {}",
+                e
+            );
         }
     }
 }
@@ -400,15 +411,15 @@ async fn test_metadata_extractor() {
 async fn test_server_handler() {
     let config = create_test_config();
     let handler = ResearchServerHandler::new(config).expect("Failed to create server handler");
-    
+
     // Test server info
     let info = handler.get_info();
     assert!(info.capabilities.tools.is_some());
-    
+
     // Test ping
     let result = handler.ping().await;
     assert!(result.is_ok(), "Ping should succeed");
-    
+
     // We can't easily test the handler methods that require RequestContext
     // But we can verify the server info structure
     // The actual MCP protocol testing is done in the Python tests
@@ -420,38 +431,51 @@ async fn test_provider_priority_ordering() {
     let meta_config = MetaSearchConfig::default();
     let client = MetaSearchClient::new((*config).clone(), meta_config)
         .expect("Failed to create MetaSearchClient");
-    
+
     // Get provider names
     let provider_names = client.providers();
-    
+
     // Check that we have multiple providers
     assert!(provider_names.len() > 5, "Should have multiple providers");
-    
+
     // Check for expected providers
     assert!(provider_names.contains(&"crossref".to_string()));
     assert!(provider_names.contains(&"arxiv".to_string()));
     assert!(provider_names.contains(&"semantic_scholar".to_string()));
-    
+
     info!("Available providers: {:?}", provider_names);
 }
 
-#[tokio::test] 
+#[tokio::test]
 async fn test_url_resolution() {
     // Test that relative URLs are properly resolved
     let base = url::Url::parse("https://example.com/path/").unwrap();
-    
+
     // Test various relative URL patterns
     let test_cases = vec![
         ("../file.pdf", "https://example.com/file.pdf"),
-        ("/absolute/path.pdf", "https://example.com/absolute/path.pdf"),
-        ("relative/path.pdf", "https://example.com/path/relative/path.pdf"),
-        ("./same/level.pdf", "https://example.com/path/same/level.pdf"),
+        (
+            "/absolute/path.pdf",
+            "https://example.com/absolute/path.pdf",
+        ),
+        (
+            "relative/path.pdf",
+            "https://example.com/path/relative/path.pdf",
+        ),
+        (
+            "./same/level.pdf",
+            "https://example.com/path/same/level.pdf",
+        ),
     ];
-    
+
     for (relative, expected) in test_cases {
         let resolved = base.join(relative).unwrap();
-        assert_eq!(resolved.to_string(), expected, 
-            "Failed to resolve {} correctly", relative);
+        assert_eq!(
+            resolved.to_string(),
+            expected,
+            "Failed to resolve {} correctly",
+            relative
+        );
     }
 }
 
@@ -461,12 +485,12 @@ async fn test_cascade_pdf_retrieval() {
     let meta_config = MetaSearchConfig::default();
     let client = MetaSearchClient::new((*config).clone(), meta_config)
         .expect("Failed to create MetaSearchClient");
-    
+
     // Test cascade with a DOI that might have PDFs in multiple sources
     let doi = "10.1371/journal.pone.0000308"; // Open access paper
-    
+
     let result = client.get_pdf_url_cascade(doi).await;
-    
+
     match result {
         Ok(Some(pdf_url)) => {
             assert!(pdf_url.starts_with("http"), "PDF URL should be absolute");
@@ -485,21 +509,23 @@ async fn test_cascade_pdf_retrieval() {
 async fn test_rate_limiting() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
     let _context = create_search_context();
-    
+
     // Make multiple rapid requests
     let query = create_search_query("test", SearchType::Keywords);
-    
+
     let start = std::time::Instant::now();
     for i in 0..3 {
         let _ = provider.search(&query, &_context).await;
         debug!("Request {} completed", i + 1);
     }
     let elapsed = start.elapsed();
-    
+
     // Should have some delay due to rate limiting
-    assert!(elapsed >= Duration::from_secs(2), 
-        "Rate limiting should enforce delays between requests");
-    
+    assert!(
+        elapsed >= Duration::from_secs(2),
+        "Rate limiting should enforce delays between requests"
+    );
+
     info!("Rate limiting test completed in {:?}", elapsed);
 }
 
@@ -507,7 +533,7 @@ async fn test_rate_limiting() {
 async fn test_error_handling() {
     let config = create_test_config();
     let search_tool = SearchTool::new(config).expect("Failed to create SearchTool");
-    
+
     // Test with empty query
     let empty_input = ActualSearchInput {
         query: "".to_string(),
@@ -515,19 +541,22 @@ async fn test_error_handling() {
         limit: 10,
         offset: 0,
     };
-    
+
     let result = search_tool.search_papers(empty_input).await;
-    
+
     // Empty query might return empty results or error
     match result {
         Ok(search_result) => {
-            assert_eq!(search_result.returned_count, 0, "Empty query should return no results");
+            assert_eq!(
+                search_result.returned_count, 0,
+                "Empty query should return no results"
+            );
         }
         Err(e) => {
             info!("Empty query properly rejected: {}", e);
         }
     }
-    
+
     // Test with invalid limit
     let invalid_limit = ActualSearchInput {
         query: "test".to_string(),
@@ -535,20 +564,22 @@ async fn test_error_handling() {
         limit: 0, // Invalid
         offset: 0,
     };
-    
+
     let result = search_tool.search_papers(invalid_limit).await;
-    assert!(result.is_err() || result.unwrap().returned_count == 0, 
-        "Invalid limit should fail or return no results");
+    assert!(
+        result.is_err() || result.unwrap().returned_count == 0,
+        "Invalid limit should fail or return no results"
+    );
 }
 
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    
+
     #[tokio::test]
     async fn test_full_search_download_flow() {
         let config = create_test_config();
-        
+
         // 1. Search for a paper
         let search_tool = SearchTool::new(config.clone()).expect("Failed to create SearchTool");
         let search_input = ActualSearchInput {
@@ -557,20 +588,22 @@ mod integration_tests {
             limit: 1,
             offset: 0,
         };
-        
+
         let search_result = search_tool.search_papers(search_input).await;
-        
+
         if let Ok(result) = search_result {
             if result.returned_count > 0 {
                 let paper = &result.papers[0];
                 info!("Found paper: {:?}", paper.metadata.title);
-                
+
                 // 2. Try to download it
                 let meta_config = MetaSearchConfig::default();
-                let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)
-                    .expect("Failed to create MetaSearchClient"));
+                let client = Arc::new(
+                    MetaSearchClient::new((*config).clone(), meta_config)
+                        .expect("Failed to create MetaSearchClient"),
+                );
                 let download_tool = DownloadTool::new(client, config.clone());
-                
+
                 let download_input = ActualDownloadInput {
                     doi: Some(paper.metadata.doi.clone()),
                     url: None,
@@ -579,16 +612,16 @@ mod integration_tests {
                     overwrite: true,
                     verify_integrity: false,
                 };
-                
+
                 let download_result = download_tool.download_paper(download_input).await;
-                
+
                 match download_result {
                     Ok(result) => {
                         assert!(result.file_path.is_some());
                         if let Some(size) = result.file_size {
                             assert!(size > 0, "Downloaded file should have content");
                         }
-                        
+
                         // Clean up
                         if let Some(path) = result.file_path {
                             let _ = std::fs::remove_file(path);
@@ -598,7 +631,7 @@ mod integration_tests {
                         info!("Download failed (expected for some papers): {}", e);
                     }
                 }
-                
+
                 // 3. Extract metadata (if we have a downloaded file)
                 // Skip metadata extraction since it requires an actual PDF file
             }

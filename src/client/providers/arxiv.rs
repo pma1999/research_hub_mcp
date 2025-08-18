@@ -22,7 +22,7 @@ impl ArxivProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -33,18 +33,18 @@ impl ArxivProvider {
     /// Build arXiv API URL for search
     fn build_search_url(&self, query: &SearchQuery) -> Result<String, ProviderError> {
         let mut url = Url::parse(&self.base_url)
-            .map_err(|e| ProviderError::Other(format!("Invalid base URL: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("Invalid base URL: {e}")))?;
 
         // Build search terms based on query type
         let search_query = match query.search_type {
-            SearchType::Doi => format!("doi:{}", query.query),
-            SearchType::Title => format!("ti:\"{}\"", query.query),
-            SearchType::Author => format!("au:\"{}\"", query.query),
+            SearchType::Doi => format!("doi:{query}", query = query.query),
+            SearchType::Title => format!("ti:\"{query}\"", query = query.query),
+            SearchType::Author => format!("au:\"{query}\"", query = query.query),
             SearchType::Keywords | SearchType::Auto => {
                 // For auto/keywords, search in title, abstract, and comments
-                format!("all:\"{}\"", query.query)
+                format!("all:\"{query}\"", query = query.query)
             }
-            SearchType::Subject => format!("cat:{}", query.query),
+            SearchType::Subject => format!("cat:{query}", query = query.query),
         };
 
         url.query_pairs_mut()
@@ -62,7 +62,7 @@ impl ArxivProvider {
         use roxmltree::Document;
 
         let doc = Document::parse(response_text)
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse XML: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Failed to parse XML: {e}")))?;
 
         let mut papers = Vec::new();
 
@@ -80,13 +80,13 @@ impl ArxivProvider {
             };
 
             // Extract metadata from entry
-            for child in entry.children().filter(|n| n.is_element()) {
+            for child in entry.children().filter(roxmltree::Node::is_element) {
                 match child.tag_name().name() {
                     "id" => {
                         if let Some(id) = child.text() {
                             // Extract arXiv ID from URL
-                            if let Some(arxiv_id) = id.split('/').last() {
-                                paper.doi = format!("arXiv:{}", arxiv_id);
+                            if let Some(arxiv_id) = id.split('/').next_back() {
+                                paper.doi = format!("arXiv:{arxiv_id}");
                             }
                         }
                     }
@@ -151,11 +151,11 @@ impl Default for ArxivProvider {
 
 #[async_trait]
 impl SourceProvider for ArxivProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "arxiv"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "arXiv.org - Open access e-prints in physics, mathematics, computer science, and more"
     }
 
@@ -211,9 +211,9 @@ impl SourceProvider for ArxivProvider {
             if e.is_timeout() {
                 ProviderError::Timeout
             } else if e.is_connect() {
-                ProviderError::Network(format!("Connection failed: {}", e))
+                ProviderError::Network(format!("Connection failed: {e}"))
             } else {
-                ProviderError::Network(format!("Request failed: {}", e))
+                ProviderError::Network(format!("Request failed: {e}"))
             }
         })?;
 
@@ -227,7 +227,7 @@ impl SourceProvider for ArxivProvider {
                 503 => ProviderError::ServiceUnavailable(
                     "arXiv service temporarily unavailable".to_string(),
                 ),
-                _ => ProviderError::Network(format!("HTTP {}: {}", status, error_text)),
+                _ => ProviderError::Network(format!("HTTP {status}: {error_text}")),
             });
         }
 
@@ -235,13 +235,13 @@ impl SourceProvider for ArxivProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         let papers = self.parse_response(&response_text)?;
         let search_time = start_time.elapsed();
 
         // Check if there might be more results
-        let has_more = papers.len() as u32 >= query.max_results;
+        let has_more = u32::try_from(papers.len()).unwrap_or(u32::MAX) >= query.max_results;
 
         let mut metadata = HashMap::new();
         metadata.insert("api_url".to_string(), url);

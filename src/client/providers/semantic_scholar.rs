@@ -13,9 +13,12 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Deserialize)]
 struct SemanticScholarResponse {
     data: Vec<SemanticScholarPaper>,
+    #[allow(dead_code)]
     total: Option<u32>,
+    #[allow(dead_code)]
     offset: Option<u32>,
     #[serde(rename = "next")]
+    #[allow(dead_code)]
     next: Option<u32>,
 }
 
@@ -35,10 +38,12 @@ struct SemanticScholarPaper {
     #[serde(rename = "openAccessPdf")]
     open_access_pdf: Option<OpenAccessPdf>,
     #[serde(rename = "publicationDate")]
+    #[allow(dead_code)]
     publication_date: Option<String>,
     #[serde(rename = "journal")]
     journal: Option<Journal>,
     #[serde(rename = "citationCount")]
+    #[allow(dead_code)]
     citation_count: Option<u32>,
 }
 
@@ -47,8 +52,10 @@ struct ExternalIds {
     #[serde(rename = "DOI")]
     doi: Option<String>,
     #[serde(rename = "ArXiv")]
+    #[allow(dead_code)]
     arxiv: Option<String>,
     #[serde(rename = "PubMed")]
+    #[allow(dead_code)]
     pubmed: Option<String>,
 }
 
@@ -56,12 +63,14 @@ struct ExternalIds {
 struct Author {
     name: Option<String>,
     #[serde(rename = "authorId")]
+    #[allow(dead_code)]
     author_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAccessPdf {
     url: Option<String>,
+    #[allow(dead_code)]
     status: Option<String>,
 }
 
@@ -84,7 +93,7 @@ impl SemanticScholarProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -126,7 +135,7 @@ impl SemanticScholarProvider {
         headers
     }
 
-    /// Convert Semantic Scholar paper to PaperMetadata
+    /// Convert Semantic Scholar paper to `PaperMetadata`
     fn convert_paper(&self, paper: SemanticScholarPaper) -> PaperMetadata {
         let doi = paper
             .external_ids
@@ -134,7 +143,7 @@ impl SemanticScholarProvider {
             .and_then(|ids| ids.doi.clone())
             .unwrap_or_else(|| {
                 let paper_id = paper.paper_id.unwrap_or_else(|| "unknown".to_string());
-                format!("semantic_scholar:{}", paper_id)
+                format!("semantic_scholar:{paper_id}")
             });
 
         let authors = paper
@@ -144,14 +153,9 @@ impl SemanticScholarProvider {
             .filter_map(|author| author.name)
             .collect();
 
-        let journal = paper
-            .journal
-            .and_then(|j| j.name)
-            .or(paper.venue);
+        let journal = paper.journal.and_then(|j| j.name).or(paper.venue);
 
-        let pdf_url = paper
-            .open_access_pdf
-            .and_then(|pdf| pdf.url);
+        let pdf_url = paper.open_access_pdf.and_then(|pdf| pdf.url);
 
         PaperMetadata {
             doi,
@@ -166,17 +170,31 @@ impl SemanticScholarProvider {
     }
 
     /// Search papers by query
-    async fn search_papers(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<PaperMetadata>, ProviderError> {
+    async fn search_papers(
+        &self,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<PaperMetadata>, ProviderError> {
         let fields = [
-            "paperId", "externalIds", "title", "authors", "venue", "year", 
-            "abstract", "openAccessPdf", "publicationDate", "journal", "citationCount"
+            "paperId",
+            "externalIds",
+            "title",
+            "authors",
+            "venue",
+            "year",
+            "abstract",
+            "openAccessPdf",
+            "publicationDate",
+            "journal",
+            "citationCount",
         ];
-        
+
         let url = self.build_search_url(query, &fields, limit, offset);
         debug!("Searching Semantic Scholar: {}", url);
 
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -185,7 +203,7 @@ impl SemanticScholarProvider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::Network(format!(
@@ -197,14 +215,17 @@ impl SemanticScholarProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("Semantic Scholar response: {}", response_text);
 
-        let api_response: SemanticScholarResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
-                warn!("Failed to parse Semantic Scholar response: {}", response_text);
-                ProviderError::Parse(format!("Failed to parse JSON: {}", e))
+        let api_response: SemanticScholarResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
+                warn!(
+                    "Failed to parse Semantic Scholar response: {}",
+                    response_text
+                );
+                ProviderError::Parse(format!("Failed to parse JSON: {e}"))
             })?;
 
         let papers = api_response
@@ -219,15 +240,24 @@ impl SemanticScholarProvider {
     /// Get paper by DOI
     async fn get_paper_by_doi(&self, doi: &str) -> Result<Option<PaperMetadata>, ProviderError> {
         let fields = [
-            "paperId", "externalIds", "title", "authors", "venue", "year", 
-            "abstract", "openAccessPdf", "publicationDate", "journal", "citationCount"
+            "paperId",
+            "externalIds",
+            "title",
+            "authors",
+            "venue",
+            "year",
+            "abstract",
+            "openAccessPdf",
+            "publicationDate",
+            "journal",
+            "citationCount",
         ];
-        
+
         let url = self.build_doi_url(doi, &fields);
         debug!("Getting paper by DOI from Semantic Scholar: {}", url);
 
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -236,7 +266,7 @@ impl SemanticScholarProvider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if response.status().as_u16() == 404 {
             debug!("Paper not found in Semantic Scholar for DOI: {}", doi);
@@ -253,12 +283,12 @@ impl SemanticScholarProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("Semantic Scholar DOI response: {}", response_text);
 
         let paper: SemanticScholarPaper = serde_json::from_str(&response_text)
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {e}")))?;
 
         Ok(Some(self.convert_paper(paper)))
     }
@@ -266,16 +296,22 @@ impl SemanticScholarProvider {
 
 #[async_trait]
 impl SourceProvider for SemanticScholarProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "semantic_scholar"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Semantic Scholar - AI-powered research tool with free PDF access"
     }
 
     fn supported_search_types(&self) -> Vec<SearchType> {
-        vec![SearchType::Doi, SearchType::Title, SearchType::Author, SearchType::Keywords, SearchType::Auto]
+        vec![
+            SearchType::Doi,
+            SearchType::Title,
+            SearchType::Author,
+            SearchType::Keywords,
+            SearchType::Auto,
+        ]
     }
 
     fn supports_full_text(&self) -> bool {
@@ -301,7 +337,10 @@ impl SourceProvider for SemanticScholarProvider {
     ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
 
-        info!("Searching Semantic Scholar for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Searching Semantic Scholar for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         let papers = match query.search_type {
             SearchType::Doi => {
@@ -310,12 +349,14 @@ impl SourceProvider for SemanticScholarProvider {
                     vec![paper]
                 } else {
                     // Fallback to search if DOI lookup fails
-                    self.search_papers(&query.query, query.max_results, query.offset).await?
+                    self.search_papers(&query.query, query.max_results, query.offset)
+                        .await?
                 }
             }
             _ => {
                 // Use general search for all other types
-                self.search_papers(&query.query, query.max_results, query.offset).await?
+                self.search_papers(&query.query, query.max_results, query.offset)
+                    .await?
             }
         };
 
@@ -325,7 +366,7 @@ impl SourceProvider for SemanticScholarProvider {
         let result = ProviderResult {
             papers,
             source: "Semantic Scholar".to_string(),
-            total_available: Some(papers_count as u32),
+            total_available: Some(u32::try_from(papers_count).unwrap_or(u32::MAX)),
             search_time,
             has_more: papers_count >= query.max_results as usize,
             metadata: HashMap::new(),
@@ -353,9 +394,9 @@ impl SourceProvider for SemanticScholarProvider {
         debug!("Performing Semantic Scholar health check");
 
         let url = format!("{}/paper/search?query=test&limit=1", self.base_url);
-        
+
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -367,7 +408,10 @@ impl SourceProvider for SemanticScholarProvider {
                 Ok(true)
             }
             Ok(response) => {
-                warn!("Semantic Scholar health check failed with status: {}", response.status());
+                warn!(
+                    "Semantic Scholar health check failed with status: {}",
+                    response.status()
+                );
                 Ok(false)
             }
             Err(e) => {
@@ -397,7 +441,7 @@ mod tests {
     #[test]
     fn test_provider_interface() {
         let provider = SemanticScholarProvider::new(None).unwrap();
-        
+
         assert_eq!(provider.name(), "semantic_scholar");
         assert!(provider.supports_full_text());
         assert_eq!(provider.priority(), 88);
@@ -407,12 +451,13 @@ mod tests {
     #[test]
     fn test_url_building() {
         let provider = SemanticScholarProvider::new(None).unwrap();
-        
-        let search_url = provider.build_search_url("machine learning", &["title", "authors"], 10, 0);
+
+        let search_url =
+            provider.build_search_url("machine learning", &["title", "authors"], 10, 0);
         assert!(search_url.contains("query=machine%20learning"));
         assert!(search_url.contains("fields=title%2Cauthors"));
         assert!(search_url.contains("limit=10"));
-        
+
         let doi_url = provider.build_doi_url("10.1038/nature12373", &["title"]);
         assert!(doi_url.contains("DOI:10.1038%2Fnature12373"));
         assert!(doi_url.contains("fields=title"));

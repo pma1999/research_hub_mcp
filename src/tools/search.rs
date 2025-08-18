@@ -128,7 +128,7 @@ impl SearchTool {
         // Create meta-search client
         let meta_config = MetaSearchConfig::default();
         let meta_client = MetaSearchClient::new((*config).clone(), meta_config).map_err(|e| {
-            crate::Error::Service(format!("Failed to create meta-search client: {}", e))
+            crate::Error::Service(format!("Failed to create meta-search client: {e}"))
         })?;
 
         Ok(Self {
@@ -174,7 +174,7 @@ impl SearchTool {
             .meta_client
             .search(&search_query)
             .await
-            .map_err(|e| crate::Error::Service(format!("Meta-search failed: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Meta-search failed: {e}")))?;
 
         // Convert to our SearchResult format
         let result = Self::convert_meta_result_to_search_result(
@@ -285,8 +285,8 @@ impl SearchTool {
         (total, expired)
     }
 
-    /// Convert our SearchType to provider SearchType
-    fn convert_search_type(search_type: &SearchType) -> ProviderSearchType {
+    /// Convert our `SearchType` to provider `SearchType`
+    const fn convert_search_type(search_type: &SearchType) -> ProviderSearchType {
         match search_type {
             SearchType::Auto => ProviderSearchType::Auto,
             SearchType::Doi => ProviderSearchType::Doi,
@@ -296,7 +296,7 @@ impl SearchTool {
         }
     }
 
-    /// Convert MetaSearchResult to our SearchResult format
+    /// Convert `MetaSearchResult` to our `SearchResult` format
     fn convert_meta_result_to_search_result(
         query: String,
         search_type: SearchType,
@@ -317,13 +317,11 @@ impl SearchTool {
                         papers
                             .iter()
                             .any(|p| p.doi == paper.doi || p.title == paper.title)
-                    })
-                    .map(|(source, _)| source.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
+                    }).map_or_else(|| "Unknown".to_string(), |(source, _)| source.clone());
 
                 PaperResult {
                     metadata: paper,
-                    relevance_score: 1.0 - (index as f64 * 0.01), // Simple scoring based on order
+                    relevance_score: (index as f64).mul_add(-0.01, 1.0), // Simple scoring based on order
                     available: true, // Assume available since providers returned them
                     source,
                 }

@@ -23,7 +23,7 @@ impl SciHubProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         // Known Sci-Hub mirrors (update these as needed)
         let mirrors = vec![
@@ -54,7 +54,7 @@ impl SciHubProvider {
     }
 
     /// Clean DOI format for Sci-Hub
-    fn clean_doi(&self, doi: &str) -> String {
+    fn clean_doi(doi: &str) -> String {
         doi.trim()
             .trim_start_matches("doi:")
             .trim_start_matches("https://doi.org/")
@@ -69,7 +69,7 @@ impl SciHubProvider {
         search_type: &SearchType,
     ) -> Result<Option<PaperMetadata>, ProviderError> {
         let query = match search_type {
-            SearchType::Doi => self.clean_doi(identifier),
+            SearchType::Doi => Self::clean_doi(identifier),
             _ => identifier.to_string(),
         };
 
@@ -109,7 +109,7 @@ impl SciHubProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::Network(format!(
@@ -121,7 +121,7 @@ impl SciHubProvider {
         let html_content = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         self.parse_scihub_response(&html_content, query)
     }
@@ -141,7 +141,7 @@ impl SciHubProvider {
 
         // Look for PDF download link
         let pdf_selector = Selector::parse("embed[src], iframe[src], a[href*='.pdf']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
 
         let mut pdf_url = None;
         for element in document.select(&pdf_selector) {
@@ -152,8 +152,8 @@ impl SciHubProvider {
             {
                 if src.contains(".pdf") || src.starts_with("//") {
                     pdf_url = Some(if src.starts_with("//") {
-                        format!("https:{}", src)
-                    } else if src.starts_with("/") {
+                        format!("https:{src}")
+                    } else if src.starts_with('/') {
                         // Properly resolve relative URLs
                         match url::Url::parse("https://sci-hub.se") {
                             Ok(base) => match base.join(src) {
@@ -193,7 +193,7 @@ impl SciHubProvider {
 
         // Extract title if available
         let title_selector = Selector::parse("title, h1, .article-title")
-            .map_err(|e| ProviderError::Parse(format!("Invalid title selector: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Invalid title selector: {e}")))?;
 
         let title = document
             .select(&title_selector)
@@ -223,11 +223,11 @@ impl SciHubProvider {
 
 #[async_trait]
 impl SourceProvider for SciHubProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "sci_hub"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Sci-Hub - Free access to academic papers"
     }
 

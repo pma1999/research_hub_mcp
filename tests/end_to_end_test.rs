@@ -69,7 +69,10 @@ async fn test_complete_paper_search_workflow() {
     assert!(search_result.is_ok(), "DOI search should succeed");
 
     let search_result = search_result.unwrap();
-    assert!(!search_result.papers.is_empty(), "Should find at least one paper");
+    assert!(
+        !search_result.papers.is_empty(),
+        "Should find at least one paper"
+    );
 
     // Scenario 2: Download the found paper by DOI
     let paper = &search_result.papers[0];
@@ -88,7 +91,7 @@ async fn test_complete_paper_search_workflow() {
     // Scenario 3: Test metadata extraction (on a dummy file)
     let test_pdf_path = temp_dir.path().join("test.pdf");
     std::fs::write(&test_pdf_path, b"dummy pdf content").unwrap();
-    
+
     let metadata_input = MetadataInput {
         file_path: test_pdf_path.to_string_lossy().to_string(),
         use_cache: false,
@@ -209,14 +212,14 @@ async fn test_concurrent_operations_scenario() {
         let search_tool_clone = Arc::clone(&search_tool);
         let doi = format!("10.1000/test{}.doi", i);
 
-        let handle = tokio::spawn(async move { 
+        let handle = tokio::spawn(async move {
             let search_input = SearchInput {
                 query: doi,
                 search_type: SearchType::Doi,
                 limit: 10,
                 offset: 0,
             };
-            search_tool_clone.search_papers(search_input).await 
+            search_tool_clone.search_papers(search_input).await
         });
         handles.push(handle);
     }

@@ -22,7 +22,7 @@ impl SsrnProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -34,9 +34,7 @@ impl SsrnProvider {
     fn extract_ssrn_id(&self, doi: &str) -> Option<String> {
         // SSRN DOIs have format: 10.2139/ssrn.XXXXXXX
         if doi.contains("10.2139/ssrn.") {
-            doi.split("ssrn.")
-                .nth(1)
-                .map(|id| id.trim().to_string())
+            doi.split("ssrn.").nth(1).map(|id| id.trim().to_string())
         } else {
             None
         }
@@ -61,11 +59,12 @@ impl SsrnProvider {
         let url = self.build_paper_url(ssrn_id);
         debug!("Fetching SSRN paper from: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Ok(None);
@@ -74,54 +73,64 @@ impl SsrnProvider {
         let html_content = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         self.parse_paper_page(&html_content, ssrn_id)
     }
 
     /// Parse SSRN paper page
-    fn parse_paper_page(&self, html: &str, ssrn_id: &str) -> Result<Option<PaperMetadata>, ProviderError> {
+    fn parse_paper_page(
+        &self,
+        html: &str,
+        ssrn_id: &str,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
         let document = Html::parse_document(html);
 
         // Extract title
         let title_selector = Selector::parse("meta[name='citation_title']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
-        
-        let title = document.select(&title_selector)
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
+
+        let title = document
+            .select(&title_selector)
             .next()
             .and_then(|el| el.value().attr("content"))
-            .map(|s| s.to_string());
+            .map(str::to_string);
 
         // Extract authors
         let author_selector = Selector::parse("meta[name='citation_author']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
-        
-        let authors: Vec<String> = document.select(&author_selector)
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
+
+        let authors: Vec<String> = document
+            .select(&author_selector)
             .filter_map(|el| el.value().attr("content"))
-            .map(|s| s.to_string())
+            .map(str::to_string)
             .collect();
 
         // Extract abstract
         let abstract_selector = Selector::parse("meta[name='citation_abstract']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
-        
-        let abstract_text = document.select(&abstract_selector)
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
+
+        let abstract_text = document
+            .select(&abstract_selector)
             .next()
             .and_then(|el| el.value().attr("content"))
-            .map(|s| s.to_string());
+            .map(str::to_string);
 
         // Extract PDF URL
         let pdf_selector = Selector::parse("meta[name='citation_pdf_url']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
-        
-        let pdf_url = document.select(&pdf_selector)
+            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
+
+        let pdf_url = document
+            .select(&pdf_selector)
             .next()
             .and_then(|el| el.value().attr("content"))
-            .map(|s| s.to_string())
+            .map(str::to_string)
             .or_else(|| {
                 // Fallback: look for download button
-                let download_selector = Selector::parse("a.download-button, a[href*='download']").ok()?;
-                document.select(&download_selector)
+                let download_selector =
+                    Selector::parse("a.download-button, a[href*='download']").ok()?;
+                document
+                    .select(&download_selector)
                     .next()
                     .and_then(|el| el.value().attr("href"))
                     .and_then(|href| {
@@ -147,10 +156,12 @@ impl SsrnProvider {
             });
 
         // Extract publication year
-        let date_selector = Selector::parse("meta[name='citation_publication_date'], meta[name='citation_date']")
-            .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
-        
-        let year = document.select(&date_selector)
+        let date_selector =
+            Selector::parse("meta[name='citation_publication_date'], meta[name='citation_date']")
+                .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
+
+        let year = document
+            .select(&date_selector)
             .next()
             .and_then(|el| el.value().attr("content"))
             .and_then(|date| date.split('-').next())
@@ -158,7 +169,7 @@ impl SsrnProvider {
 
         if title.is_some() || !authors.is_empty() {
             Ok(Some(PaperMetadata {
-                doi: format!("10.2139/ssrn.{}", ssrn_id),
+                doi: format!("10.2139/ssrn.{ssrn_id}"),
                 title,
                 authors,
                 journal: Some("SSRN Electronic Journal".to_string()),
@@ -173,15 +184,20 @@ impl SsrnProvider {
     }
 
     /// Search SSRN for papers
-    async fn search_papers(&self, query: &str, limit: u32) -> Result<Vec<PaperMetadata>, ProviderError> {
+    async fn search_papers(
+        &self,
+        query: &str,
+        limit: u32,
+    ) -> Result<Vec<PaperMetadata>, ProviderError> {
         let url = self.build_search_url(query);
         debug!("Searching SSRN: {}", url);
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Search request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Search request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Ok(Vec::new());
@@ -190,20 +206,25 @@ impl SsrnProvider {
         let html_content = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
-        self.parse_search_results(&html_content, limit as usize).await
+        self.parse_search_results(&html_content, limit as usize)
+            .await
     }
 
     /// Parse SSRN search results
-    async fn parse_search_results(&self, html: &str, limit: usize) -> Result<Vec<PaperMetadata>, ProviderError> {
+    async fn parse_search_results(
+        &self,
+        html: &str,
+        limit: usize,
+    ) -> Result<Vec<PaperMetadata>, ProviderError> {
         // Parse HTML in a separate scope to ensure it's dropped before await
         let ssrn_ids = {
             let document = Html::parse_document(html);
-            
+
             // Look for paper links in search results
             let link_selector = Selector::parse("a[href*='abstract_id=']")
-                .map_err(|e| ProviderError::Parse(format!("Invalid selector: {}", e)))?;
+                .map_err(|e| ProviderError::Parse(format!("Invalid selector: {e}")))?;
 
             let mut ids = Vec::new();
             for element in document.select(&link_selector).take(limit) {
@@ -233,16 +254,22 @@ impl SsrnProvider {
 
 #[async_trait]
 impl SourceProvider for SsrnProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "ssrn"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "SSRN - Social Science Research Network (Free preprints)"
     }
 
     fn supported_search_types(&self) -> Vec<SearchType> {
-        vec![SearchType::Doi, SearchType::Title, SearchType::Author, SearchType::Keywords, SearchType::Auto]
+        vec![
+            SearchType::Doi,
+            SearchType::Title,
+            SearchType::Author,
+            SearchType::Keywords,
+            SearchType::Auto,
+        ]
     }
 
     fn supports_full_text(&self) -> bool {
@@ -264,7 +291,10 @@ impl SourceProvider for SsrnProvider {
     ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
 
-        info!("Searching SSRN for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Searching SSRN for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         let papers = match query.search_type {
             SearchType::Doi => {
@@ -292,7 +322,7 @@ impl SourceProvider for SsrnProvider {
         let result = ProviderResult {
             papers,
             source: "SSRN".to_string(),
-            total_available: Some(papers_count as u32),
+            total_available: Some(u32::try_from(papers_count).unwrap_or(u32::MAX)),
             search_time,
             has_more: papers_count >= query.max_results as usize,
             metadata: HashMap::new(),
@@ -330,7 +360,10 @@ impl SourceProvider for SsrnProvider {
                 Ok(true)
             }
             Ok(response) => {
-                warn!("SSRN health check failed with status: {}", response.status());
+                warn!(
+                    "SSRN health check failed with status: {}",
+                    response.status()
+                );
                 Ok(false)
             }
             Err(e) => {
@@ -360,22 +393,19 @@ mod tests {
     #[test]
     fn test_extract_ssrn_id() {
         let provider = SsrnProvider::new().unwrap();
-        
+
         assert_eq!(
             provider.extract_ssrn_id("10.2139/ssrn.5290350"),
             Some("5290350".to_string())
         );
-        
-        assert_eq!(
-            provider.extract_ssrn_id("10.1038/nature12373"),
-            None
-        );
+
+        assert_eq!(provider.extract_ssrn_id("10.1038/nature12373"), None);
     }
 
     #[test]
     fn test_provider_interface() {
         let provider = SsrnProvider::new().unwrap();
-        
+
         assert_eq!(provider.name(), "ssrn");
         assert!(provider.supports_full_text());
         assert_eq!(provider.priority(), 85);

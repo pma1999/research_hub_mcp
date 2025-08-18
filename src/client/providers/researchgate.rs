@@ -1,21 +1,20 @@
 use crate::client::providers::{
-    SearchContext, SearchQuery, SearchType, SourceProvider, ProviderError, ProviderResult,
+    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use regex::Regex;
 use reqwest::Client;
 use scraper::{Html, Selector};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::time::Duration;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-/// ResearchGate provider for academic papers and research data
-/// 
-/// ResearchGate is a social networking site for scientists and researchers.
+/// `ResearchGate` provider for academic papers and research data
+///
+/// `ResearchGate` is a social networking site for scientists and researchers.
 /// This provider implements ethical scraping with rate limiting and respects
-/// ResearchGate's terms of service.
+/// `ResearchGate`'s terms of service.
 pub struct ResearchGateProvider {
     client: Client,
     base_url: String,
@@ -23,7 +22,7 @@ pub struct ResearchGateProvider {
 }
 
 impl ResearchGateProvider {
-    /// Create a new ResearchGate provider with ethical scraping settings
+    /// Create a new `ResearchGate` provider with ethical scraping settings
     pub fn new() -> Result<Self, ProviderError> {
         let client = Client::builder()
             .user_agent("rust-research-mcp/0.3.0 (Academic Research Tool)")
@@ -38,32 +37,13 @@ impl ResearchGateProvider {
         })
     }
 
-    /// Search ResearchGate publications
-    async fn search_publications(
-        &self,
-        query: &str,
-        max_results: usize,
-        context: &SearchContext,
-    ) -> Result<Vec<PaperMetadata>, ProviderError> {
-        // ResearchGate has anti-bot protection, so we need to be very careful
-        // For now, we'll implement a conservative approach that only handles
-        // specific types of searches and respects their terms of service
-        
-        info!("ResearchGate search is limited due to terms of service restrictions");
-        warn!("ResearchGate provider currently supports limited functionality to respect ToS");
-        
-        // For ethical reasons, we'll only return empty results for now
-        // Full implementation would require proper API access or partnership
-        Ok(vec![])
-    }
 
-    /// Check if a URL is a valid ResearchGate publication URL
+    /// Check if a URL is a valid `ResearchGate` publication URL
     fn is_researchgate_url(&self, url: &str) -> bool {
-        url.contains("researchgate.net/publication/") || 
-        url.contains("researchgate.net/profile/")
+        url.contains("researchgate.net/publication/") || url.contains("researchgate.net/profile/")
     }
 
-    /// Extract basic metadata from ResearchGate URL (if publicly accessible)
+    /// Extract basic metadata from `ResearchGate` URL (if publicly accessible)
     async fn extract_metadata_from_url(
         &self,
         url: &str,
@@ -88,25 +68,24 @@ impl ResearchGateProvider {
             return Ok(None);
         }
 
-        let html = response
-            .text()
-            .await
-            .map_err(|e| ProviderError::Parse(format!("Failed to read ResearchGate response: {e}")))?;
+        let html = response.text().await.map_err(|e| {
+            ProviderError::Parse(format!("Failed to read ResearchGate response: {e}"))
+        })?;
 
         self.parse_publication_page(&html)
     }
 
-    /// Parse a ResearchGate publication page for metadata
+    /// Parse a `ResearchGate` publication page for metadata
     fn parse_publication_page(&self, html: &str) -> Result<Option<PaperMetadata>, ProviderError> {
         let document = Html::parse_document(html);
-        
+
         // Basic selectors for publicly available metadata
         let title_selector = Selector::parse("h1[data-testid='publication-title']")
             .map_err(|_| ProviderError::Parse("Invalid title selector".to_string()))?;
-        
+
         let authors_selector = Selector::parse("a[data-testid='author-name']")
             .map_err(|_| ProviderError::Parse("Invalid authors selector".to_string()))?;
-        
+
         let doi_selector = Selector::parse("a[href*='doi.org']")
             .map_err(|_| ProviderError::Parse("Invalid DOI selector".to_string()))?;
 
@@ -142,10 +121,10 @@ impl ResearchGateProvider {
                 doi,
                 title,
                 authors,
-                journal: None, // Not easily extractable from RG
-                year: None, // Would need more complex parsing
+                journal: None,       // Not easily extractable from RG
+                year: None,          // Would need more complex parsing
                 abstract_text: None, // Requires login for full access
-                pdf_url: None, // ResearchGate PDFs require authentication
+                pdf_url: None,       // ResearchGate PDFs require authentication
                 file_size: None,
             }))
         } else {
@@ -156,11 +135,11 @@ impl ResearchGateProvider {
 
 #[async_trait]
 impl SourceProvider for ResearchGateProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "researchgate"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "ResearchGate provider with ethical scraping (limited functionality)"
     }
 
@@ -173,11 +152,7 @@ impl SourceProvider for ResearchGateProvider {
     }
 
     fn supported_search_types(&self) -> Vec<SearchType> {
-        vec![
-            SearchType::Auto,
-            SearchType::Title,
-            SearchType::Author,
-        ]
+        vec![SearchType::Auto, SearchType::Title, SearchType::Author]
     }
 
     async fn search(
@@ -186,10 +161,13 @@ impl SourceProvider for ResearchGateProvider {
         context: &SearchContext,
     ) -> Result<ProviderResult, ProviderError> {
         info!("ResearchGate search for: '{}'", query.query);
-        
+
         // Check if the query is actually a ResearchGate URL
         if self.is_researchgate_url(&query.query) {
-            if let Some(metadata) = self.extract_metadata_from_url(&query.query, context).await? {
+            if let Some(metadata) = self
+                .extract_metadata_from_url(&query.query, context)
+                .await?
+            {
                 return Ok(ProviderResult {
                     papers: vec![metadata],
                     source: self.name().to_string(),
@@ -203,7 +181,7 @@ impl SourceProvider for ResearchGateProvider {
 
         // For general searches, we return empty results to respect ToS
         info!("ResearchGate general search disabled to respect terms of service");
-        
+
         Ok(ProviderResult {
             papers: vec![],
             source: self.name().to_string(),
@@ -212,7 +190,10 @@ impl SourceProvider for ResearchGateProvider {
             has_more: false,
             metadata: {
                 let mut meta = HashMap::new();
-                meta.insert("note".to_string(), "Limited functionality to respect ToS".to_string());
+                meta.insert(
+                    "note".to_string(),
+                    "Limited functionality to respect ToS".to_string(),
+                );
                 meta
             },
         })
@@ -221,7 +202,7 @@ impl SourceProvider for ResearchGateProvider {
     async fn get_by_doi(
         &self,
         doi: &str,
-        context: &SearchContext,
+        _context: &SearchContext,
     ) -> Result<Option<PaperMetadata>, ProviderError> {
         // ResearchGate doesn't have a reliable DOI-based API access
         debug!("ResearchGate DOI lookup not available for: {}", doi);
@@ -260,7 +241,7 @@ mod tests {
     #[test]
     fn test_researchgate_url_detection() {
         let provider = ResearchGateProvider::new().unwrap();
-        
+
         assert!(provider.is_researchgate_url("https://www.researchgate.net/publication/123456789"));
         assert!(provider.is_researchgate_url("https://researchgate.net/profile/John-Doe"));
         assert!(!provider.is_researchgate_url("https://example.com/publication/123"));
@@ -269,11 +250,11 @@ mod tests {
     #[test]
     fn test_provider_metadata() {
         let provider = ResearchGateProvider::new().unwrap();
-        
+
         assert_eq!(provider.name(), "researchgate");
         assert_eq!(provider.priority(), 70);
         assert!(!provider.supports_full_text());
-        
+
         let supported_types = provider.supported_search_types();
         assert!(supported_types.contains(&SearchType::Auto));
         assert!(supported_types.contains(&SearchType::Title));
@@ -284,7 +265,7 @@ mod tests {
     async fn test_ethical_search_behavior() {
         let provider = ResearchGateProvider::new().unwrap();
         let context = create_test_context();
-        
+
         let query = SearchQuery {
             query: "machine learning".to_string(),
             search_type: SearchType::Keywords,
@@ -292,10 +273,10 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         let result = provider.search(&query, &context).await;
         assert!(result.is_ok());
-        
+
         let search_result = result.unwrap();
         // Should return empty results to respect ToS
         assert_eq!(search_result.papers.len(), 0);

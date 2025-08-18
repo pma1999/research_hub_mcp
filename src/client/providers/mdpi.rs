@@ -1,5 +1,5 @@
 use crate::client::providers::{
-    SearchContext, SearchQuery, SearchType, SourceProvider, ProviderError, ProviderResult,
+    ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
@@ -11,8 +11,8 @@ use std::time::Duration;
 use tracing::{debug, info};
 
 /// MDPI provider for open access journals
-/// 
-/// MDPI (Multidisciplinary Digital Publishing Institute) is a publisher of 
+///
+/// MDPI (Multidisciplinary Digital Publishing Institute) is a publisher of
 /// open access scientific journals covering various disciplines.
 /// This provider searches MDPI publications and provides access to papers
 /// from journals like Sensors, Materials, Sustainability, etc.
@@ -31,10 +31,13 @@ struct MdpiSearchResponse {
 struct MdpiSearchResults {
     articles: Vec<MdpiArticle>,
     #[serde(rename = "totalResults")]
+    #[allow(dead_code)]
     total_results: Option<u32>,
     #[serde(rename = "currentPage")]
+    #[allow(dead_code)]
     current_page: Option<u32>,
     #[serde(rename = "totalPages")]
+    #[allow(dead_code)]
     total_pages: Option<u32>,
 }
 
@@ -52,12 +55,17 @@ struct MdpiArticle {
     html_url: Option<String>,
     #[serde(rename = "publicationDate")]
     publication_date: Option<String>,
+    #[allow(dead_code)]
     volume: Option<String>,
+    #[allow(dead_code)]
     issue: Option<String>,
     #[serde(rename = "pageNumbers")]
+    #[allow(dead_code)]
     page_numbers: Option<String>,
+    #[allow(dead_code)]
     keywords: Option<Vec<String>>,
     #[serde(rename = "articleNumber")]
+    #[allow(dead_code)]
     article_number: Option<String>,
 }
 
@@ -69,6 +77,7 @@ struct MdpiAuthor {
     last_name: Option<String>,
     #[serde(rename = "fullName")]
     full_name: Option<String>,
+    #[allow(dead_code)]
     affiliation: Option<String>,
 }
 
@@ -76,9 +85,12 @@ struct MdpiAuthor {
 struct MdpiJournal {
     name: Option<String>,
     #[serde(rename = "shortName")]
+    #[allow(dead_code)]
     short_name: Option<String>,
+    #[allow(dead_code)]
     issn: Option<String>,
     #[serde(rename = "eIssn")]
+    #[allow(dead_code)]
     e_issn: Option<String>,
 }
 
@@ -107,7 +119,7 @@ impl MdpiProvider {
         // MDPI doesn't have a public API, so we'll construct search URLs
         // and attempt to parse results from their search page
         let search_url = format!("{}/search", self.base_url);
-        
+
         let max_results_str = max_results.to_string();
         let params = vec![
             ("q", query),
@@ -139,7 +151,7 @@ impl MdpiProvider {
 
         // Since MDPI likely doesn't have a JSON API, we'll parse HTML
         if response_text.contains("<!DOCTYPE html") || response_text.contains("<html") {
-            return self.parse_html_results(&response_text).await;
+            return self.parse_html_results(&response_text);
         }
 
         // Try to parse as JSON if available
@@ -154,7 +166,7 @@ impl MdpiProvider {
             }
             Err(_) => {
                 // Fallback to HTML parsing
-                self.parse_html_results(&response_text).await
+                self.parse_html_results(&response_text)
             }
         }
     }
@@ -163,11 +175,14 @@ impl MdpiProvider {
     async fn fallback_search(
         &self,
         query: &str,
-        max_results: usize,
+        _max_results: usize,
         context: &SearchContext,
     ) -> Result<Vec<MdpiArticle>, ProviderError> {
-        let search_url = format!("{}/search?q={}&sort=relevance", self.base_url, 
-            urlencoding::encode(query));
+        let search_url = format!(
+            "{}/search?q={}&sort=relevance",
+            self.base_url,
+            urlencoding::encode(query)
+        );
 
         let response = self
             .client
@@ -189,18 +204,20 @@ impl MdpiProvider {
             .await
             .map_err(|e| ProviderError::Network(format!("Failed to read MDPI HTML: {e}")))?;
 
-        self.parse_html_results(&html_content).await
+        self.parse_html_results(&html_content)
     }
 
     /// Parse HTML search results from MDPI
-    async fn parse_html_results(&self, html: &str) -> Result<Vec<MdpiArticle>, ProviderError> {
+    fn parse_html_results(&self, html: &str) -> Result<Vec<MdpiArticle>, ProviderError> {
         use scraper::{Html, Selector};
 
         let document = Html::parse_document(html);
-        
+
         // MDPI search results are typically in article elements or divs with specific classes
-        let article_selector = Selector::parse("article.article-item, .search-result, .article-entry")
-            .map_err(|_| ProviderError::Parse("Failed to parse article selector".to_string()))?;
+        let article_selector = Selector::parse(
+            "article.article-item, .search-result, .article-entry",
+        )
+        .map_err(|_| ProviderError::Parse("Failed to parse article selector".to_string()))?;
 
         let title_selector = Selector::parse("h3 a, .title a, .article-title a, h2 a")
             .map_err(|_| ProviderError::Parse("Failed to parse title selector".to_string()))?;
@@ -236,7 +253,7 @@ impl MdpiProvider {
             // Extract title
             if let Some(title_element) = article_element.select(&title_selector).next() {
                 article.title = Some(title_element.text().collect::<String>().trim().to_string());
-                
+
                 // Extract URL from title link
                 if let Some(href) = title_element.value().attr("href") {
                     let full_url = if href.starts_with("http") {
@@ -245,9 +262,9 @@ impl MdpiProvider {
                         format!("{}{}", self.base_url, href)
                     };
                     article.html_url = Some(full_url.clone());
-                    
+
                     // Construct PDF URL (MDPI typically has /pdf/ URLs)
-                    if let Some(article_id) = self.extract_article_id(&full_url) {
+                    if let Some(article_id) = Self::extract_article_id(&full_url) {
                         article.pdf_url = Some(format!("{}/pdf/{}.pdf", self.base_url, article_id));
                     }
                 }
@@ -261,7 +278,7 @@ impl MdpiProvider {
                     .map(|name| name.trim().to_string())
                     .filter(|name| !name.is_empty())
                     .collect();
-                
+
                 if !author_names.is_empty() {
                     let mdpi_authors: Vec<MdpiAuthor> = author_names
                         .into_iter()
@@ -278,13 +295,19 @@ impl MdpiProvider {
 
             // Extract abstract
             if let Some(abstract_element) = article_element.select(&abstract_selector).next() {
-                article.abstract_text = Some(abstract_element.text().collect::<String>().trim().to_string());
+                article.abstract_text = Some(
+                    abstract_element
+                        .text()
+                        .collect::<String>()
+                        .trim()
+                        .to_string(),
+                );
             }
 
             // Extract DOI
             if let Some(doi_element) = article_element.select(&doi_selector).next() {
                 let doi_text = doi_element.text().collect::<String>();
-                if let Some(doi) = self.extract_doi(&doi_text) {
+                if let Some(doi) = Self::extract_doi(&doi_text) {
                     article.doi = Some(doi);
                 }
             }
@@ -302,11 +325,12 @@ impl MdpiProvider {
     }
 
     /// Extract article ID from MDPI URL
-    fn extract_article_id(&self, url: &str) -> Option<String> {
+    fn extract_article_id(url: &str) -> Option<String> {
         // MDPI URLs typically look like: https://www.mdpi.com/1424-8220/21/1/123
         let re = Regex::new(r"/(\d+)-(\d+)/(\d+)/(\d+)/(\d+)").ok()?;
         if let Some(captures) = re.captures(url) {
-            Some(format!("{}-{}-{:05}-{:05}", 
+            Some(format!(
+                "{}-{}-{:05}-{:05}",
                 captures.get(1)?.as_str(),
                 captures.get(2)?.as_str(),
                 captures.get(4)?.as_str().parse::<u32>().ok()?,
@@ -318,7 +342,7 @@ impl MdpiProvider {
     }
 
     /// Extract DOI from text
-    fn extract_doi(&self, text: &str) -> Option<String> {
+    fn extract_doi(text: &str) -> Option<String> {
         let re = Regex::new(r"10\.\d+/[^\s]+").ok()?;
         re.find(text).map(|m| m.as_str().to_string())
     }
@@ -348,7 +372,7 @@ impl MdpiProvider {
         for (key, name) in &journal_map {
             if url.contains(key) {
                 return Some(MdpiJournal {
-                    name: Some(name.to_string()),
+                    name: Some((*name).to_string()),
                     short_name: Some(key.to_uppercase()),
                     issn: None,
                     e_issn: None,
@@ -360,7 +384,7 @@ impl MdpiProvider {
     }
 
     /// Build query string for different search types
-    fn build_query(&self, query: &SearchQuery) -> String {
+    fn build_query(query: &SearchQuery) -> String {
         match query.search_type {
             SearchType::Title => {
                 format!("title:({})", query.query)
@@ -379,20 +403,23 @@ impl MdpiProvider {
         }
     }
 
-    /// Convert MDPI article to PaperMetadata
-    fn convert_to_paper(&self, article: &MdpiArticle) -> PaperMetadata {
-        let authors = article.authors.as_ref()
+    /// Convert MDPI article to `PaperMetadata`
+    fn convert_to_paper(article: &MdpiArticle) -> PaperMetadata {
+        let authors = article
+            .authors
+            .as_ref()
             .map(|authors| {
-                authors.iter()
+                authors
+                    .iter()
                     .map(|author| {
-                        author.full_name.clone()
-                            .or_else(|| {
-                                match (&author.first_name, &author.last_name) {
-                                    (Some(first), Some(last)) => Some(format!("{} {}", first, last)),
-                                    (Some(first), None) => Some(first.clone()),
-                                    (None, Some(last)) => Some(last.clone()),
-                                    _ => None,
-                                }
+                        author
+                            .full_name
+                            .clone()
+                            .or_else(|| match (&author.first_name, &author.last_name) {
+                                (Some(first), Some(last)) => Some(format!("{first} {last}")),
+                                (Some(first), None) => Some(first.clone()),
+                                (None, Some(last)) => Some(last.clone()),
+                                _ => None,
                             })
                             .unwrap_or_default()
                     })
@@ -401,18 +428,19 @@ impl MdpiProvider {
             .unwrap_or_default();
 
         // Extract year from publication date
-        let year = article.publication_date.as_ref()
-            .and_then(|date| {
-                Regex::new(r"(\d{4})")
-                    .ok()?
-                    .captures(date)?
-                    .get(1)?
-                    .as_str()
-                    .parse::<u32>()
-                    .ok()
-            });
+        let year = article.publication_date.as_ref().and_then(|date| {
+            Regex::new(r"(\d{4})")
+                .ok()?
+                .captures(date)?
+                .get(1)?
+                .as_str()
+                .parse::<u32>()
+                .ok()
+        });
 
-        let journal_name = article.journal.as_ref()
+        let journal_name = article
+            .journal
+            .as_ref()
             .and_then(|j| j.name.clone())
             .or_else(|| Some("MDPI Journal".to_string()));
 
@@ -429,7 +457,7 @@ impl MdpiProvider {
     }
 
     /// Check if this looks like an open access paper
-    fn is_open_access(&self, _article: &MdpiArticle) -> bool {
+    const fn is_open_access(&self, _article: &MdpiArticle) -> bool {
         // MDPI is primarily an open access publisher
         true
     }
@@ -437,11 +465,11 @@ impl MdpiProvider {
 
 #[async_trait]
 impl SourceProvider for MdpiProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "mdpi"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "MDPI provider for open access scientific journals"
     }
 
@@ -471,8 +499,10 @@ impl SourceProvider for MdpiProvider {
     ) -> Result<ProviderResult, ProviderError> {
         info!("Searching MDPI for: '{}'", query.query);
 
-        let search_query = self.build_query(query);
-        let articles = self.search_mdpi(&search_query, query.max_results as usize, context).await?;
+        let search_query = Self::build_query(query);
+        let articles = self
+            .search_mdpi(&search_query, query.max_results as usize, context)
+            .await?;
 
         if articles.is_empty() {
             info!("No results found in MDPI for query: '{}'", query.query);
@@ -487,17 +517,20 @@ impl SourceProvider for MdpiProvider {
         }
 
         let start_time = std::time::Instant::now();
-        
+
         let papers: Vec<PaperMetadata> = articles
             .iter()
             .filter(|article| self.is_open_access(article))
-            .map(|article| self.convert_to_paper(article))
+            .map(Self::convert_to_paper)
             .collect();
-        
+
         let search_time = start_time.elapsed();
-        let papers_count = papers.len() as u32;
-        
-        info!("MDPI found {} open access papers for query: '{}'", papers_count, query.query);
+        let papers_count = u32::try_from(papers.len()).unwrap_or(u32::MAX);
+
+        info!(
+            "MDPI found {} open access papers for query: '{}'",
+            papers_count, query.query
+        );
 
         Ok(ProviderResult {
             papers,
@@ -534,7 +567,7 @@ impl SourceProvider for MdpiProvider {
 
     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
         let health_url = format!("{}/search?q=test", self.base_url);
-        
+
         let response = self
             .client
             .get(&health_url)
@@ -547,7 +580,10 @@ impl SourceProvider for MdpiProvider {
             debug!("MDPI health check passed");
             Ok(true)
         } else {
-            debug!("MDPI health check failed with status: {}", response.status());
+            debug!(
+                "MDPI health check failed with status: {}",
+                response.status()
+            );
             Ok(false)
         }
     }
@@ -576,32 +612,29 @@ mod tests {
     #[test]
     fn test_doi_extraction() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         assert_eq!(
             provider.extract_doi("DOI: 10.3390/s21010123"),
             Some("10.3390/s21010123".to_string())
         );
-        
+
         assert_eq!(
             provider.extract_doi("https://doi.org/10.3390/materials14020456"),
             Some("10.3390/materials14020456".to_string())
         );
-        
-        assert_eq!(
-            provider.extract_doi("No DOI here"),
-            None
-        );
+
+        assert_eq!(provider.extract_doi("No DOI here"), None);
     }
 
     #[test]
     fn test_article_id_extraction() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         assert_eq!(
             provider.extract_article_id("https://www.mdpi.com/1424-8220/21/1/123"),
             Some("1424-8220-00001-00123".to_string())
         );
-        
+
         assert_eq!(
             provider.extract_article_id("https://www.mdpi.com/invalid/url"),
             None
@@ -611,15 +644,15 @@ mod tests {
     #[test]
     fn test_journal_extraction() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         let journal = provider.extract_journal_from_url("https://www.mdpi.com/sensors/");
         assert!(journal.is_some());
         assert_eq!(journal.unwrap().name.unwrap(), "Sensors");
-        
+
         let journal = provider.extract_journal_from_url("https://www.mdpi.com/materials/");
         assert!(journal.is_some());
         assert_eq!(journal.unwrap().name.unwrap(), "Materials");
-        
+
         let journal = provider.extract_journal_from_url("https://www.mdpi.com/unknown/");
         assert!(journal.is_none());
     }
@@ -627,7 +660,7 @@ mod tests {
     #[test]
     fn test_query_building() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         let title_query = SearchQuery {
             query: "machine learning sensors".to_string(),
             search_type: SearchType::Title,
@@ -635,12 +668,12 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
+
         assert_eq!(
             provider.build_query(&title_query),
             "title:(machine learning sensors)"
         );
-        
+
         let author_query = SearchQuery {
             query: "John Smith".to_string(),
             search_type: SearchType::Author,
@@ -648,12 +681,9 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
-        assert_eq!(
-            provider.build_query(&author_query),
-            "author:(John Smith)"
-        );
-        
+
+        assert_eq!(provider.build_query(&author_query), "author:(John Smith)");
+
         let doi_query = SearchQuery {
             query: "10.3390/s21010123".to_string(),
             search_type: SearchType::Doi,
@@ -661,21 +691,18 @@ mod tests {
             offset: 0,
             params: HashMap::new(),
         };
-        
-        assert_eq!(
-            provider.build_query(&doi_query),
-            "10.3390/s21010123"
-        );
+
+        assert_eq!(provider.build_query(&doi_query), "10.3390/s21010123");
     }
 
     #[test]
     fn test_provider_metadata() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         assert_eq!(provider.name(), "mdpi");
         assert_eq!(provider.priority(), 75);
         assert!(provider.supports_full_text());
-        
+
         let supported_types = provider.supported_search_types();
         assert!(supported_types.contains(&SearchType::Title));
         assert!(supported_types.contains(&SearchType::Author));
@@ -688,7 +715,7 @@ mod tests {
     #[test]
     fn test_paper_conversion() {
         let provider = MdpiProvider::new().unwrap();
-        
+
         let article = MdpiArticle {
             title: Some("Test MDPI Paper".to_string()),
             abstract_text: Some("This is a test abstract".to_string()),
@@ -722,9 +749,9 @@ mod tests {
             keywords: None,
             article_number: None,
         };
-        
+
         let paper = provider.convert_to_paper(&article);
-        
+
         assert_eq!(paper.title.unwrap(), "Test MDPI Paper");
         assert_eq!(paper.authors.len(), 2);
         assert_eq!(paper.authors[0], "John Doe");

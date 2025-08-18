@@ -5,6 +5,11 @@ A Model Context Protocol (MCP) server that provides AI assistants with academic 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
+[![Crates.io](https://img.shields.io/crates/v/rust-research-mcp.svg)](https://crates.io/crates/rust-research-mcp)
+[![CI](https://github.com/Ladvien/research_hub_mcp/workflows/CI/badge.svg)](https://github.com/Ladvien/research_hub_mcp/actions)
+[![Coverage](https://codecov.io/gh/Ladvien/research_hub_mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/Ladvien/research_hub_mcp)
+[![Security Audit](https://github.com/Ladvien/research_hub_mcp/workflows/Security%20Audit/badge.svg)](https://github.com/Ladvien/research_hub_mcp/actions)
+[![MSRV](https://img.shields.io/badge/MSRV-1.70.0-blue)](https://github.com/rust-lang/rust/releases/tag/1.70.0)
 
 ## ⚠️ Legal Disclaimer
 

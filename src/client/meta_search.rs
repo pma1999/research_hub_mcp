@@ -1,7 +1,8 @@
 use crate::client::providers::{
-    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, MdpiProvider, OpenReviewProvider, ProviderError, ProviderResult, 
-    PubMedCentralProvider, ResearchGateProvider, SciHubProvider, SemanticScholarProvider, SsrnProvider, 
-    SearchContext, SearchQuery, SearchType, SourceProvider, UnpaywallProvider,
+    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, MdpiProvider,
+    OpenReviewProvider, ProviderError, ProviderResult, PubMedCentralProvider, ResearchGateProvider,
+    SciHubProvider, SearchContext, SearchQuery, SearchType, SemanticScholarProvider,
+    SourceProvider, SsrnProvider, UnpaywallProvider,
 };
 use crate::client::PaperMetadata;
 use crate::Config;
@@ -62,49 +63,50 @@ pub struct MetaSearchResult {
 pub struct MetaSearchClient {
     providers: Vec<Arc<dyn SourceProvider>>,
     config: MetaSearchConfig,
+    #[allow(dead_code)]
     rate_limiters: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl MetaSearchClient {
     /// Create a new meta-search client
     pub fn new(_app_config: Config, meta_config: MetaSearchConfig) -> Result<Self, ProviderError> {
-        let mut providers: Vec<Arc<dyn SourceProvider>> = Vec::new();
-
-        // Add CrossRef provider (highest priority for authoritative metadata)
-        providers.push(Arc::new(CrossRefProvider::new(None)?)); // TODO: Get email from config
-
-        // Add Semantic Scholar provider (very high priority for PDF access + metadata)
-        providers.push(Arc::new(SemanticScholarProvider::new(None)?)); // TODO: Get API key from config
-
-        // Add Unpaywall provider (high priority for legal free PDF discovery)
-        providers.push(Arc::new(UnpaywallProvider::new_with_default_email()?)); // TODO: Get email from config
-
-        // Add PubMed Central provider (very high priority for biomedical papers)
-        providers.push(Arc::new(PubMedCentralProvider::new(None)?)); // TODO: Get API key from config
-
-        // Add CORE provider (high priority for open access collection)
-        providers.push(Arc::new(CoreProvider::new(None)?)); // TODO: Get API key from config
-
-        // Add SSRN provider (high priority for recent papers and preprints)
-        providers.push(Arc::new(SsrnProvider::new()?));
-
-        // Add arXiv provider (high priority for CS/physics/math)
-        providers.push(Arc::new(ArxivProvider::new()?));
-
-        // Add bioRxiv provider (biology preprints)
-        providers.push(Arc::new(BiorxivProvider::new()?));
-
-        // Add OpenReview provider (high priority for ML conference papers)
-        providers.push(Arc::new(OpenReviewProvider::new()?));
-
-        // Add MDPI provider (good priority for open access journals)
-        providers.push(Arc::new(MdpiProvider::new()?));
-
-        // Add ResearchGate provider (lower priority due to access limitations)
-        providers.push(Arc::new(ResearchGateProvider::new()?));
-
-        // Add Sci-Hub provider (lowest priority, for full-text access)
-        providers.push(Arc::new(SciHubProvider::new()?));
+        let providers: Vec<Arc<dyn SourceProvider>> = vec![
+            // CrossRef provider (highest priority for authoritative metadata)
+            Arc::new(CrossRefProvider::new(None)?), // TODO: Get email from config
+            
+            // Semantic Scholar provider (very high priority for PDF access + metadata)
+            Arc::new(SemanticScholarProvider::new(None)?), // TODO: Get API key from config
+            
+            // Unpaywall provider (high priority for legal free PDF discovery)
+            Arc::new(UnpaywallProvider::new_with_default_email()?), // TODO: Get email from config
+            
+            // PubMed Central provider (very high priority for biomedical papers)
+            Arc::new(PubMedCentralProvider::new(None)?), // TODO: Get API key from config
+            
+            // CORE provider (high priority for open access collection)
+            Arc::new(CoreProvider::new(None)?), // TODO: Get API key from config
+            
+            // SSRN provider (high priority for recent papers and preprints)
+            Arc::new(SsrnProvider::new()?),
+            
+            // arXiv provider (high priority for CS/physics/math)
+            Arc::new(ArxivProvider::new()?),
+            
+            // bioRxiv provider (biology preprints)
+            Arc::new(BiorxivProvider::new()?),
+            
+            // OpenReview provider (high priority for ML conference papers)
+            Arc::new(OpenReviewProvider::new()?),
+            
+            // MDPI provider (good priority for open access journals)
+            Arc::new(MdpiProvider::new()?),
+            
+            // ResearchGate provider (lower priority due to access limitations)
+            Arc::new(ResearchGateProvider::new()?),
+            
+            // Sci-Hub provider (lowest priority, for full-text access)
+            Arc::new(SciHubProvider::new()?),
+        ];
 
         info!(
             "Initialized meta-search client with {} providers",
@@ -119,6 +121,7 @@ impl MetaSearchClient {
     }
 
     /// Get list of available providers
+    #[must_use]
     pub fn providers(&self) -> Vec<String> {
         self.providers
             .iter()
@@ -128,7 +131,7 @@ impl MetaSearchClient {
 
     /// Perform health checks on all providers
     pub async fn health_check(&self) -> HashMap<String, bool> {
-        let context = self.create_search_context().await;
+        let context = self.create_search_context();
         let mut results = HashMap::new();
 
         for provider in &self.providers {
@@ -154,7 +157,7 @@ impl MetaSearchClient {
         );
 
         // Create search context
-        let context = self.create_search_context().await;
+        let context = self.create_search_context();
 
         // Filter providers based on query type and supported features
         let suitable_providers = self.filter_providers_for_query(query).await;
@@ -167,7 +170,105 @@ impl MetaSearchClient {
                 .collect::<Vec<_>>()
         );
 
-        // Search providers in parallel (with concurrency limit)
+        // Search providers in parallel
+        let (provider_results, provider_errors) = self
+            .execute_parallel_search(suitable_providers, query, &context)
+            .await;
+
+        // Aggregate results
+        let meta_result = self
+            .aggregate_results(provider_results, provider_errors, start_time);
+
+        info!(
+            "Meta-search completed: {} total papers from {} providers in {:?}",
+            meta_result.papers.len(),
+            meta_result.successful_providers,
+            meta_result.total_search_time
+        );
+
+        Ok(meta_result)
+    }
+
+    /// Search for a paper by DOI across providers that support it
+    pub async fn get_by_doi(&self, doi: &str) -> Result<Option<PaperMetadata>, ProviderError> {
+        info!("Searching for DOI: {}", doi);
+
+        let context = self.create_search_context();
+
+        // Try providers in priority order
+        let mut providers: Vec<_> = self.providers.iter().collect();
+        providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+
+        for provider in providers {
+            if provider.supported_search_types().contains(&SearchType::Doi) {
+                // Apply rate limiting
+                if let Err(e) = Self::apply_rate_limit(provider).await {
+                    warn!("Rate limit hit for {}: {}", provider.name(), e);
+                    continue;
+                }
+
+                match provider.get_by_doi(doi, &context).await {
+                    Ok(Some(paper)) => {
+                        info!("Found paper for DOI {} from {}", doi, provider.name());
+                        return Ok(Some(paper));
+                    }
+                    Ok(None) => {
+                        debug!("DOI {} not found in {}", doi, provider.name());
+                    }
+                    Err(e) => {
+                        warn!("Error searching {} for DOI {}: {}", provider.name(), doi, e);
+                    }
+                }
+            }
+        }
+
+        info!("DOI {} not found in any provider", doi);
+        Ok(None)
+    }
+
+    /// Create search context with common settings
+    fn create_search_context(&self) -> SearchContext {
+        SearchContext {
+            timeout: self.config.provider_timeout,
+            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
+            rate_limit: Some(Duration::from_millis(1000)),
+            headers: HashMap::new(),
+        }
+    }
+
+    /// Filter providers based on query characteristics
+    async fn filter_providers_for_query(
+        &self,
+        query: &SearchQuery,
+    ) -> Vec<Arc<dyn SourceProvider>> {
+        let mut suitable = Vec::new();
+
+        for provider in &self.providers {
+            // Check if provider supports the search type
+            if provider
+                .supported_search_types()
+                .contains(&query.search_type)
+                || provider
+                    .supported_search_types()
+                    .contains(&SearchType::Auto)
+            {
+                suitable.push(provider.clone());
+            }
+        }
+
+        // Apply intelligent priority ordering based on query characteristics
+        self.apply_intelligent_priority_ordering(&mut suitable, query);
+
+        suitable
+    }
+
+    /// Execute parallel search across multiple providers
+    async fn execute_parallel_search(
+        &self,
+        providers: Vec<Arc<dyn SourceProvider>>,
+        query: &SearchQuery,
+        context: &SearchContext,
+    ) -> (Vec<(String, ProviderResult)>, HashMap<String, String>) {
         let mut provider_results = Vec::new();
         let mut provider_errors = HashMap::new();
         let semaphore = Arc::new(tokio::sync::Semaphore::new(
@@ -175,7 +276,7 @@ impl MetaSearchClient {
         ));
 
         let mut tasks = Vec::new();
-        for provider in suitable_providers {
+        for provider in providers {
             let provider = provider.clone();
             let query = query.clone();
             let context = context.clone();
@@ -224,175 +325,97 @@ impl MetaSearchClient {
             }
         }
 
-        // Aggregate results
-        let meta_result = self
-            .aggregate_results(provider_results, provider_errors, start_time)
-            .await;
-
-        info!(
-            "Meta-search completed: {} total papers from {} providers in {:?}",
-            meta_result.papers.len(),
-            meta_result.successful_providers,
-            meta_result.total_search_time
-        );
-
-        Ok(meta_result)
-    }
-
-    /// Search for a paper by DOI across providers that support it
-    pub async fn get_by_doi(&self, doi: &str) -> Result<Option<PaperMetadata>, ProviderError> {
-        info!("Searching for DOI: {}", doi);
-
-        let context = self.create_search_context().await;
-
-        // Try providers in priority order
-        let mut providers: Vec<_> = self.providers.iter().collect();
-        providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
-
-        for provider in providers {
-            if provider.supported_search_types().contains(&SearchType::Doi) {
-                // Apply rate limiting
-                if let Err(e) = Self::apply_rate_limit(provider).await {
-                    warn!("Rate limit hit for {}: {}", provider.name(), e);
-                    continue;
-                }
-
-                match provider.get_by_doi(doi, &context).await {
-                    Ok(Some(paper)) => {
-                        info!("Found paper for DOI {} from {}", doi, provider.name());
-                        return Ok(Some(paper));
-                    }
-                    Ok(None) => {
-                        debug!("DOI {} not found in {}", doi, provider.name());
-                    }
-                    Err(e) => {
-                        warn!("Error searching {} for DOI {}: {}", provider.name(), doi, e);
-                    }
-                }
-            }
-        }
-
-        info!("DOI {} not found in any provider", doi);
-        Ok(None)
-    }
-
-    /// Create search context with common settings
-    async fn create_search_context(&self) -> SearchContext {
-        SearchContext {
-            timeout: self.config.provider_timeout,
-            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
-            rate_limit: Some(Duration::from_millis(1000)),
-            headers: HashMap::new(),
-        }
-    }
-
-    /// Filter providers based on query characteristics
-    async fn filter_providers_for_query(
-        &self,
-        query: &SearchQuery,
-    ) -> Vec<Arc<dyn SourceProvider>> {
-        let mut suitable = Vec::new();
-
-        for provider in &self.providers {
-            // Check if provider supports the search type
-            if provider
-                .supported_search_types()
-                .contains(&query.search_type)
-                || provider
-                    .supported_search_types()
-                    .contains(&SearchType::Auto)
-            {
-                suitable.push(provider.clone());
-            }
-        }
-
-        // Apply intelligent priority ordering based on query characteristics
-        self.apply_intelligent_priority_ordering(&mut suitable, query).await;
-
-        suitable
+        (provider_results, provider_errors)
     }
 
     /// Apply intelligent priority ordering based on query characteristics
-    async fn apply_intelligent_priority_ordering(
+    fn apply_intelligent_priority_ordering(
         &self,
         providers: &mut Vec<Arc<dyn SourceProvider>>,
         query: &SearchQuery,
     ) {
         let query_lower = query.query.to_lowercase();
-        
+
         // Create priority adjustments based on query analysis
         let mut provider_scores: Vec<(Arc<dyn SourceProvider>, i32)> = providers
             .iter()
             .map(|provider| {
-                let base_priority = provider.priority() as i32;
+                let base_priority = i32::from(provider.priority());
                 let mut adjusted_priority = base_priority;
-                
+
                 // Domain-specific priority adjustments
                 adjusted_priority += self.calculate_domain_priority_boost(provider, &query_lower);
-                
+
                 // Search type priority adjustments
                 adjusted_priority += self.calculate_search_type_priority_boost(provider, query);
-                
+
                 // Content availability priority adjustments
                 adjusted_priority += self.calculate_content_priority_boost(provider, &query_lower);
-                
+
                 // Time-sensitive priority adjustments
                 adjusted_priority += self.calculate_temporal_priority_boost(provider, &query_lower);
-                
+
                 (provider.clone(), adjusted_priority)
             })
             .collect();
-        
+
         // Sort by adjusted priority (highest first)
         provider_scores.sort_by_key(|(_, score)| std::cmp::Reverse(*score));
-        
+
         // Update the providers vector with the new ordering
-        *providers = provider_scores.into_iter().map(|(provider, _)| provider).collect();
-        
+        *providers = provider_scores
+            .into_iter()
+            .map(|(provider, _)| provider)
+            .collect();
+
         debug!(
             "Reordered providers based on query analysis: {:?}",
             providers.iter().map(|p| p.name()).collect::<Vec<_>>()
         );
     }
-    
+
     /// Calculate domain-specific priority boost
-    fn calculate_domain_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+    fn calculate_domain_priority_boost(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        query: &str,
+    ) -> i32 {
         let provider_name = provider.name();
-        
+
         // Computer Science & Machine Learning
-        if self.contains_cs_ml_keywords(query) {
+        if Self::contains_cs_ml_keywords(query) {
             match provider_name {
-                "arxiv" => 15,        // arXiv is primary for CS papers
-                "openreview" => 12,   // OpenReview for ML conference papers
+                "arxiv" => 15,           // arXiv is primary for CS papers
+                "openreview" => 12,      // OpenReview for ML conference papers
                 "semantic_scholar" => 8, // Good for CS papers
-                "core" => 5,          // Open access CS papers
+                "core" => 5,             // Open access CS papers
                 _ => 0,
             }
         }
         // Biomedical & Life Sciences
-        else if self.contains_biomedical_keywords(query) {
+        else if Self::contains_biomedical_keywords(query) {
             match provider_name {
-                "pubmed_central" => 15, // Primary for biomedical
-                "biorxiv" => 12,       // Biology preprints
+                "pubmed_central" => 15,  // Primary for biomedical
+                "biorxiv" => 12,         // Biology preprints
                 "semantic_scholar" => 8, // Good coverage
-                "unpaywall" => 5,      // Often has biomedical papers
+                "unpaywall" => 5,        // Often has biomedical papers
                 _ => 0,
             }
         }
         // Physics & Mathematics
-        else if self.contains_physics_math_keywords(query) {
+        else if Self::contains_physics_math_keywords(query) {
             match provider_name {
-                "arxiv" => 20,        // Primary for physics/math
-                "crossref" => 8,      // Good metadata
+                "arxiv" => 20,   // Primary for physics/math
+                "crossref" => 8, // Good metadata
                 "semantic_scholar" => 5,
                 _ => 0,
             }
         }
         // Social Sciences & Economics
-        else if self.contains_social_science_keywords(query) {
+        else if Self::contains_social_science_keywords(query) {
             match provider_name {
-                "ssrn" => 15,         // Primary for social sciences
-                "crossref" => 8,      // Good metadata
+                "ssrn" => 15,    // Primary for social sciences
+                "crossref" => 8, // Good metadata
                 "semantic_scholar" => 5,
                 _ => 0,
             }
@@ -400,29 +423,31 @@ impl MetaSearchClient {
         // Open Access & General Academic
         else if self.contains_open_access_keywords(query) {
             match provider_name {
-                "unpaywall" => 12,    // Specialized in open access
-                "core" => 10,         // Large open access collection
-                "mdpi" => 8,          // Open access publisher
-                "biorxiv" => 5,       // Open preprints
-                "arxiv" => 5,         // Open preprints
+                "unpaywall" => 12, // Specialized in open access
+                "core" => 10,      // Large open access collection
+                "mdpi" => 8,       // Open access publisher
+                "biorxiv" | "arxiv" => 5,    // Open preprints
                 _ => 0,
             }
-        }
-        else {
+        } else {
             0 // No domain-specific boost
         }
     }
-    
+
     /// Calculate search type priority boost
-    fn calculate_search_type_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &SearchQuery) -> i32 {
+    fn calculate_search_type_priority_boost(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        query: &SearchQuery,
+    ) -> i32 {
         let provider_name = provider.name();
-        
+
         match query.search_type {
             SearchType::Doi => {
                 // DOI searches work best with metadata providers
                 match provider_name {
-                    "crossref" => 10,     // Best for DOI resolution
-                    "unpaywall" => 8,     // Good DOI support
+                    "crossref" => 10, // Best for DOI resolution
+                    "unpaywall" => 8, // Good DOI support
                     "semantic_scholar" => 6,
                     "pubmed_central" => 5, // Good for biomedical DOIs
                     _ => 0,
@@ -445,18 +470,17 @@ impl MetaSearchClient {
             SearchType::Keywords => {
                 // Keyword searches benefit from full-text providers
                 match provider_name {
-                    "semantic_scholar" => 8,  // Good semantic search
-                    "core" => 6,              // Full-text search
-                    "unpaywall" => 4,         // Good coverage
+                    "semantic_scholar" => 8, // Good semantic search
+                    "core" => 6,             // Full-text search
+                    "unpaywall" => 4,        // Good coverage
                     _ => 0,
                 }
             }
             SearchType::Subject => {
                 // Subject searches benefit from specialized providers
                 match provider_name {
-                    "arxiv" => 8,             // Good subject classification
-                    "pubmed_central" => 8,    // Medical subjects
-                    "semantic_scholar" => 6,  // AI-powered classification
+                    "arxiv" | "pubmed_central" => 8,   // Good subject classification
+                    "semantic_scholar" => 6, // AI-powered classification
                     _ => 0,
                 }
             }
@@ -465,133 +489,259 @@ impl MetaSearchClient {
             }
         }
     }
-    
+
     /// Calculate content availability priority boost
-    fn calculate_content_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+    fn calculate_content_priority_boost(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        query: &str,
+    ) -> i32 {
         let provider_name = provider.name();
-        
+
         // If query suggests need for full-text/PDF access
         if query.contains("pdf") || query.contains("full text") || query.contains("download") {
             match provider_name {
-                "arxiv" => 12,            // Always has PDFs
-                "biorxiv" => 12,          // Always has PDFs
-                "unpaywall" => 10,        // Specialized in free PDFs
-                "semantic_scholar" => 8,  // Often has PDF links
-                "pubmed_central" => 8,    // Often has full text
-                "mdpi" => 8,              // Open access PDFs
-                "ssrn" => 6,              // Often has PDFs
-                "core" => 6,              // Often has full text
-                "sci_hub" => 15,          // Always tries for PDFs (but lowest base priority)
+                "arxiv" | "biorxiv" => 12,         // Always has PDFs
+                "unpaywall" => 10,       // Specialized in free PDFs
+                "semantic_scholar" | "pubmed_central" | "mdpi" => 8, // Often has PDF links/full text
+                "ssrn" | "core" => 6,             // Often has PDFs/full text
+                "sci_hub" => 15,         // Always tries for PDFs (but lowest base priority)
                 _ => 0,
             }
         }
         // If query suggests need for recent/preprint content
-        else if query.contains("recent") || query.contains("preprint") || query.contains("2024") || query.contains("2023") {
+        else if query.contains("recent")
+            || query.contains("preprint")
+            || query.contains("2024")
+            || query.contains("2023")
+        {
             match provider_name {
-                "arxiv" => 10,            // Latest preprints
-                "biorxiv" => 10,          // Latest biology preprints
-                "ssrn" => 8,              // Recent working papers
-                "openreview" => 6,        // Recent ML papers
+                "arxiv" | "biorxiv" => 10,   // Latest preprints
+                "ssrn" => 8,       // Recent working papers
+                "openreview" => 6, // Recent ML papers
                 _ => 0,
             }
-        }
-        else {
+        } else {
             0
         }
     }
-    
+
     /// Calculate temporal priority boost for time-sensitive queries
-    fn calculate_temporal_priority_boost(&self, provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
+    fn calculate_temporal_priority_boost(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        query: &str,
+    ) -> i32 {
         let provider_name = provider.name();
-        
+
         // Boost for recent year mentions
         if query.contains("2024") || query.contains("2023") {
             match provider_name {
-                "arxiv" => 8,             // Best for recent preprints
-                "biorxiv" => 8,           // Recent biology papers
-                "ssrn" => 6,              // Recent working papers
-                "openreview" => 6,        // Recent ML conference papers
-                "semantic_scholar" => 4,  // Good recent coverage
+                "arxiv" | "biorxiv" => 8,          // Best for recent preprints
+                "ssrn" | "openreview" => 6,       // Recent working papers/ML conference papers
+                "semantic_scholar" => 4, // Good recent coverage
                 _ => 0,
             }
         }
         // Boost for historical content
-        else if query.contains("historical") || query.contains("classic") || query.contains("1990") || query.contains("2000") {
+        else if query.contains("historical")
+            || query.contains("classic")
+            || query.contains("1990")
+            || query.contains("2000")
+        {
             match provider_name {
-                "crossref" => 8,          // Comprehensive historical metadata
-                "pubmed_central" => 6,    // Long history for biomedical
-                "semantic_scholar" => 4,  // Good historical coverage
+                "crossref" => 8,         // Comprehensive historical metadata
+                "pubmed_central" => 6,   // Long history for biomedical
+                "semantic_scholar" => 4, // Good historical coverage
                 _ => 0,
             }
-        }
-        else {
+        } else {
             0
         }
     }
-    
+
     /// Check if query contains computer science/ML keywords
-    fn contains_cs_ml_keywords(&self, query: &str) -> bool {
+    fn contains_cs_ml_keywords(query: &str) -> bool {
         let cs_keywords = [
-            "computer science", "machine learning", "deep learning", "neural network", 
-            "artificial intelligence", "ai", "ml", "algorithm", "data structure",
-            "programming", "software", "computer vision", "nlp", "natural language",
-            "database", "distributed system", "security", "cryptography", "compiler",
-            "operating system", "network", "internet", "web", "mobile", "app",
-            "tensorflow", "pytorch", "keras", "python", "java", "c++", "javascript",
-            "transformer", "bert", "gpt", "lstm", "cnn", "gan", "reinforcement learning"
+            "computer science",
+            "machine learning",
+            "deep learning",
+            "neural network",
+            "artificial intelligence",
+            "ai",
+            "ml",
+            "algorithm",
+            "data structure",
+            "programming",
+            "software",
+            "computer vision",
+            "nlp",
+            "natural language",
+            "database",
+            "distributed system",
+            "security",
+            "cryptography",
+            "compiler",
+            "operating system",
+            "network",
+            "internet",
+            "web",
+            "mobile",
+            "app",
+            "tensorflow",
+            "pytorch",
+            "keras",
+            "python",
+            "java",
+            "c++",
+            "javascript",
+            "transformer",
+            "bert",
+            "gpt",
+            "lstm",
+            "cnn",
+            "gan",
+            "reinforcement learning",
         ];
-        
+
         cs_keywords.iter().any(|&keyword| query.contains(keyword))
     }
-    
+
     /// Check if query contains biomedical keywords
-    fn contains_biomedical_keywords(&self, query: &str) -> bool {
+    fn contains_biomedical_keywords(query: &str) -> bool {
         let bio_keywords = [
-            "medicine", "medical", "biology", "biomedical", "clinical", "patient",
-            "disease", "cancer", "drug", "therapy", "treatment", "diagnosis",
-            "gene", "genome", "protein", "dna", "rna", "cell", "molecular",
-            "pharmaceutical", "clinical trial", "epidemiology", "public health",
-            "neuroscience", "cardiology", "oncology", "immunology", "microbiology",
-            "biochemistry", "genetics", "pathology", "pharmacology", "physiology"
+            "medicine",
+            "medical",
+            "biology",
+            "biomedical",
+            "clinical",
+            "patient",
+            "disease",
+            "cancer",
+            "drug",
+            "therapy",
+            "treatment",
+            "diagnosis",
+            "gene",
+            "genome",
+            "protein",
+            "dna",
+            "rna",
+            "cell",
+            "molecular",
+            "pharmaceutical",
+            "clinical trial",
+            "epidemiology",
+            "public health",
+            "neuroscience",
+            "cardiology",
+            "oncology",
+            "immunology",
+            "microbiology",
+            "biochemistry",
+            "genetics",
+            "pathology",
+            "pharmacology",
+            "physiology",
         ];
-        
+
         bio_keywords.iter().any(|&keyword| query.contains(keyword))
     }
-    
+
     /// Check if query contains physics/math keywords
-    fn contains_physics_math_keywords(&self, query: &str) -> bool {
+    fn contains_physics_math_keywords(query: &str) -> bool {
         let physics_math_keywords = [
-            "physics", "quantum", "relativity", "mechanics", "thermodynamics",
-            "electromagnetism", "optics", "astronomy", "astrophysics", "cosmology",
-            "mathematics", "algebra", "calculus", "geometry", "topology", "statistics",
-            "probability", "number theory", "differential equation", "linear algebra",
-            "mathematical", "theorem", "proof", "formula", "equation"
+            "physics",
+            "quantum",
+            "relativity",
+            "mechanics",
+            "thermodynamics",
+            "electromagnetism",
+            "optics",
+            "astronomy",
+            "astrophysics",
+            "cosmology",
+            "mathematics",
+            "algebra",
+            "calculus",
+            "geometry",
+            "topology",
+            "statistics",
+            "probability",
+            "number theory",
+            "differential equation",
+            "linear algebra",
+            "mathematical",
+            "theorem",
+            "proof",
+            "formula",
+            "equation",
         ];
-        
-        physics_math_keywords.iter().any(|&keyword| query.contains(keyword))
+
+        physics_math_keywords
+            .iter()
+            .any(|&keyword| query.contains(keyword))
     }
-    
+
     /// Check if query contains social science keywords
-    fn contains_social_science_keywords(&self, query: &str) -> bool {
+    fn contains_social_science_keywords(query: &str) -> bool {
         let social_keywords = [
-            "economics", "economic", "finance", "financial", "business", "management",
-            "psychology", "sociology", "political science", "anthropology", "education",
-            "law", "legal", "policy", "social", "society", "culture", "history",
-            "literature", "philosophy", "linguistics", "communication", "media",
-            "marketing", "accounting", "organization", "leadership", "strategy"
+            "economics",
+            "economic",
+            "finance",
+            "financial",
+            "business",
+            "management",
+            "psychology",
+            "sociology",
+            "political science",
+            "anthropology",
+            "education",
+            "law",
+            "legal",
+            "policy",
+            "social",
+            "society",
+            "culture",
+            "history",
+            "literature",
+            "philosophy",
+            "linguistics",
+            "communication",
+            "media",
+            "marketing",
+            "accounting",
+            "organization",
+            "leadership",
+            "strategy",
         ];
-        
-        social_keywords.iter().any(|&keyword| query.contains(keyword))
+
+        social_keywords
+            .iter()
+            .any(|&keyword| query.contains(keyword))
     }
-    
+
     /// Check if query contains open access keywords
     fn contains_open_access_keywords(&self, query: &str) -> bool {
         let oa_keywords = [
-            "open access", "free", "libre", "creative commons", "cc by", "cc0",
-            "public domain", "open source", "preprint", "repository", "institutional",
-            "self-archived", "green oa", "gold oa", "hybrid", "subscription"
+            "open access",
+            "free",
+            "libre",
+            "creative commons",
+            "cc by",
+            "cc0",
+            "public domain",
+            "open source",
+            "preprint",
+            "repository",
+            "institutional",
+            "self-archived",
+            "green oa",
+            "gold oa",
+            "hybrid",
+            "subscription",
         ];
-        
+
         oa_keywords.iter().any(|&keyword| query.contains(keyword))
     }
 
@@ -608,7 +758,7 @@ impl MetaSearchClient {
     }
 
     /// Aggregate results from multiple providers
-    async fn aggregate_results(
+    fn aggregate_results(
         &self,
         provider_results: Vec<(String, ProviderResult)>,
         provider_errors: HashMap<String, String>,
@@ -619,7 +769,7 @@ impl MetaSearchClient {
         let mut provider_metadata = HashMap::new();
 
         // Collect all papers and organize by source
-        for (source, result) in provider_results.iter() {
+        for (source, result) in &provider_results {
             by_source.insert(source.clone(), result.papers.clone());
             provider_metadata.insert(source.clone(), result.metadata.clone());
             all_papers.extend(result.papers.clone());
@@ -627,7 +777,7 @@ impl MetaSearchClient {
 
         // Deduplicate if requested
         if self.config.deduplicate_results {
-            all_papers = self.deduplicate_papers(all_papers).await;
+            all_papers = self.deduplicate_papers(all_papers);
         }
 
         // Filter by relevance score if needed
@@ -651,7 +801,7 @@ impl MetaSearchClient {
     }
 
     /// Deduplicate papers based on DOI and title similarity
-    async fn deduplicate_papers(&self, papers: Vec<PaperMetadata>) -> Vec<PaperMetadata> {
+    fn deduplicate_papers(&self, papers: Vec<PaperMetadata>) -> Vec<PaperMetadata> {
         let original_count = papers.len();
         let mut unique_papers = Vec::new();
         let mut seen_dois = HashSet::new();
@@ -672,7 +822,7 @@ impl MetaSearchClient {
             // Check title duplicates (case-insensitive, normalized)
             if !is_duplicate {
                 if let Some(title) = &paper.title {
-                    let normalized_title = title.to_lowercase().replace(&[' ', '\t', '\n'], "");
+                    let normalized_title = title.to_lowercase().replace([' ', '\t', '\n'], "");
                     if seen_titles.contains(&normalized_title) {
                         is_duplicate = true;
                     } else {
@@ -698,30 +848,37 @@ impl MetaSearchClient {
     /// Try to get a PDF URL from any provider, cascading through them by priority
     pub async fn get_pdf_url_cascade(&self, doi: &str) -> Result<Option<String>, ProviderError> {
         info!("Attempting cascade PDF retrieval for DOI: {}", doi);
-        
-        let context = self.create_search_context().await;
-        
+
+        let context = self.create_search_context();
+
         // Sort providers by priority (highest first)
         let mut providers: Vec<_> = self.providers.iter().collect();
         providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
-        
+
         let mut last_error = None;
-        
+
         for provider in providers {
-            info!("Trying PDF retrieval from provider: {} (priority: {})", 
-                provider.name(), provider.priority());
-            
+            info!(
+                "Trying PDF retrieval from provider: {} (priority: {})",
+                provider.name(),
+                provider.priority()
+            );
+
             // Apply rate limiting
             if let Err(e) = Self::apply_rate_limit(provider).await {
                 warn!("Rate limit hit for {}: {}", provider.name(), e);
                 last_error = Some(e);
                 continue;
             }
-            
+
             // Try to get PDF URL from this provider
             match provider.get_pdf_url(doi, &context).await {
                 Ok(Some(pdf_url)) => {
-                    info!("Successfully found PDF URL from {}: {}", provider.name(), pdf_url);
+                    info!(
+                        "Successfully found PDF URL from {}: {}",
+                        provider.name(),
+                        pdf_url
+                    );
                     return Ok(Some(pdf_url));
                 }
                 Ok(None) => {
@@ -733,7 +890,7 @@ impl MetaSearchClient {
                 }
             }
         }
-        
+
         // If we get here, no provider could provide a PDF
         if let Some(error) = last_error {
             Err(error)

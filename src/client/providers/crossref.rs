@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
-/// CrossRef API response structures
+/// `CrossRef` API response structures
 #[derive(Debug, Deserialize)]
 struct CrossRefResponse {
     status: String,
@@ -23,6 +23,7 @@ struct CrossRefMessage {
     #[serde(rename = "total-results")]
     total_results: Option<u64>,
     #[serde(rename = "items-per-page")]
+    #[allow(dead_code)]
     items_per_page: Option<u64>,
 }
 
@@ -40,6 +41,7 @@ struct CrossRefWork {
     #[serde(rename = "URL")]
     url: Option<String>,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     work_type: Option<String>,
 }
 
@@ -55,7 +57,7 @@ struct CrossRefDate {
     date_parts: Option<Vec<Vec<u32>>>,
 }
 
-/// CrossRef API provider
+/// `CrossRef` API provider
 pub struct CrossRefProvider {
     client: Client,
     base_url: String,
@@ -63,13 +65,13 @@ pub struct CrossRefProvider {
 }
 
 impl CrossRefProvider {
-    /// Create a new CrossRef provider
+    /// Create a new `CrossRef` provider
     pub fn new(email: Option<String>) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -78,10 +80,10 @@ impl CrossRefProvider {
         })
     }
 
-    /// Build CrossRef API URL for search
+    /// Build `CrossRef` API URL for search
     fn build_search_url(&self, query: &SearchQuery) -> Result<String, ProviderError> {
         let mut url = Url::parse(&self.base_url)
-            .map_err(|e| ProviderError::Other(format!("Invalid base URL: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("Invalid base URL: {e}")))?;
 
         let mut params = vec![
             ("rows", query.max_results.to_string()),
@@ -120,13 +122,13 @@ impl CrossRefProvider {
 
         // Add query parameters
         for (key, value) in params {
-            url.query_pairs_mut().append_pair(&key, &value);
+            url.query_pairs_mut().append_pair(key, &value);
         }
 
         Ok(url.to_string())
     }
 
-    /// Convert CrossRef work to PaperMetadata
+    /// Convert `CrossRef` work to `PaperMetadata`
     fn convert_work(&self, work: CrossRefWork) -> PaperMetadata {
         let title = work
             .title
@@ -138,7 +140,7 @@ impl CrossRefProvider {
             .unwrap_or_default()
             .into_iter()
             .map(|author| match (author.given, author.family) {
-                (Some(given), Some(family)) => format!("{} {}", given, family),
+                (Some(given), Some(family)) => format!("{given} {family}"),
                 (None, Some(family)) => family,
                 (Some(given), None) => given,
                 (None, None) => "Unknown".to_string(),
@@ -178,11 +180,11 @@ impl Default for CrossRefProvider {
 
 #[async_trait]
 impl SourceProvider for CrossRefProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "crossref"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "CrossRef API - Comprehensive metadata for academic publications with DOI"
     }
 
@@ -241,9 +243,9 @@ impl SourceProvider for CrossRefProvider {
             if e.is_timeout() {
                 ProviderError::Timeout
             } else if e.is_connect() {
-                ProviderError::Network(format!("Connection failed: {}", e))
+                ProviderError::Network(format!("Connection failed: {e}"))
             } else {
-                ProviderError::Network(format!("Request failed: {}", e))
+                ProviderError::Network(format!("Request failed: {e}"))
             }
         })?;
 
@@ -269,7 +271,7 @@ impl SourceProvider for CrossRefProvider {
                 503 => ProviderError::ServiceUnavailable(
                     "CrossRef service temporarily unavailable".to_string(),
                 ),
-                _ => ProviderError::Network(format!("HTTP {}: {}", status, error_text)),
+                _ => ProviderError::Network(format!("HTTP {status}: {error_text}")),
             });
         }
 
@@ -277,10 +279,10 @@ impl SourceProvider for CrossRefProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         let crossref_response: CrossRefResponse = serde_json::from_str(&response_text)
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {e}")))?;
 
         if crossref_response.status != "ok" {
             return Err(ProviderError::Other(format!(
@@ -298,8 +300,8 @@ impl SourceProvider for CrossRefProvider {
             .collect();
 
         let search_time = start_time.elapsed();
-        let total_available = crossref_response.message.total_results.map(|t| t as u32);
-        let has_more = papers.len() as u32 >= query.max_results;
+        let total_available = crossref_response.message.total_results.map(|t| u32::try_from(t).unwrap_or(u32::MAX));
+        let has_more = u32::try_from(papers.len()).unwrap_or(u32::MAX) >= query.max_results;
 
         let mut metadata = HashMap::new();
         metadata.insert("api_url".to_string(), url);

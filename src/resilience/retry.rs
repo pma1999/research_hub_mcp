@@ -38,7 +38,7 @@ impl Default for RetryConfig {
 
 impl RetryConfig {
     /// Create config for fast retries (for transient network issues)
-    pub fn fast() -> Self {
+    #[must_use] pub const fn fast() -> Self {
         Self {
             max_attempts: 3,
             initial_delay: Duration::from_millis(50),
@@ -50,7 +50,7 @@ impl RetryConfig {
     }
 
     /// Create config for slow retries (for service unavailable)
-    pub fn slow() -> Self {
+    #[must_use] pub const fn slow() -> Self {
         Self {
             max_attempts: 5,
             initial_delay: Duration::from_secs(1),
@@ -62,7 +62,7 @@ impl RetryConfig {
     }
 
     /// Create config for rate limited retries
-    pub fn rate_limited() -> Self {
+    #[must_use] pub const fn rate_limited() -> Self {
         Self {
             max_attempts: 10,
             initial_delay: Duration::from_secs(1),
@@ -95,7 +95,7 @@ impl Default for RetryPolicy {
 
 impl RetryPolicy {
     /// Get retry config based on error
-    pub fn config_for_error(&self, error: &Error) -> Option<&RetryConfig> {
+    #[must_use] pub const fn config_for_error(&self, error: &Error) -> Option<&RetryConfig> {
         match error.category() {
             ErrorCategory::Permanent => None, // Don't retry permanent errors
             ErrorCategory::CircuitBreaker => None, // Don't retry circuit breaker errors
@@ -135,7 +135,8 @@ where
     F: Fn() -> Fut,
     Fut: Future<Output = Result<T>>,
 {
-    let mut last_error = None;
+    #[allow(unused_assignments)]
+    let mut last_error: Option<Error> = None;
     let mut attempt = 1;
 
     loop {
@@ -161,15 +162,12 @@ where
                 let error_ref = last_error.as_ref().unwrap();
 
                 // Check if error is retryable
-                let retry_config = match policy.config_for_error(error_ref) {
-                    Some(config) => config,
-                    None => {
-                        debug!(
-                            "Operation '{}' failed with non-retryable error: {}",
-                            operation_name, error_ref
-                        );
-                        return Err(last_error.unwrap());
-                    }
+                let retry_config = if let Some(config) = policy.config_for_error(error_ref) { config } else {
+                    debug!(
+                        "Operation '{}' failed with non-retryable error: {}",
+                        operation_name, error_ref
+                    );
+                    return Err(last_error.unwrap());
                 };
 
                 // Check if we've exceeded max attempts

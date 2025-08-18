@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, warn};
 
 /// Health status for a component
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HealthStatus {
     /// Component is healthy and operational
     Healthy,
@@ -20,22 +20,25 @@ pub enum HealthStatus {
 
 impl HealthStatus {
     /// Check if status indicates the component is operational
-    pub fn is_operational(&self) -> bool {
-        matches!(self, HealthStatus::Healthy | HealthStatus::Degraded { .. })
+    #[must_use]
+    pub const fn is_operational(&self) -> bool {
+        matches!(self, Self::Healthy | Self::Degraded { .. })
     }
 
     /// Check if status indicates the component is fully healthy
-    pub fn is_healthy(&self) -> bool {
-        matches!(self, HealthStatus::Healthy)
+    #[must_use]
+    pub const fn is_healthy(&self) -> bool {
+        matches!(self, Self::Healthy)
     }
 
     /// Get the reason for non-healthy status
+    #[must_use]
     pub fn reason(&self) -> Option<&str> {
         match self {
-            HealthStatus::Healthy => None,
-            HealthStatus::Degraded { reason }
-            | HealthStatus::Unhealthy { reason }
-            | HealthStatus::Unknown { reason } => Some(reason),
+            Self::Healthy => None,
+            Self::Degraded { reason }
+            | Self::Unhealthy { reason }
+            | Self::Unknown { reason } => Some(reason),
         }
     }
 }
@@ -51,6 +54,7 @@ pub struct HealthCheckResult {
 
 impl HealthCheckResult {
     /// Create a new health check result
+    #[must_use]
     pub fn new(status: HealthStatus, check_duration: Duration) -> Self {
         Self {
             status,
@@ -67,6 +71,7 @@ impl HealthCheckResult {
     }
 
     /// Check if the result is stale based on max age
+    #[must_use]
     pub fn is_stale(&self, max_age: Duration) -> bool {
         self.checked_at.elapsed() > max_age
     }
@@ -107,6 +112,7 @@ pub struct HealthCheckManager {
 
 impl HealthCheckManager {
     /// Create a new health check manager
+    #[must_use]
     pub fn new() -> Self {
         Self {
             checks: Arc::new(RwLock::new(HashMap::new())),
@@ -131,25 +137,22 @@ impl HealthCheckManager {
         let checks = self.checks.read().await;
         let check = checks
             .get(name)
-            .ok_or_else(|| Error::Service(format!("Health check '{}' not found", name)))?;
+            .ok_or_else(|| Error::Service(format!("Health check '{name}' not found")))?;
 
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         let timeout = check.timeout();
 
         debug!("Running health check for '{}'", name);
 
         // Run health check with timeout
-        let result = match tokio::time::timeout(timeout, check.check_health()).await {
-            Ok(result) => result,
-            Err(_) => {
-                warn!("Health check '{}' timed out after {:?}", name, timeout);
-                HealthCheckResult::new(
-                    HealthStatus::Unknown {
-                        reason: format!("Health check timed out after {:?}", timeout),
-                    },
-                    timeout,
-                )
-            }
+        let result = if let Ok(result) = tokio::time::timeout(timeout, check.check_health()).await { result } else {
+            warn!("Health check '{}' timed out after {:?}", name, timeout);
+            HealthCheckResult::new(
+                HealthStatus::Unknown {
+                    reason: format!("Health check timed out after {timeout:?}"),
+                },
+                timeout,
+            )
         };
 
         // Cache the result
@@ -199,7 +202,7 @@ impl HealthCheckManager {
                         name: name.clone(),
                         result: HealthCheckResult::new(
                             HealthStatus::Unknown {
-                                reason: format!("Health check failed: {}", e),
+                                reason: format!("Health check failed: {e}"),
                             },
                             Duration::from_millis(0),
                         ),
@@ -221,14 +224,14 @@ impl HealthCheckManager {
             };
         }
 
-        let mut healthy_count = 0;
+        let mut _healthy_count = 0;
         let mut degraded_count = 0;
         let mut unhealthy_count = 0;
         let mut unknown_count = 0;
 
         for component in &results {
             match component.result.status {
-                HealthStatus::Healthy => healthy_count += 1,
+                HealthStatus::Healthy => _healthy_count += 1,
                 HealthStatus::Degraded { .. } => degraded_count += 1,
                 HealthStatus::Unhealthy { .. } => unhealthy_count += 1,
                 HealthStatus::Unknown { .. } => unknown_count += 1,
@@ -300,19 +303,22 @@ impl HttpHealthCheck {
     }
 
     /// Set the timeout for HTTP requests
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+    #[must_use]
+    pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
     }
 
     /// Set the expected HTTP status code
-    pub fn with_expected_status(mut self, status: reqwest::StatusCode) -> Self {
+    #[must_use]
+    pub const fn with_expected_status(mut self, status: reqwest::StatusCode) -> Self {
         self.expected_status = Some(status);
         self
     }
 
     /// Don't check HTTP status code
-    pub fn ignore_status(mut self) -> Self {
+    #[must_use]
+    pub const fn ignore_status(mut self) -> Self {
         self.expected_status = None;
         self
     }
@@ -334,12 +340,12 @@ impl HealthCheck for HttpHealthCheck {
             Err(e) => {
                 return HealthCheckResult::new(
                     HealthStatus::Unhealthy {
-                        reason: format!("HTTP request failed: {}", e),
+                        reason: format!("HTTP request failed: {e}"),
                     },
                     start_time.elapsed(),
                 )
                 .with_detail("url", &self.url)
-                .with_detail("error", &e.to_string());
+                .with_detail("error", e.to_string());
             }
         };
 
@@ -351,20 +357,20 @@ impl HealthCheck for HttpHealthCheck {
             if status_code != expected {
                 return HealthCheckResult::new(
                     HealthStatus::Unhealthy {
-                        reason: format!("Unexpected status code: {}", status_code),
+                        reason: format!("Unexpected status code: {status_code}"),
                     },
                     duration,
                 )
                 .with_detail("url", &self.url)
-                .with_detail("status_code", &status_code.to_string())
-                .with_detail("expected_status", &expected.to_string());
+                .with_detail("status_code", status_code.to_string())
+                .with_detail("expected_status", expected.to_string());
             }
         }
 
         // Check response time
         let status = if duration > Duration::from_secs(2) {
             HealthStatus::Degraded {
-                reason: format!("Slow response time: {:?}", duration),
+                reason: format!("Slow response time: {duration:?}"),
             }
         } else {
             HealthStatus::Healthy
@@ -372,8 +378,8 @@ impl HealthCheck for HttpHealthCheck {
 
         HealthCheckResult::new(status, duration)
             .with_detail("url", &self.url)
-            .with_detail("status_code", &status_code.to_string())
-            .with_detail("response_time_ms", &duration.as_millis().to_string())
+            .with_detail("status_code", status_code.to_string())
+            .with_detail("response_time_ms", duration.as_millis().to_string())
     }
 
     fn name(&self) -> &str {

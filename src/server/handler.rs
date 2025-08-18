@@ -4,7 +4,7 @@ use crate::tools::{
 };
 use crate::{Config, DownloadTool, MetaSearchClient, MetadataExtractor, Result, SearchTool};
 use rmcp::{
-    model::*,
+    model::{ServerInfo, ServerCapabilities, InitializeRequestParam, InitializeResult, ProtocolVersion, Implementation, PaginatedRequestParam, ListToolsResult, Tool, CallToolRequestParam, CallToolResult, Content},
     service::{RequestContext, RoleServer},
     ErrorData, ServerHandler,
 };
@@ -43,6 +43,7 @@ pub struct MetadataInput {
 /// Main MCP server handler implementing rmcp
 #[derive(Debug, Clone)]
 pub struct ResearchServerHandler {
+    #[allow(dead_code)]
     config: Arc<Config>,
     search_tool: SearchTool,
     download_tool: DownloadTool,
@@ -223,12 +224,12 @@ impl ServerHandler for ResearchServerHandler {
                         .and_then(|args| {
                             args.get("message")
                                 .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
+                                .map(str::to_string)
                         })
                         .unwrap_or_else(|| "No message provided".to_string());
 
                     Ok(CallToolResult {
-                        content: Some(vec![Content::text(format!("Debug echo: {}", message))]),
+                        content: Some(vec![Content::text(format!("Debug echo: {message}"))]),
                         structured_content: None,
                         is_error: Some(false),
                     })
@@ -242,7 +243,7 @@ impl ServerHandler for ResearchServerHandler {
                             None,
                         )
                     })?;
-                    let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+                    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as u32;
 
                     let input = ActualSearchInput {
                         query: query.to_string(),
@@ -252,7 +253,7 @@ impl ServerHandler for ResearchServerHandler {
                     };
 
                     let results = search_tool.search_papers(input).await.map_err(|e| {
-                        ErrorData::internal_error(format!("Search failed: {}", e), None)
+                        ErrorData::internal_error(format!("Search failed: {e}"), None)
                     })?;
 
                     Ok(CallToolResult {
@@ -260,14 +261,14 @@ impl ServerHandler for ResearchServerHandler {
                             results.returned_count,
                             results.query,
                             results.papers.iter().enumerate().map(|(i, p)| {
-                                let doi_info = if !p.metadata.doi.is_empty() {
-                                    format!("\n  📖 DOI: {}", p.metadata.doi)
+                                let doi_info = if p.metadata.doi.is_empty() {
+                                    "\n  ⚠️ No DOI available (cannot download)".to_string()
                                 } else {
-                                    format!("\n  ⚠️ No DOI available (cannot download)")
+                                    format!("\n  📖 DOI: {doi}", doi = p.metadata.doi)
                                 };
-                                let source_info = format!("\n  🔍 Source: {}", p.source);
+                                let source_info = format!("\n  🔍 Source: {source}", source = p.source);
                                 let year = p.metadata.year.filter(|y| *y > 0)
-                                    .map(|y| format!("\n  📅 Year: {}", y))
+                                    .map(|y| format!("\n  📅 Year: {y}"))
                                     .unwrap_or_default();
                                 format!("{}. {} (Relevance: {:.0}%){}{}{}",
                                     i + 1,
@@ -296,7 +297,7 @@ impl ServerHandler for ResearchServerHandler {
                     let filename = args
                         .get("filename")
                         .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
+                        .map(ToString::to_string);
 
                     let input = ActualDownloadInput {
                         doi: Some(doi.to_string()),
@@ -319,14 +320,14 @@ impl ServerHandler for ResearchServerHandler {
                                     }
                                 }
                                 Ok(CallToolResult {
-                                    content: Some(vec![Content::text(format!("⚠️ Download failed - no content received\n\nDOI: {}\n\nThe paper was found but no downloadable content is available. This could be because:\n• The paper is too new or recently published\n• It's behind a paywall not covered by available sources\n• The DOI might be incorrect\n\nTry checking the publisher's website or your institutional access.", doi))]),
+                                    content: Some(vec![Content::text(format!("⚠️ Download failed - no content received\n\nDOI: {doi}\n\nThe paper was found but no downloadable content is available. This could be because:\n• The paper is too new or recently published\n• It's behind a paywall not covered by available sources\n• The DOI might be incorrect\n\nTry checking the publisher's website or your institutional access."))]),
                                     structured_content: None,
                                     is_error: Some(true),
                                 })
                             } else {
                                 Ok(CallToolResult {
                                     content: Some(vec![Content::text(format!("✅ Download successful!\n\n📄 File: {}\n📦 Size: {} KB\n✓ Status: Complete", 
-                                        result.file_path.as_ref().map(|p| p.display().to_string()).unwrap_or("Unknown".to_string()),
+                                        result.file_path.as_ref().map_or("Unknown".to_string(), |p| p.display().to_string()),
                                         file_size / 1024))]),
                                     structured_content: None,
                                     is_error: Some(false),
@@ -338,7 +339,7 @@ impl ServerHandler for ResearchServerHandler {
                             let error_msg = match e.to_string().as_str() {
                                 msg if msg.contains("No PDF available") => {
                                     format!("⚠️ Paper not available on Sci-Hub\n\n\
-                                            DOI: {}\n\n\
+                                            DOI: {doi}\n\n\
                                             This paper is not currently available through Sci-Hub. This could be because:\n\
                                             • The paper is too new (published recently)\n\
                                             • It's from a publisher not covered by Sci-Hub\n\
@@ -347,18 +348,22 @@ impl ServerHandler for ResearchServerHandler {
                                             • Try searching for the paper on Google Scholar\n\
                                             • Check if your institution has access\n\
                                             • Try arXiv or other preprint servers\n\
-                                            • Contact the authors directly", doi)
+                                            • Contact the authors directly")
                                 }
                                 msg if msg.contains("Network") || msg.contains("timeout") => {
-                                    format!("⚠️ Network error while downloading\n\n\
+                                    format!(
+                                        "⚠️ Network error while downloading\n\n\
                                             Please check your internet connection and try again.\n\
-                                            Error: {}", msg)
+                                            Error: {msg}"
+                                    )
                                 }
                                 _ => {
-                                    format!("⚠️ Download failed\n\n\
-                                            DOI: {}\n\
-                                            Error: {}\n\n\
-                                            Please try again or use a different DOI.", doi, e)
+                                    format!(
+                                        "⚠️ Download failed\n\n\
+                                            DOI: {doi}\n\
+                                            Error: {e}\n\n\
+                                            Please try again or use a different DOI."
+                                    )
                                 }
                             };
                             Ok(CallToolResult {
@@ -374,7 +379,7 @@ impl ServerHandler for ResearchServerHandler {
                         serde_json::Value::Object(request.arguments.unwrap_or_default()),
                     )
                     .map_err(|e| {
-                        ErrorData::invalid_params(format!("Invalid metadata input: {}", e), None)
+                        ErrorData::invalid_params(format!("Invalid metadata input: {e}"), None)
                     })?;
 
                     let result = metadata_extractor
@@ -382,7 +387,7 @@ impl ServerHandler for ResearchServerHandler {
                         .await
                         .map_err(|e| {
                             ErrorData::internal_error(
-                                format!("Metadata extraction failed: {}", e),
+                                format!("Metadata extraction failed: {e}"),
                                 None,
                             )
                         })?;
@@ -391,7 +396,7 @@ impl ServerHandler for ResearchServerHandler {
                         content: Some(vec![Content::text(
                             serde_json::to_string_pretty(&result).map_err(|e| {
                                 ErrorData::internal_error(
-                                    format!("Serialization failed: {}", e),
+                                    format!("Serialization failed: {e}"),
                                     None,
                                 )
                             })?,

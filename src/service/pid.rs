@@ -28,8 +28,7 @@ impl PidFile {
                 // Check if process is still running
                 if Self::is_process_running(existing_pid) {
                     return Err(crate::Error::Service(format!(
-                        "Service already running with PID {}",
-                        existing_pid
+                        "Service already running with PID {existing_pid}"
                     )));
                 }
                 info!(
@@ -43,7 +42,7 @@ impl PidFile {
         // Create parent directory if needed
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| {
-                crate::Error::Service(format!("Failed to create PID directory: {}", e))
+                crate::Error::Service(format!("Failed to create PID directory: {e}"))
             })?;
         }
 
@@ -53,10 +52,10 @@ impl PidFile {
             .write(true)
             .truncate(true)
             .open(&path)
-            .map_err(|e| crate::Error::Service(format!("Failed to create PID file: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to create PID file: {e}")))?;
 
-        writeln!(file, "{}", pid)
-            .map_err(|e| crate::Error::Service(format!("Failed to write PID: {}", e)))?;
+        writeln!(file, "{pid}")
+            .map_err(|e| crate::Error::Service(format!("Failed to write PID: {e}")))?;
 
         // Try to lock the file (advisory lock)
         let (locked, lock) = Self::lock_file(file);
@@ -72,16 +71,16 @@ impl PidFile {
     /// Read PID from file
     fn read_pid(path: &Path) -> crate::Result<u32> {
         let mut file = File::open(path)
-            .map_err(|e| crate::Error::Service(format!("Failed to open PID file: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to open PID file: {e}")))?;
 
         let mut contents = String::new();
         file.read_to_string(&mut contents)
-            .map_err(|e| crate::Error::Service(format!("Failed to read PID file: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to read PID file: {e}")))?;
 
         contents
             .trim()
             .parse::<u32>()
-            .map_err(|e| crate::Error::Service(format!("Invalid PID in file: {}", e)))
+            .map_err(|e| crate::Error::Service(format!("Invalid PID in file: {e}")))
     }
 
     /// Check if a process is running
@@ -147,7 +146,7 @@ impl PidFile {
         }
 
         fs::remove_file(&self.path)
-            .map_err(|e| crate::Error::Service(format!("Failed to remove PID file: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to remove PID file: {e}")))?;
 
         Ok(())
     }
@@ -167,22 +166,22 @@ impl PidFile {
     }
 
     /// Get the PID
-    pub fn pid(&self) -> u32 {
+    #[must_use] pub const fn pid(&self) -> u32 {
         self.pid
     }
 
     /// Get the path
-    pub fn path(&self) -> &Path {
+    #[must_use] pub fn path(&self) -> &Path {
         &self.path
     }
 
     /// Check if the PID file is locked
-    pub fn is_locked(&self) -> bool {
+    #[must_use] pub const fn is_locked(&self) -> bool {
         self.locked
     }
 
     /// Get standard PID file path for the service
-    pub fn standard_path() -> PathBuf {
+    #[must_use] pub fn standard_path() -> PathBuf {
         // Try different standard locations
         if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             // User runtime directory (systemd style)

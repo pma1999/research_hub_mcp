@@ -95,7 +95,7 @@ pub enum Error {
 }
 
 /// Error categorization for retry strategies
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ErrorCategory {
     /// Permanent errors - should not retry
     Permanent,
@@ -109,37 +109,38 @@ pub enum ErrorCategory {
 
 impl Error {
     /// Categorize error for retry logic
-    pub fn category(&self) -> ErrorCategory {
+    #[must_use]
+    pub const fn category(&self) -> ErrorCategory {
         match self {
             // Permanent errors - don't retry
-            Error::Config(_)
-            | Error::InvalidInput { .. }
-            | Error::AuthenticationFailed(_)
-            | Error::AuthorizationDenied { .. }
-            | Error::Parse { .. }
-            | Error::Serde(_) => ErrorCategory::Permanent,
+            Self::Config(_)
+            | Self::InvalidInput { .. }
+            | Self::AuthenticationFailed(_)
+            | Self::AuthorizationDenied { .. }
+            | Self::Parse { .. }
+            | Self::Serde(_) => ErrorCategory::Permanent,
 
             // Rate limited - retry with backoff
-            Error::RateLimitExceeded { .. } => ErrorCategory::RateLimited,
+            Self::RateLimitExceeded { .. } => ErrorCategory::RateLimited,
 
             // Circuit breaker errors
-            Error::CircuitBreakerOpen { .. } | Error::CircuitBreakerHalfOpen => {
+            Self::CircuitBreakerOpen { .. } | Self::CircuitBreakerHalfOpen => {
                 ErrorCategory::CircuitBreaker
             }
 
             // Transient errors - retry with exponential backoff
-            Error::Http(_)
-            | Error::NetworkTimeout { .. }
-            | Error::ConnectionRefused { .. }
-            | Error::DnsFailure { .. }
-            | Error::ServiceUnavailable { .. }
-            | Error::InternalServerError(_)
-            | Error::ServiceOverloaded { .. }
-            | Error::Timeout { .. }
-            | Error::Io(_) => ErrorCategory::Transient,
+            Self::Http(_)
+            | Self::NetworkTimeout { .. }
+            | Self::ConnectionRefused { .. }
+            | Self::DnsFailure { .. }
+            | Self::ServiceUnavailable { .. }
+            | Self::InternalServerError(_)
+            | Self::ServiceOverloaded { .. }
+            | Self::Timeout { .. }
+            | Self::Io(_) => ErrorCategory::Transient,
 
             // Service specific - depends on context
-            Error::SciHub { code, .. } => {
+            Self::SciHub { code, .. } => {
                 match *code {
                     // Rate limiting (handle first to avoid unreachable pattern)
                     429 => ErrorCategory::RateLimited,
@@ -153,7 +154,7 @@ impl Error {
             }
 
             // Provider errors - categorize based on the error type
-            Error::Provider(_) => ErrorCategory::Transient,
+            Self::Provider(_) => ErrorCategory::Transient,
 
             // Default to transient for unknown errors
             _ => ErrorCategory::Transient,
@@ -161,7 +162,8 @@ impl Error {
     }
 
     /// Check if error is retryable
-    pub fn is_retryable(&self) -> bool {
+    #[must_use]
+    pub const fn is_retryable(&self) -> bool {
         matches!(
             self.category(),
             ErrorCategory::Transient | ErrorCategory::RateLimited
@@ -169,22 +171,24 @@ impl Error {
     }
 
     /// Get suggested retry delay for rate limited errors
-    pub fn retry_after(&self) -> Option<Duration> {
+    #[must_use]
+    pub const fn retry_after(&self) -> Option<Duration> {
         match self {
-            Error::RateLimitExceeded { retry_after } => Some(*retry_after),
+            Self::RateLimitExceeded { retry_after } => Some(*retry_after),
             _ => None,
         }
     }
 
     /// Check if error indicates a need for circuit breaker
-    pub fn should_trigger_circuit_breaker(&self) -> bool {
+    #[must_use]
+    pub const fn should_trigger_circuit_breaker(&self) -> bool {
         matches!(
             self,
-            Error::ServiceUnavailable { .. }
-                | Error::InternalServerError(_)
-                | Error::ServiceOverloaded { .. }
-                | Error::NetworkTimeout { .. }
-                | Error::ConnectionRefused { .. }
+            Self::ServiceUnavailable { .. }
+                | Self::InternalServerError(_)
+                | Self::ServiceOverloaded { .. }
+                | Self::NetworkTimeout { .. }
+                | Self::ConnectionRefused { .. }
         )
     }
 }
@@ -196,30 +200,30 @@ impl From<crate::client::providers::ProviderError> for Error {
     fn from(err: crate::client::providers::ProviderError) -> Self {
         match err {
             crate::client::providers::ProviderError::Network(msg) => {
-                Error::Provider(format!("Network error: {}", msg))
+                Self::Provider(format!("Network error: {msg}"))
             }
-            crate::client::providers::ProviderError::Parse(msg) => Error::Parse {
+            crate::client::providers::ProviderError::Parse(msg) => Self::Parse {
                 context: "provider".to_string(),
                 message: msg,
             },
-            crate::client::providers::ProviderError::RateLimit => Error::RateLimitExceeded {
+            crate::client::providers::ProviderError::RateLimit => Self::RateLimitExceeded {
                 retry_after: Duration::from_secs(60),
             },
-            crate::client::providers::ProviderError::Auth(msg) => Error::AuthenticationFailed(msg),
-            crate::client::providers::ProviderError::InvalidQuery(msg) => Error::InvalidInput {
+            crate::client::providers::ProviderError::Auth(msg) => Self::AuthenticationFailed(msg),
+            crate::client::providers::ProviderError::InvalidQuery(msg) => Self::InvalidInput {
                 field: "query".to_string(),
                 reason: msg,
             },
             crate::client::providers::ProviderError::ServiceUnavailable(msg) => {
-                Error::ServiceUnavailable {
+                Self::ServiceUnavailable {
                     service: "provider".to_string(),
                     reason: msg,
                 }
             }
-            crate::client::providers::ProviderError::Timeout => Error::Timeout {
+            crate::client::providers::ProviderError::Timeout => Self::Timeout {
                 timeout: Duration::from_secs(30),
             },
-            crate::client::providers::ProviderError::Other(msg) => Error::Provider(msg),
+            crate::client::providers::ProviderError::Other(msg) => Self::Provider(msg),
         }
     }
 }

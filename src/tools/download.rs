@@ -13,13 +13,13 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
 // use tokio_util::io::ReaderStream; // Not needed currently
-use tracing::{debug, info, warn, instrument};
+use tracing::{debug, info, instrument, warn};
 
 /// Input parameters for the paper download tool
 /// IMPORTANT: Either 'doi' or 'url' must be provided (not both optional!)
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DownloadInput {
-    /// DOI of the paper to download (preferred - extract from search_papers results)
+    /// DOI of the paper to download (preferred - extract from `search_papers` results)
     #[schemars(
         description = "DOI of the paper (required if url not provided). Extract from search results."
     )]
@@ -234,7 +234,7 @@ impl DownloadTool {
             } else {
                 return Err(crate::Error::InvalidInput {
                     field: "file_path".to_string(),
-                    reason: format!("File already exists: {}", file_path.display()),
+                    reason: format!("File already exists: {file_path}", file_path = file_path.display()),
                 });
             }
         }
@@ -299,7 +299,7 @@ impl DownloadTool {
     ) -> Result<(String, Option<PaperMetadata>)> {
         if let Some(doi_str) = &input.doi {
             info!("Attempting to download paper with DOI: {}", doi_str);
-            
+
             // Create a search query for the DOI
             let search_query = crate::client::providers::SearchQuery {
                 query: doi_str.clone(),
@@ -311,10 +311,12 @@ impl DownloadTool {
 
             // Use the meta search client to find papers across ALL providers
             let search_result = self.client.search(&search_query).await?;
-            
-            info!("Meta-search found {} papers from {} providers", 
-                search_result.papers.len(), 
-                search_result.successful_providers);
+
+            info!(
+                "Meta-search found {} papers from {} providers",
+                search_result.papers.len(),
+                search_result.successful_providers
+            );
 
             // First, look for any paper with a PDF URL already available
             let paper_with_pdf = search_result
@@ -332,14 +334,14 @@ impl DownloadTool {
 
             // If no direct PDF URL, try cascade approach through each provider
             info!("No direct PDF URL found, attempting cascade retrieval through all providers");
-            
+
             // Log what we found from each source
             for (source, papers) in &search_result.by_source {
                 if !papers.is_empty() {
                     info!("Provider '{}' found paper metadata but no PDF URL", source);
                 }
             }
-            
+
             // Try cascade PDF retrieval through all providers
             match self.client.get_pdf_url_cascade(doi_str).await {
                 Ok(Some(pdf_url)) => {
@@ -355,7 +357,7 @@ impl DownloadTool {
                     warn!("Cascade retrieval failed with error: {}", e);
                 }
             }
-            
+
             // If cascade also failed, return detailed error with metadata
             if let Some(paper) = search_result.papers.first() {
                 let error_msg = format!(
@@ -371,7 +373,7 @@ impl DownloadTool {
                     paper.authors.join(", "),
                     paper.year.map_or("year unknown".to_string(), |y| y.to_string())
                 );
-                
+
                 Err(crate::Error::ServiceUnavailable {
                     service: "PDF Download".to_string(),
                     reason: error_msg,
@@ -473,7 +475,7 @@ impl DownloadTool {
         }
 
         // Final fallback
-        format!("paper_{}.pdf", chrono::Utc::now().timestamp())
+        format!("paper_{timestamp}.pdf", timestamp = chrono::Utc::now().timestamp())
     }
 
     /// Execute the actual download
@@ -611,7 +613,7 @@ impl DownloadTool {
         let mut stream = response.bytes_stream();
         let mut last_progress_time = SystemTime::now();
         let mut bytes_at_last_time = progress.downloaded;
-        
+
         // Only create/open file when we start receiving data
         let mut file_created = false;
         let mut file: Option<File> = None;
@@ -621,7 +623,12 @@ impl DownloadTool {
                 .map_err(|e| crate::Error::Service(format!("Download stream error: {e}")))?;
 
             // Create file on first successful chunk
-            if !file_created {
+            if file_created {
+                // File already created, write subsequent chunks
+                if let Some(ref mut f) = file {
+                    f.write_all(&chunk).await.map_err(crate::Error::Io)?;
+                }
+            } else {
                 let mut file_handle = if file_path.exists() && start_byte > 0 {
                     // File exists, open for append
                     OpenOptions::new()
@@ -634,16 +641,14 @@ impl DownloadTool {
                     // Create new file only when we have data to write
                     File::create(file_path).await.map_err(crate::Error::Io)?
                 };
-                
+
                 // Write the first chunk
-                file_handle.write_all(&chunk).await.map_err(crate::Error::Io)?;
+                file_handle
+                    .write_all(&chunk)
+                    .await
+                    .map_err(crate::Error::Io)?;
                 file = Some(file_handle);
                 file_created = true;
-            } else {
-                // File already created, write subsequent chunks
-                if let Some(ref mut f) = file {
-                    f.write_all(&chunk).await.map_err(crate::Error::Io)?;
-                }
             }
 
             progress.downloaded += chunk.len() as u64;
@@ -665,7 +670,9 @@ impl DownloadTool {
 
         // Ensure we actually received some data
         if !file_created {
-            return Err(crate::Error::Service("No data received from download".to_string()));
+            return Err(crate::Error::Service(
+                "No data received from download".to_string(),
+            ));
         }
 
         Ok(())
@@ -771,7 +778,6 @@ impl DownloadTool {
             })
         }
     }
-
 
     /// Calculate SHA256 hash of a file
     async fn calculate_file_hash(&self, file_path: &Path) -> Result<String> {
@@ -985,7 +991,6 @@ mod tests {
         assert_eq!(file_path.file_name().unwrap(), "test.pdf");
         assert!(file_path.starts_with(temp_dir.path()));
     }
-
 
     #[tokio::test]
     async fn test_file_hash_calculation() {

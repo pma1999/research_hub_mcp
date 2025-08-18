@@ -72,8 +72,7 @@ async fn test_transport_validation() {
 #[tokio::test]
 async fn test_server_handler_integration() {
     let config = Config::default();
-    let handler =
-        rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
+    let handler = rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
 
     // Test ping
     let ping_result = handler.ping().await;

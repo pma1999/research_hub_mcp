@@ -29,16 +29,23 @@ struct BiorxivPaper {
     doi: String,
     title: String,
     authors: String,
+    #[allow(dead_code)]
     author_corresponding: Option<String>,
+    #[allow(dead_code)]
     author_corresponding_institution: Option<String>,
     date: String, // Format: YYYY-MM-DD
+    #[allow(dead_code)]
     version: Option<u32>,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     paper_type: Option<String>,
+    #[allow(dead_code)]
     category: Option<String>,
+    #[allow(dead_code)]
     jatsxml: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
+    #[allow(dead_code)]
     published: Option<String>,
     server: String, // "biorxiv" or "medrxiv"
 }
@@ -56,7 +63,7 @@ impl BiorxivProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -78,19 +85,20 @@ impl BiorxivProvider {
     }
 
     /// Extract DOI from various bioRxiv formats
-    fn extract_biorxiv_doi(&self, doi_or_url: &str) -> Option<String> {
+    fn extract_biorxiv_doi(doi_or_url: &str) -> Option<String> {
         // Handle various bioRxiv DOI formats:
         // - 10.1101/2023.01.01.000001
         // - https://doi.org/10.1101/2023.01.01.000001
         // - https://www.biorxiv.org/content/10.1101/2023.01.01.000001v1
-        
+
         if doi_or_url.contains("10.1101/") {
             // Extract the DOI part
             if let Some(doi_start) = doi_or_url.find("10.1101/") {
                 let doi_part = &doi_or_url[doi_start..];
                 // Remove version suffix if present (e.g., "v1", "v2")
                 if let Some(version_pos) = doi_part.find('v') {
-                    if version_pos > 8 { // Ensure it's not part of the date
+                    if version_pos > 8 {
+                        // Ensure it's not part of the date
                         return Some(doi_part[..version_pos].to_string());
                     }
                 }
@@ -100,7 +108,7 @@ impl BiorxivProvider {
         None
     }
 
-    /// Convert bioRxiv paper to PaperMetadata
+    /// Convert bioRxiv paper to `PaperMetadata`
     fn convert_paper(&self, paper: BiorxivPaper) -> PaperMetadata {
         // Parse authors from the comma-separated string
         let authors: Vec<String> = paper
@@ -146,7 +154,7 @@ impl BiorxivProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if response.status().as_u16() == 404 {
             debug!("Paper not found in bioRxiv for DOI: {}", doi);
@@ -163,14 +171,14 @@ impl BiorxivProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("bioRxiv response: {}", response_text);
 
-        let biorxiv_response: BiorxivResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
+        let biorxiv_response: BiorxivResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
                 warn!("Failed to parse bioRxiv response: {}", response_text);
-                ProviderError::Parse(format!("Failed to parse JSON: {}", e))
+                ProviderError::Parse(format!("Failed to parse JSON: {e}"))
             })?;
 
         // Check for error messages
@@ -189,13 +197,17 @@ impl BiorxivProvider {
     }
 
     /// Search for papers by date range (bioRxiv doesn't support general text search)
-    async fn search_recent_papers(&self, days_back: u32, limit: u32) -> Result<Vec<PaperMetadata>, ProviderError> {
+    async fn search_recent_papers(
+        &self,
+        days_back: u32,
+        limit: u32,
+    ) -> Result<Vec<PaperMetadata>, ProviderError> {
         use chrono::{Duration as ChronoDuration, Utc};
 
         // Calculate date range
         let end_date = Utc::now();
-        let start_date = end_date - ChronoDuration::days(days_back as i64);
-        
+        let start_date = end_date - ChronoDuration::days(i64::from(days_back));
+
         let start_date_str = start_date.format("%Y-%m-%d").to_string();
         let end_date_str = end_date.format("%Y-%m-%d").to_string();
 
@@ -207,7 +219,7 @@ impl BiorxivProvider {
             .get(&url)
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::Network(format!(
@@ -219,14 +231,14 @@ impl BiorxivProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("bioRxiv search response: {}", response_text);
 
-        let biorxiv_response: BiorxivResponse = serde_json::from_str(&response_text)
-            .map_err(|e| {
+        let biorxiv_response: BiorxivResponse =
+            serde_json::from_str(&response_text).map_err(|e| {
                 warn!("Failed to parse bioRxiv search response: {}", response_text);
-                ProviderError::Parse(format!("Failed to parse JSON: {}", e))
+                ProviderError::Parse(format!("Failed to parse JSON: {e}"))
             })?;
 
         // Check for error messages
@@ -250,11 +262,11 @@ impl BiorxivProvider {
 
 #[async_trait]
 impl SourceProvider for BiorxivProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "biorxiv"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "bioRxiv - Biology preprint server"
     }
 
@@ -281,12 +293,15 @@ impl SourceProvider for BiorxivProvider {
     ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
 
-        info!("Searching bioRxiv for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Searching bioRxiv for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         let papers = match query.search_type {
             SearchType::Doi => {
                 // Check if this is a bioRxiv DOI
-                if let Some(biorxiv_doi) = self.extract_biorxiv_doi(&query.query) {
+                if let Some(biorxiv_doi) = Self::extract_biorxiv_doi(&query.query) {
                     if let Some(paper) = self.get_paper_by_doi(&biorxiv_doi).await? {
                         vec![paper]
                     } else {
@@ -305,7 +320,10 @@ impl SourceProvider for BiorxivProvider {
             }
             _ => {
                 // bioRxiv doesn't support other search types
-                warn!("bioRxiv only supports DOI and limited keyword searches, ignoring query: {}", query.query);
+                warn!(
+                    "bioRxiv only supports DOI and limited keyword searches, ignoring query: {}",
+                    query.query
+                );
                 Vec::new()
             }
         };
@@ -316,7 +334,7 @@ impl SourceProvider for BiorxivProvider {
         let result = ProviderResult {
             papers,
             source: "bioRxiv".to_string(),
-            total_available: Some(papers_count as u32),
+            total_available: Some(u32::try_from(papers_count).unwrap_or(u32::MAX)),
             search_time,
             has_more: false, // bioRxiv API doesn't support pagination in our simple implementation
             metadata: HashMap::new(),
@@ -337,9 +355,9 @@ impl SourceProvider for BiorxivProvider {
         _context: &SearchContext,
     ) -> Result<Option<PaperMetadata>, ProviderError> {
         info!("Getting paper by DOI from bioRxiv: {}", doi);
-        
+
         // Check if this is a bioRxiv DOI first
-        if let Some(biorxiv_doi) = self.extract_biorxiv_doi(doi) {
+        if let Some(biorxiv_doi) = Self::extract_biorxiv_doi(doi) {
             self.get_paper_by_doi(&biorxiv_doi).await
         } else {
             // Not a bioRxiv DOI
@@ -359,7 +377,10 @@ impl SourceProvider for BiorxivProvider {
                 Ok(true)
             }
             Ok(response) => {
-                warn!("bioRxiv health check failed with status: {}", response.status());
+                warn!(
+                    "bioRxiv health check failed with status: {}",
+                    response.status()
+                );
                 Ok(false)
             }
             Err(e) => {
@@ -369,7 +390,11 @@ impl SourceProvider for BiorxivProvider {
         }
     }
 
-    async fn get_pdf_url(&self, doi: &str, context: &SearchContext) -> Result<Option<String>, ProviderError> {
+    async fn get_pdf_url(
+        &self,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<String>, ProviderError> {
         // For bioRxiv, if we can get the paper, we can construct the PDF URL
         if let Some(paper) = self.get_by_doi(doi, context).await? {
             Ok(paper.pdf_url)
@@ -398,7 +423,7 @@ mod tests {
     #[test]
     fn test_provider_interface() {
         let provider = BiorxivProvider::new().unwrap();
-        
+
         assert_eq!(provider.name(), "biorxiv");
         assert!(provider.supports_full_text());
         assert_eq!(provider.priority(), 75);
@@ -408,14 +433,23 @@ mod tests {
     #[test]
     fn test_biorxiv_doi_extraction() {
         let provider = BiorxivProvider::new().unwrap();
-        
+
         let test_cases = vec![
-            ("10.1101/2023.01.01.000001", Some("10.1101/2023.01.01.000001")),
-            ("https://doi.org/10.1101/2023.01.01.000001", Some("10.1101/2023.01.01.000001")),
-            ("https://www.biorxiv.org/content/10.1101/2023.01.01.000001v1", Some("10.1101/2023.01.01.000001")),
+            (
+                "10.1101/2023.01.01.000001",
+                Some("10.1101/2023.01.01.000001"),
+            ),
+            (
+                "https://doi.org/10.1101/2023.01.01.000001",
+                Some("10.1101/2023.01.01.000001"),
+            ),
+            (
+                "https://www.biorxiv.org/content/10.1101/2023.01.01.000001v1",
+                Some("10.1101/2023.01.01.000001"),
+            ),
             ("10.1038/nature12373", None), // Not a bioRxiv DOI
         ];
-        
+
         for (input, expected) in test_cases {
             let result = provider.extract_biorxiv_doi(input);
             assert_eq!(result.as_deref(), expected, "Failed for input: {}", input);
@@ -425,12 +459,12 @@ mod tests {
     #[test]
     fn test_url_building() {
         let provider = BiorxivProvider::new().unwrap();
-        
+
         let doi_url = provider.build_doi_url("10.1101/2023.01.01.000001");
         assert!(doi_url.contains("api.biorxiv.org"));
         assert!(doi_url.contains("details/biorxiv"));
         assert!(doi_url.contains("10.1101/2023.01.01.000001"));
-        
+
         let search_url = provider.build_date_search_url("2023-01-01", "2023-01-31");
         assert!(search_url.contains("2023-01-01"));
         assert!(search_url.contains("2023-01-31"));

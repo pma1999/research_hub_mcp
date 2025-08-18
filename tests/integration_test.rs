@@ -26,7 +26,10 @@ async fn test_config_validation() {
     // Empty endpoints
     config.research_source.endpoints.clear();
     assert!(matches!(config.validate(), Err(Error::InvalidInput { .. })));
-    config.research_source.endpoints.push("https://test.com".to_string());
+    config
+        .research_source
+        .endpoints
+        .push("https://test.com".to_string());
 
     // Zero rate limit
     config.research_source.rate_limit_per_sec = 0;

@@ -293,7 +293,7 @@ impl DaemonService {
         };
 
         let logger = syslog::unix(formatter)
-            .map_err(|e| crate::Error::Service(format!("Failed to init syslog: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to init syslog: {e}")))?;
 
         // Note: In a real implementation, we'd integrate this with tracing
         // For now, we just initialize it
@@ -352,7 +352,7 @@ impl DaemonService {
                             health.set_unhealthy("Memory limit exceeded").await;
                         }
 
-                        if max_cpu > 0 && cpu_usage > max_cpu as f32 {
+                        if max_cpu > 0 && cpu_usage > f32::from(max_cpu) {
                             error!("CPU limit exceeded: {:.1}% > {}%", cpu_usage, max_cpu);
                             health.set_unhealthy("CPU limit exceeded").await;
                         }
@@ -407,7 +407,7 @@ impl DaemonService {
     }
 
     /// Reload configuration without restart
-    pub async fn reload_config(&mut self) -> Result<()> {
+    pub fn reload_config(&mut self) -> Result<()> {
         info!("Reloading configuration");
 
         // In a real implementation, this would:
@@ -433,8 +433,7 @@ impl DaemonService {
             uptime_seconds: stats
                 .start_time
                 .and_then(|start| SystemTime::now().duration_since(start).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
+                .map_or(0, |d| d.as_secs()),
             requests_handled: stats.requests_handled,
             errors_count: stats.errors_count,
             restart_count: stats.restart_count,

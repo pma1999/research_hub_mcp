@@ -13,9 +13,11 @@ use tracing::{debug, info, warn};
 #[derive(Debug, Deserialize)]
 struct CoreSearchResponse {
     #[serde(rename = "totalHits")]
+    #[allow(dead_code)]
     total_hits: Option<u32>,
     data: Vec<CoreArticle>,
     #[serde(rename = "scrollId")]
+    #[allow(dead_code)]
     scroll_id: Option<String>,
 }
 
@@ -31,6 +33,7 @@ struct CoreArticle {
     #[serde(rename = "yearPublished")]
     year_published: Option<u32>,
     #[serde(rename = "publishedDate")]
+    #[allow(dead_code)]
     published_date: Option<String>,
     journals: Option<Vec<CoreJournal>>,
     #[serde(rename = "downloadUrl")]
@@ -39,7 +42,9 @@ struct CoreArticle {
     full_text_identifier: Option<String>,
     #[serde(rename = "oai")]
     oai: Option<String>,
+    #[allow(dead_code)]
     language: Option<String>,
+    #[allow(dead_code)]
     subjects: Option<Vec<String>>,
     #[serde(rename = "hasFullText")]
     has_full_text: Option<bool>,
@@ -48,6 +53,7 @@ struct CoreArticle {
 #[derive(Debug, Deserialize)]
 struct CoreJournal {
     title: Option<String>,
+    #[allow(dead_code)]
     identifiers: Option<Vec<String>>,
 }
 
@@ -72,7 +78,7 @@ impl CoreProvider {
             .timeout(Duration::from_secs(30))
             .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
             .build()
-            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
         Ok(Self {
             client,
@@ -94,30 +100,26 @@ impl CoreProvider {
 
     /// Build DOI lookup URL
     fn build_doi_url(&self, doi: &str) -> String {
-        format!(
-            "{}/works?doi={}",
-            self.base_url,
-            urlencoding::encode(doi)
-        )
+        format!("{}/works?doi={}", self.base_url, urlencoding::encode(doi))
     }
 
     /// Get request headers including API key if available
     fn get_headers(&self) -> HashMap<String, String> {
         let mut headers = HashMap::new();
         if let Some(api_key) = &self.api_key {
-            headers.insert("Authorization".to_string(), format!("Bearer {}", api_key));
+            headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
         }
         headers
     }
 
-    /// Convert CORE article to PaperMetadata
+    /// Convert CORE article to `PaperMetadata`
     fn convert_article(&self, article: CoreArticle) -> PaperMetadata {
         // Use DOI if available, otherwise create a CORE identifier
         let doi = article.doi.clone().unwrap_or_else(|| {
             if let Some(id) = article.id {
-                format!("core:{}", id)
+                format!("core:{id}")
             } else if let Some(oai) = &article.oai {
-                format!("core:oai:{}", oai)
+                format!("core:oai:{oai}")
             } else {
                 "core:unknown".to_string()
             }
@@ -153,12 +155,17 @@ impl CoreProvider {
     }
 
     /// Search papers by query
-    async fn search_papers(&self, query: &str, limit: u32, offset: u32) -> Result<Vec<PaperMetadata>, ProviderError> {
+    async fn search_papers(
+        &self,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<PaperMetadata>, ProviderError> {
         let url = self.build_search_url(query, limit, offset);
         debug!("Searching CORE: {}", url);
 
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -167,7 +174,7 @@ impl CoreProvider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
             return Err(ProviderError::Network(format!(
@@ -179,7 +186,7 @@ impl CoreProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("CORE response: {}", response_text);
 
@@ -208,8 +215,11 @@ impl CoreProvider {
         }
 
         // If all parsing attempts fail, return error
-        warn!("Failed to parse CORE response with any known format: {}", response_text);
-        Err(ProviderError::Parse(format!("Failed to parse CORE API response: unknown format")))
+        warn!(
+            "Failed to parse CORE response with any known format: {}",
+            response_text
+        );
+        Err(ProviderError::Parse("Failed to parse CORE API response: unknown format".to_string()))
     }
 
     /// Get paper by DOI
@@ -218,7 +228,7 @@ impl CoreProvider {
         debug!("Getting paper by DOI from CORE: {}", url);
 
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -227,7 +237,7 @@ impl CoreProvider {
         let response = request
             .send()
             .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if response.status().as_u16() == 404 {
             debug!("Paper not found in CORE for DOI: {}", doi);
@@ -244,12 +254,12 @@ impl CoreProvider {
         let response_text = response
             .text()
             .await
-            .map_err(|e| ProviderError::Network(format!("Failed to read response: {}", e)))?;
+            .map_err(|e| ProviderError::Network(format!("Failed to read response: {e}")))?;
 
         debug!("CORE DOI response: {}", response_text);
 
         let article_response: CoreArticleResponse = serde_json::from_str(&response_text)
-            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {}", e)))?;
+            .map_err(|e| ProviderError::Parse(format!("Failed to parse JSON: {e}")))?;
 
         if article_response.status == "OK" {
             if let Some(article) = article_response.data {
@@ -266,16 +276,22 @@ impl CoreProvider {
 
 #[async_trait]
 impl SourceProvider for CoreProvider {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "core"
     }
 
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "CORE - World's largest collection of open access research papers"
     }
 
     fn supported_search_types(&self) -> Vec<SearchType> {
-        vec![SearchType::Doi, SearchType::Title, SearchType::Author, SearchType::Keywords, SearchType::Auto]
+        vec![
+            SearchType::Doi,
+            SearchType::Title,
+            SearchType::Author,
+            SearchType::Keywords,
+            SearchType::Auto,
+        ]
     }
 
     fn supports_full_text(&self) -> bool {
@@ -301,7 +317,10 @@ impl SourceProvider for CoreProvider {
     ) -> Result<ProviderResult, ProviderError> {
         let start_time = Instant::now();
 
-        info!("Searching CORE for: {} (type: {:?})", query.query, query.search_type);
+        info!(
+            "Searching CORE for: {} (type: {:?})",
+            query.query, query.search_type
+        );
 
         let papers = match query.search_type {
             SearchType::Doi => {
@@ -310,12 +329,14 @@ impl SourceProvider for CoreProvider {
                     vec![paper]
                 } else {
                     // Fallback to search if DOI lookup fails
-                    self.search_papers(&query.query, query.max_results, query.offset).await?
+                    self.search_papers(&query.query, query.max_results, query.offset)
+                        .await?
                 }
             }
             _ => {
                 // Use general search for all other types
-                self.search_papers(&query.query, query.max_results, query.offset).await?
+                self.search_papers(&query.query, query.max_results, query.offset)
+                    .await?
             }
         };
 
@@ -325,7 +346,7 @@ impl SourceProvider for CoreProvider {
         let result = ProviderResult {
             papers,
             source: "CORE".to_string(),
-            total_available: Some(papers_count as u32),
+            total_available: Some(u32::try_from(papers_count).unwrap_or(u32::MAX)),
             search_time,
             has_more: papers_count >= query.max_results as usize,
             metadata: HashMap::new(),
@@ -353,9 +374,9 @@ impl SourceProvider for CoreProvider {
         debug!("Performing CORE health check");
 
         let url = format!("{}/search/works?q=test&limit=1", self.base_url);
-        
+
         let mut request = self.client.get(&url);
-        
+
         // Add API key header if available
         for (key, value) in self.get_headers() {
             request = request.header(&key, &value);
@@ -367,7 +388,10 @@ impl SourceProvider for CoreProvider {
                 Ok(true)
             }
             Ok(response) => {
-                warn!("CORE health check failed with status: {}", response.status());
+                warn!(
+                    "CORE health check failed with status: {}",
+                    response.status()
+                );
                 Ok(false)
             }
             Err(e) => {
@@ -377,7 +401,11 @@ impl SourceProvider for CoreProvider {
         }
     }
 
-    async fn get_pdf_url(&self, doi: &str, context: &SearchContext) -> Result<Option<String>, ProviderError> {
+    async fn get_pdf_url(
+        &self,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<String>, ProviderError> {
         // Try to get the paper first, then extract PDF URL
         if let Some(paper) = self.get_by_doi(doi, context).await? {
             Ok(paper.pdf_url)
@@ -406,23 +434,25 @@ mod tests {
     #[test]
     fn test_provider_interface() {
         let provider = CoreProvider::new(None).unwrap();
-        
+
         assert_eq!(provider.name(), "core");
         assert!(provider.supports_full_text());
         assert_eq!(provider.priority(), 86);
         assert!(provider.supported_search_types().contains(&SearchType::Doi));
-        assert!(provider.supported_search_types().contains(&SearchType::Title));
+        assert!(provider
+            .supported_search_types()
+            .contains(&SearchType::Title));
     }
 
     #[test]
     fn test_url_building() {
         let provider = CoreProvider::new(None).unwrap();
-        
+
         let search_url = provider.build_search_url("machine learning", 10, 0);
         assert!(search_url.contains("q=machine%20learning"));
         assert!(search_url.contains("limit=10"));
         assert!(search_url.contains("offset=0"));
-        
+
         let doi_url = provider.build_doi_url("10.1038/nature12373");
         assert!(doi_url.contains("doi=10.1038%2Fnature12373"));
     }
@@ -432,7 +462,10 @@ mod tests {
         let provider = CoreProvider::new(Some("test_key".to_string())).unwrap();
         let headers = provider.get_headers();
         assert!(headers.contains_key("Authorization"));
-        assert_eq!(headers.get("Authorization"), Some(&"Bearer test_key".to_string()));
+        assert_eq!(
+            headers.get("Authorization"),
+            Some(&"Bearer test_key".to_string())
+        );
     }
 
     #[test]

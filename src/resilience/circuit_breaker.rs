@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 /// Circuit breaker states
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CircuitState {
     /// Circuit is closed - requests flow normally
     Closed,
@@ -275,16 +275,18 @@ pub struct CircuitBreakerMetrics {
 
 impl CircuitBreakerMetrics {
     /// Check if circuit breaker is healthy
-    pub fn is_healthy(&self) -> bool {
+    #[must_use]
+    pub const fn is_healthy(&self) -> bool {
         matches!(self.state, CircuitState::Closed)
     }
 
     /// Get failure rate as percentage
+    #[must_use]
     pub fn failure_rate(&self) -> f64 {
         if self.total_requests == 0 {
             0.0
         } else {
-            (self.failure_count as f64 / self.total_requests as f64) * 100.0
+            (f64::from(self.failure_count) / self.total_requests as f64) * 100.0
         }
     }
 }

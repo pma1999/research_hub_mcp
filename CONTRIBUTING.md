@@ -1,6 +1,55 @@
 # Contributing to rust-research-mcp
 
-Thank you for your interest in contributing to rust-research-mcp! We welcome contributions from the community.
+Thank you for your interest in contributing to rust-research-mcp! This project provides academic paper search and retrieval capabilities through a Model Context Protocol (MCP) server.
+
+## 🚀 Quick Start
+
+1. **Fork and Clone**
+   ```bash
+   git clone https://github.com/YOUR_USERNAME/research_hub_mcp.git
+   cd research_hub_mcp
+   ```
+
+2. **Setup Development Environment**
+   ```bash
+   # Install Rust (if not already installed)
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   
+   # Install development tools
+   cargo install cargo-tarpaulin cargo-audit
+   rustup component add clippy rustfmt
+   ```
+
+3. **Verify Setup**
+   ```bash
+   cargo build
+   cargo test
+   cargo clippy -- -D warnings
+   cargo fmt --check
+   ```
+
+## 📋 Development Workflow
+
+### Code Style & Quality
+
+**Before submitting any PR, ensure:**
+
+```bash
+# Format code
+cargo fmt
+
+# Check for linting issues
+cargo clippy -- -D warnings
+
+# Run all tests
+cargo test
+
+# Security audit
+cargo audit
+
+# Check test coverage (aim for >85%)
+cargo tarpaulin --out html
+```
 
 ## Code of Conduct
 

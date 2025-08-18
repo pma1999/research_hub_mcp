@@ -1,5 +1,5 @@
 use futures::stream::StreamExt;
-use signal_hook::consts::signal::*;
+use signal_hook::consts::signal::{SIGTERM, SIGINT, SIGQUIT, SIGHUP};
 use signal_hook_tokio::Signals;
 use std::sync::Arc;
 use tokio::sync::{watch, RwLock};
@@ -14,7 +14,7 @@ pub struct SignalHandler {
 
 impl SignalHandler {
     /// Create a new signal handler
-    pub fn new() -> crate::Result<Self> {
+    pub const fn new() -> crate::Result<Self> {
         Ok(Self { signals: None })
     }
 
@@ -30,11 +30,11 @@ impl SignalHandler {
         // Register signal handlers
         #[cfg(unix)]
         let signals = Signals::new([SIGTERM, SIGINT, SIGQUIT, SIGHUP])
-            .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to register signals: {e}")))?;
 
         #[cfg(not(unix))]
         let signals = Signals::new([SIGTERM, SIGINT])
-            .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to register signals: {e}")))?;
 
         self.signals = Some(signals);
 
@@ -42,12 +42,12 @@ impl SignalHandler {
         tokio::spawn(async move {
             #[cfg(unix)]
             let mut signals = Signals::new([SIGTERM, SIGINT, SIGQUIT, SIGHUP])
-                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))
+                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {e}")))
                 .unwrap();
 
             #[cfg(not(unix))]
             let mut signals = Signals::new([SIGTERM, SIGINT])
-                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {}", e)))
+                .map_err(|e| crate::Error::Service(format!("Failed to register signals: {e}")))
                 .unwrap();
 
             while let Some(signal) = signals.next().await {
@@ -108,7 +108,7 @@ impl SignalHandler {
             };
 
             signal::kill(Pid::from_raw(pid as i32), nix_signal)
-                .map_err(|e| crate::Error::Service(format!("Failed to send signal: {}", e)))?;
+                .map_err(|e| crate::Error::Service(format!("Failed to send signal: {e}")))?;
         }
 
         #[cfg(not(unix))]
@@ -122,7 +122,7 @@ impl SignalHandler {
     }
 
     /// Check if a signal is pending
-    pub fn signal_pending(&self) -> bool {
+    pub const fn signal_pending(&self) -> bool {
         // This would check if any signals are pending
         // For now, return false
         false
@@ -143,12 +143,12 @@ pub enum Signal {
 impl std::fmt::Display for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Signal::Term => write!(f, "SIGTERM"),
-            Signal::Int => write!(f, "SIGINT"),
-            Signal::Quit => write!(f, "SIGQUIT"),
-            Signal::Hup => write!(f, "SIGHUP"),
-            Signal::Usr1 => write!(f, "SIGUSR1"),
-            Signal::Usr2 => write!(f, "SIGUSR2"),
+            Self::Term => write!(f, "SIGTERM"),
+            Self::Int => write!(f, "SIGINT"),
+            Self::Quit => write!(f, "SIGQUIT"),
+            Self::Hup => write!(f, "SIGHUP"),
+            Self::Usr1 => write!(f, "SIGUSR1"),
+            Self::Usr2 => write!(f, "SIGUSR2"),
         }
     }
 }
