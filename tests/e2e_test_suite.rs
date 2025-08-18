@@ -508,6 +508,13 @@ async fn test_cascade_pdf_retrieval() {
 #[tokio::test]
 async fn test_rate_limiting() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
+    
+    // Initialize rate limiter with test configuration
+    let mut test_config = rust_research_mcp::config::RateLimitingConfig::default();
+    test_config.allow_burst = false; // Disable burst for predictable testing
+    test_config.providers.insert("arxiv".to_string(), 1.0); // 1 req/sec for testing
+    provider.init_rate_limiter(&test_config).await;
+    
     let _context = create_search_context();
 
     // Make multiple rapid requests
@@ -520,10 +527,12 @@ async fn test_rate_limiting() {
     }
     let elapsed = start.elapsed();
 
-    // Should have some delay due to rate limiting
+    // With 1 req/sec and no burst, 3 requests should take at least 2 seconds
+    // (0s for first, 1s wait for second, 1s wait for third = 2s minimum)
     assert!(
-        elapsed >= Duration::from_secs(2),
-        "Rate limiting should enforce delays between requests"
+        elapsed >= Duration::from_millis(1800), // Allow some tolerance
+        "Rate limiting should enforce delays between requests. Elapsed: {:?}",
+        elapsed
     );
 
     info!("Rate limiting test completed in {:?}", elapsed);

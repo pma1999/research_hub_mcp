@@ -1,19 +1,30 @@
 use std::time::{Duration, Instant};
 use tokio::time::sleep;
-use tracing::debug;
+use tracing::{debug, info};
 
-/// Simple rate limiter for Sci-Hub requests to respect server resources
+/// Simple rate limiter for requests to respect server resources
 pub struct RateLimiter {
-    requests_per_second: u32,
+    requests_per_second: f64,
     last_request_time: Option<Instant>,
     min_interval: Duration,
 }
 
+/// Provider-aware rate limiter that uses configuration and progress feedback
+pub struct ProviderRateLimiter {
+    provider_name: String,
+    inner: AdaptiveRateLimiter,
+    show_progress: bool,
+    allow_burst: bool,
+    burst_size: u32,
+    burst_count: u32,
+    burst_start: Option<Instant>,
+}
+
 impl RateLimiter {
     /// Create a new rate limiter with the specified rate (requests per second)
-    pub fn new(requests_per_second: u32) -> Self {
-        let min_interval = if requests_per_second > 0 {
-            Duration::from_millis(1000 / u64::from(requests_per_second))
+    pub fn new(requests_per_second: f64) -> Self {
+        let min_interval = if requests_per_second > 0.0 {
+            Duration::from_millis((1000.0 / requests_per_second) as u64)
         } else {
             Duration::from_secs(1)
         };
@@ -28,6 +39,11 @@ impl RateLimiter {
             last_request_time: None,
             min_interval,
         }
+    }
+
+    /// Create a new rate limiter with the specified rate (legacy u32 support)
+    pub fn new_legacy(requests_per_second: u32) -> Self {
+        Self::new(requests_per_second as f64)
     }
 
     /// Wait until it's safe to make a request (respects rate limit)
@@ -57,16 +73,16 @@ impl RateLimiter {
 
     /// Get the current rate limit (requests per second)
     #[must_use]
-    pub const fn rate_per_second(&self) -> u32 {
+    pub const fn rate_per_second(&self) -> f64 {
         self.requests_per_second
     }
 
     /// Update the rate limit
-    pub fn update_rate(&mut self, requests_per_second: u32) {
-        if requests_per_second != self.requests_per_second {
+    pub fn update_rate(&mut self, requests_per_second: f64) {
+        if (requests_per_second - self.requests_per_second).abs() > f64::EPSILON {
             self.requests_per_second = requests_per_second;
-            self.min_interval = if requests_per_second > 0 {
-                Duration::from_millis(1000 / u64::from(requests_per_second))
+            self.min_interval = if requests_per_second > 0.0 {
+                Duration::from_millis((1000.0 / requests_per_second) as u64)
             } else {
                 Duration::from_secs(1)
             };
@@ -94,7 +110,7 @@ impl RateLimiter {
 
 impl Default for RateLimiter {
     fn default() -> Self {
-        Self::new(1) // 1 request per second by default
+        Self::new(1.0) // 1 request per second by default
     }
 }
 
@@ -102,22 +118,22 @@ impl Default for RateLimiter {
 #[derive(Debug, Clone)]
 pub struct RateLimitConfig {
     /// Base requests per second
-    pub requests_per_second: u32,
+    pub requests_per_second: f64,
     /// Whether to use adaptive rate limiting based on response times
     pub adaptive: bool,
     /// Minimum rate when adapting (requests per second)
-    pub min_rate: u32,
+    pub min_rate: f64,
     /// Maximum rate when adapting (requests per second)
-    pub max_rate: u32,
+    pub max_rate: f64,
 }
 
 impl Default for RateLimitConfig {
     fn default() -> Self {
         Self {
-            requests_per_second: 1,
-            adaptive: false,
-            min_rate: 1,
-            max_rate: 5,
+            requests_per_second: 1.0,
+            adaptive: true,
+            min_rate: 0.25,
+            max_rate: 5.0,
         }
     }
 }
@@ -164,16 +180,16 @@ impl AdaptiveRateLimiter {
 
             let new_rate = if avg_response_time > Duration::from_millis(5000) {
                 // Slow responses - decrease rate
-                (self.inner.rate_per_second().saturating_sub(1)).max(self.config.min_rate)
+                (self.inner.rate_per_second() - 0.25).max(self.config.min_rate)
             } else if avg_response_time < Duration::from_millis(1000) {
                 // Fast responses - increase rate
-                (self.inner.rate_per_second() + 1).min(self.config.max_rate)
+                (self.inner.rate_per_second() + 0.25).min(self.config.max_rate)
             } else {
                 // Keep current rate
                 self.inner.rate_per_second()
             };
 
-            if new_rate != self.inner.rate_per_second() {
+            if (new_rate - self.inner.rate_per_second()).abs() > f64::EPSILON {
                 debug!("Adaptive rate limiting: adjusting from {} to {} requests/sec (avg response time: {}ms)",
                       self.inner.rate_per_second(), new_rate, avg_response_time.as_millis());
                 self.inner.update_rate(new_rate);
@@ -194,7 +210,7 @@ impl AdaptiveRateLimiter {
 
     /// Get the current rate limit
     #[must_use]
-    pub const fn current_rate(&self) -> u32 {
+    pub const fn current_rate(&self) -> f64 {
         self.inner.rate_per_second()
     }
 
@@ -212,6 +228,135 @@ impl AdaptiveRateLimiter {
     }
 }
 
+impl ProviderRateLimiter {
+    /// Create a new provider-specific rate limiter using configuration
+    pub fn new(provider_name: String, config: &crate::config::RateLimitingConfig) -> Self {
+        let rate = config.providers.get(&provider_name)
+            .copied()
+            .unwrap_or(config.default_rate);
+        
+        let rate_config = RateLimitConfig {
+            requests_per_second: rate,
+            adaptive: config.adaptive,
+            min_rate: config.min_rate,
+            max_rate: config.max_rate,
+        };
+        
+        let inner = AdaptiveRateLimiter::new(rate_config);
+        
+        debug!("Created provider rate limiter for '{}' at {} req/sec", 
+               provider_name, rate);
+
+        Self {
+            provider_name,
+            inner,
+            show_progress: config.show_progress,
+            allow_burst: config.allow_burst,
+            burst_size: config.burst_size,
+            burst_count: 0,
+            burst_start: None,
+        }
+    }
+
+    /// Wait until it's safe to make a request with progress indication
+    pub async fn acquire(&mut self) -> Result<(), crate::Error> {
+        let start = Instant::now();
+        
+        // Check if we can use burst allowance
+        if self.allow_burst && self.can_burst() {
+            self.use_burst();
+            return Ok(());
+        }
+
+        // Calculate wait time before actual wait
+        let wait_time = self.inner.inner.time_until_ready();
+        
+        if let Some(duration) = wait_time {
+            if self.show_progress && duration > Duration::from_millis(500) {
+                info!("⏳ Rate limiting {} - waiting {:.1}s", 
+                      self.provider_name, duration.as_secs_f64());
+            }
+        }
+
+        self.inner.acquire().await;
+        
+        if self.show_progress {
+            let elapsed = start.elapsed();
+            if elapsed > Duration::from_millis(100) {
+                debug!("Rate limit wait for {}: {:.1}s", 
+                       self.provider_name, elapsed.as_secs_f64());
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Record response time for adaptive rate limiting
+    pub fn record_response_time(&mut self, response_time: Duration) {
+        self.inner.record_response_time(response_time);
+    }
+
+    /// Check if request can use burst allowance
+    fn can_burst(&self) -> bool {
+        let now = Instant::now();
+        
+        match self.burst_start {
+            None => true, // First request can always burst
+            Some(start) => {
+                // Reset burst window after 1 minute
+                if now.duration_since(start) > Duration::from_secs(60) {
+                    true
+                } else {
+                    self.burst_count < self.burst_size
+                }
+            }
+        }
+    }
+
+    /// Use one burst allowance
+    fn use_burst(&mut self) {
+        let now = Instant::now();
+        
+        match self.burst_start {
+            None => {
+                // Start new burst window
+                self.burst_start = Some(now);
+                self.burst_count = 1;
+            }
+            Some(start) => {
+                if now.duration_since(start) > Duration::from_secs(60) {
+                    // Reset burst window
+                    self.burst_start = Some(now);
+                    self.burst_count = 1;
+                } else {
+                    // Continue in current window
+                    self.burst_count += 1;
+                }
+            }
+        }
+
+        if self.show_progress {
+            debug!("Using burst allowance for {} ({}/{})", 
+                   self.provider_name, self.burst_count, self.burst_size);
+        }
+    }
+
+    /// Get current rate
+    pub fn current_rate(&self) -> f64 {
+        self.inner.current_rate()
+    }
+
+    /// Get provider name
+    pub fn provider_name(&self) -> &str {
+        &self.provider_name
+    }
+
+    /// Get average response time
+    pub fn average_response_time(&self) -> Option<Duration> {
+        self.inner.average_response_time()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_rate_limiter_basic() {
-        let mut limiter = RateLimiter::new(2); // 2 requests per second
+        let mut limiter = RateLimiter::new(2.0); // 2 requests per second
 
         // First request should be immediate
         let start = Instant::now();
@@ -235,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_rate_limiter_check() {
-        let limiter = RateLimiter::new(1);
+        let limiter = RateLimiter::new(1.0);
 
         // Should be ready initially
         assert!(limiter.check());
@@ -243,24 +388,24 @@ mod tests {
 
     #[test]
     fn test_rate_limiter_update() {
-        let mut limiter = RateLimiter::new(1);
-        assert_eq!(limiter.rate_per_second(), 1);
+        let mut limiter = RateLimiter::new(1.0);
+        assert!((limiter.rate_per_second() - 1.0).abs() < f64::EPSILON);
 
-        limiter.update_rate(5);
-        assert_eq!(limiter.rate_per_second(), 5);
+        limiter.update_rate(5.0);
+        assert!((limiter.rate_per_second() - 5.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_adaptive_rate_limiter() {
         let config = RateLimitConfig {
-            requests_per_second: 2,
+            requests_per_second: 2.0,
             adaptive: true,
-            min_rate: 1,
-            max_rate: 5,
+            min_rate: 1.0,
+            max_rate: 5.0,
         };
 
         let mut limiter = AdaptiveRateLimiter::new(config);
-        assert_eq!(limiter.current_rate(), 2);
+        assert!((limiter.current_rate() - 2.0).abs() < f64::EPSILON);
 
         // Record slow response times
         for _ in 0..5 {
@@ -268,16 +413,16 @@ mod tests {
         }
 
         // Rate should decrease due to slow responses
-        assert!(limiter.current_rate() < 2);
+        assert!(limiter.current_rate() < 2.0);
     }
 
     #[test]
     fn test_adaptive_rate_limiter_fast_responses() {
         let config = RateLimitConfig {
-            requests_per_second: 2,
+            requests_per_second: 2.0,
             adaptive: true,
-            min_rate: 1,
-            max_rate: 5,
+            min_rate: 1.0,
+            max_rate: 5.0,
         };
 
         let mut limiter = AdaptiveRateLimiter::new(config);
@@ -288,6 +433,6 @@ mod tests {
         }
 
         // Rate should increase due to fast responses
-        assert!(limiter.current_rate() > 2);
+        assert!(limiter.current_rate() > 2.0);
     }
 }

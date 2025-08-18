@@ -1,6 +1,7 @@
 use config;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::{debug, warn};
 
@@ -15,6 +16,8 @@ pub struct Config {
     pub downloads: DownloadsConfig,
     /// Logging configuration
     pub logging: LoggingConfig,
+    /// Rate limiting configuration
+    pub rate_limiting: RateLimitingConfig,
     /// Environment profile (development, production)
     #[serde(default = "default_profile")]
     pub profile: String,
@@ -71,6 +74,27 @@ pub struct LoggingConfig {
     pub format: String,
     /// Optional log file path
     pub file: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct RateLimitingConfig {
+    /// Enable adaptive rate limiting based on response times
+    pub adaptive: bool,
+    /// Show progress indicators during rate-limited operations
+    pub show_progress: bool,
+    /// Allow burst requests for small batches
+    pub allow_burst: bool,
+    /// Number of requests allowed in a burst
+    pub burst_size: u32,
+    /// Provider-specific rate limits (requests per second)
+    pub providers: HashMap<String, f64>,
+    /// Default rate limit for providers not explicitly configured
+    pub default_rate: f64,
+    /// Minimum rate when adaptive limiting decreases rate
+    pub min_rate: f64,
+    /// Maximum rate when adaptive limiting increases rate
+    pub max_rate: f64,
 }
 
 fn default_profile() -> String {
@@ -135,6 +159,7 @@ impl Default for Config {
             research_source: ResearchSourceConfig::default(),
             downloads: DownloadsConfig::default(),
             logging: LoggingConfig::default(),
+            rate_limiting: RateLimitingConfig::default(),
             profile: default_profile(),
             schema_version: default_schema_version(),
         }
@@ -184,6 +209,42 @@ impl Default for LoggingConfig {
             level: "info".to_string(),
             format: "json".to_string(),
             file: None,
+        }
+    }
+}
+
+impl Default for RateLimitingConfig {
+    fn default() -> Self {
+        let mut providers = HashMap::new();
+        
+        // Academic sources - higher rates (respectful but efficient)
+        providers.insert("arxiv".to_string(), 2.0);
+        providers.insert("pubmed".to_string(), 2.0);
+        providers.insert("pubmed_central".to_string(), 2.0);
+        providers.insert("biorxiv".to_string(), 2.0);
+        
+        // Commercial/API sources - moderate rates
+        providers.insert("crossref".to_string(), 1.5);
+        providers.insert("semantic_scholar".to_string(), 1.5);
+        providers.insert("unpaywall".to_string(), 1.5);
+        providers.insert("core".to_string(), 1.5);
+        providers.insert("ssrn".to_string(), 1.0);
+        
+        // Sci-Hub and similar - conservative rates
+        providers.insert("sci_hub".to_string(), 0.5);
+        providers.insert("researchgate".to_string(), 1.0);
+        providers.insert("mdpi".to_string(), 1.0);
+        providers.insert("openreview".to_string(), 1.0);
+
+        Self {
+            adaptive: true,
+            show_progress: true,
+            allow_burst: true,
+            burst_size: 3,
+            providers,
+            default_rate: 1.0,
+            min_rate: 0.25,
+            max_rate: 5.0,
         }
     }
 }
@@ -492,6 +553,43 @@ impl Config {
             );
         }
 
+        // Hot-reloadable: Rate limiting configuration
+        if self.rate_limiting.adaptive != new_config.rate_limiting.adaptive {
+            self.rate_limiting.adaptive = new_config.rate_limiting.adaptive;
+            changed = true;
+            debug!("Hot reloaded adaptive rate limiting: {}", new_config.rate_limiting.adaptive);
+        }
+
+        if self.rate_limiting.show_progress != new_config.rate_limiting.show_progress {
+            self.rate_limiting.show_progress = new_config.rate_limiting.show_progress;
+            changed = true;
+            debug!("Hot reloaded show progress: {}", new_config.rate_limiting.show_progress);
+        }
+
+        if self.rate_limiting.allow_burst != new_config.rate_limiting.allow_burst {
+            self.rate_limiting.allow_burst = new_config.rate_limiting.allow_burst;
+            changed = true;
+            debug!("Hot reloaded allow burst: {}", new_config.rate_limiting.allow_burst);
+        }
+
+        if self.rate_limiting.burst_size != new_config.rate_limiting.burst_size {
+            self.rate_limiting.burst_size = new_config.rate_limiting.burst_size;
+            changed = true;
+            debug!("Hot reloaded burst size: {}", new_config.rate_limiting.burst_size);
+        }
+
+        if self.rate_limiting.default_rate != new_config.rate_limiting.default_rate {
+            self.rate_limiting.default_rate = new_config.rate_limiting.default_rate;
+            changed = true;
+            debug!("Hot reloaded default rate: {}", new_config.rate_limiting.default_rate);
+        }
+
+        if self.rate_limiting.providers != new_config.rate_limiting.providers {
+            self.rate_limiting.providers = new_config.rate_limiting.providers.clone();
+            changed = true;
+            debug!("Hot reloaded provider-specific rates");
+        }
+
         // Validate the reloaded configuration
         self.validate()?;
 
@@ -576,6 +674,37 @@ impl Config {
                     self.logging.level, valid_log_levels
                 ),
             });
+        }
+
+        // Validate rate limiting configuration
+        if self.rate_limiting.default_rate <= 0.0 {
+            return Err(crate::Error::InvalidInput {
+                field: "rate_limiting.default_rate".to_string(),
+                reason: "Default rate limit must be greater than 0".to_string(),
+            });
+        }
+        
+        if self.rate_limiting.min_rate <= 0.0 || self.rate_limiting.min_rate > self.rate_limiting.max_rate {
+            return Err(crate::Error::InvalidInput {
+                field: "rate_limiting.min_rate".to_string(),
+                reason: "Minimum rate must be greater than 0 and less than maximum rate".to_string(),
+            });
+        }
+        
+        if self.rate_limiting.burst_size == 0 {
+            return Err(crate::Error::InvalidInput {
+                field: "rate_limiting.burst_size".to_string(),
+                reason: "Burst size must be greater than 0".to_string(),
+            });
+        }
+        
+        for (provider, rate) in &self.rate_limiting.providers {
+            if *rate <= 0.0 {
+                return Err(crate::Error::InvalidInput {
+                    field: format!("rate_limiting.providers.{}", provider),
+                    reason: format!("Rate limit for provider '{}' must be greater than 0", provider),
+                });
+            }
         }
 
         let valid_log_formats = ["json", "text"];
@@ -689,6 +818,44 @@ format = "json"
 # Optional log file path (default: none, logs to stderr)
 # file = "/var/log/rust-sci-hub-mcp.log"
 
+[rate_limiting]
+# Enable adaptive rate limiting based on response times (default: true)
+adaptive = true
+
+# Show progress indicators during rate-limited operations (default: true)
+show_progress = true
+
+# Allow burst requests for small batches (default: true)  
+allow_burst = true
+
+# Number of requests allowed in a burst (default: 3)
+burst_size = 3
+
+# Default rate limit for providers not explicitly configured (default: 1.0)
+default_rate = 1.0
+
+# Minimum rate when adaptive limiting decreases rate (default: 0.25)
+min_rate = 0.25
+
+# Maximum rate when adaptive limiting increases rate (default: 5.0)
+max_rate = 5.0
+
+# Provider-specific rate limits (requests per second)
+[rate_limiting.providers]
+arxiv = 2.0
+pubmed = 2.0
+pubmed_central = 2.0
+biorxiv = 2.0
+crossref = 1.5
+semantic_scholar = 1.5  
+unpaywall = 1.5
+core = 1.5
+ssrn = 1.0
+sci_hub = 0.5
+researchgate = 1.0
+mdpi = 1.0
+openreview = 1.0
+
 # Environment Variables:
 # Override any setting using RSH_ prefix:
 # RSH_SERVER_PORT=9090
@@ -753,6 +920,13 @@ max_file_size_mb = 200
 level = "info"
 format = "json"
 file = "~/Library/Logs/rust-sci-hub-mcp.log"
+
+[rate_limiting]
+adaptive = true
+show_progress = false  # Less verbose for production
+allow_burst = true
+burst_size = 2        # More conservative for production
+default_rate = 0.8    # Slightly slower for production reliability
 "#;
         production_config.to_string()
     }

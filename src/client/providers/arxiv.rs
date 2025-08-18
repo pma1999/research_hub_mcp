@@ -1,11 +1,14 @@
 use super::traits::{
     ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
+use crate::client::rate_limiter::ProviderRateLimiter;
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use reqwest::Client;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 use url::Url;
 
@@ -13,6 +16,7 @@ use url::Url;
 pub struct ArxivProvider {
     client: Client,
     base_url: String,
+    rate_limiter: Arc<Mutex<Option<ProviderRateLimiter>>>,
 }
 
 impl ArxivProvider {
@@ -27,8 +31,17 @@ impl ArxivProvider {
         Ok(Self {
             client,
             base_url: "http://export.arxiv.org/api/query".to_string(),
+            rate_limiter: Arc::new(Mutex::new(None)),
         })
     }
+
+    /// Initialize rate limiter with configuration
+    pub async fn init_rate_limiter(&self, config: &crate::config::RateLimitingConfig) {
+        let limiter = ProviderRateLimiter::new("arxiv".to_string(), config);
+        *self.rate_limiter.lock().await = Some(limiter);
+        debug!("Initialized rate limiter for arXiv provider");
+    }
+
 
     /// Build arXiv API URL for search
     fn build_search_url(&self, query: &SearchQuery) -> Result<String, ProviderError> {
@@ -179,7 +192,8 @@ impl SourceProvider for ArxivProvider {
     }
 
     fn base_delay(&self) -> Duration {
-        Duration::from_millis(3000) // arXiv recommends 3-second delays
+        // Deprecated: Now using configurable ProviderRateLimiter
+        Duration::from_millis(500) // Fallback for legacy compatibility
     }
 
     async fn search(
@@ -193,6 +207,24 @@ impl SourceProvider for ArxivProvider {
             "Searching arXiv for: {} (type: {:?})",
             query.query, query.search_type
         );
+
+        // Apply rate limiting
+        let rate_limit_result = {
+            let mut guard = self.rate_limiter.lock().await;
+            
+            if guard.is_none() {
+                // Create with default config if not initialized
+                let default_config = crate::config::RateLimitingConfig::default();
+                *guard = Some(ProviderRateLimiter::new("arxiv".to_string(), &default_config));
+                debug!("Created default rate limiter for arXiv provider");
+            }
+            
+            guard.as_mut().unwrap().acquire().await
+        };
+        
+        rate_limit_result.map_err(|e| {
+            ProviderError::Other(format!("Rate limiting error: {}", e))
+        })?;
 
         // Build the search URL
         let url = self.build_search_url(query)?;
@@ -252,6 +284,14 @@ impl SourceProvider for ArxivProvider {
             papers.len(),
             search_time
         );
+
+        // Record response time for adaptive rate limiting
+        {
+            let mut guard = self.rate_limiter.lock().await;
+            if let Some(limiter) = guard.as_mut() {
+                limiter.record_response_time(search_time);
+            }
+        }
 
         Ok(ProviderResult {
             papers,

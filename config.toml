@@ -25,3 +25,27 @@ endpoints = [
 rate_limit_per_sec = 1
 timeout_secs = 30
 max_retries = 3
+
+[rate_limiting]
+adaptive = true
+show_progress = true
+allow_burst = true
+burst_size = 3
+default_rate = 1.0
+min_rate = 0.25
+max_rate = 5.0
+
+[rate_limiting.providers]
+arxiv = 2.0
+pubmed = 2.0
+pubmed_central = 2.0
+biorxiv = 2.0
+crossref = 1.5
+semantic_scholar = 1.5
+unpaywall = 1.5
+core = 1.5
+ssrn = 1.0
+sci_hub = 0.5
+researchgate = 1.0
+mdpi = 1.0
+openreview = 1.0
