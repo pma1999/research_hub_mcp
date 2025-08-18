@@ -99,7 +99,7 @@ impl ResearchServerHandler {
 impl ServerHandler for ResearchServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some("🔬 Research Hub MCP Server v0.2.1 - Academic paper search and retrieval.\n\nProvides tools to:\n• 🔍 Search across arXiv, CrossRef, and Sci-Hub\n• 📥 Download papers with configurable directories\n• 📊 Extract metadata from PDFs\n\nDesigned for personal academic research use only.".into()),
+            instructions: Some(format!("🔬 Research Hub MCP Server v{} - Enhanced academic paper search and retrieval.\n\nProvides tools to:\n• 🔍 Search across 12+ academic sources (arXiv, CrossRef, PubMed, etc.)\n• 📥 Download papers with intelligent fallback protection\n• 📊 Extract metadata from PDFs\n• 🔍 Search code patterns in downloaded papers (NEW)\n• 📚 Generate citations in multiple formats (NEW)\n\nDesigned for personal academic research and Claude Code workflows.", env!("CARGO_PKG_VERSION")).into()),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
@@ -124,7 +124,7 @@ impl ServerHandler for ResearchServerHandler {
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info: Implementation {
                     name: "rust-research-mcp".into(),
-                    version: "0.2.0".into(),
+                    version: env!("CARGO_PKG_VERSION").into(),
                 },
                 instructions: Some("A Rust-based MCP server for academic research paper access. Provides tools to search, download, and extract metadata from academic papers.".into()),
             })
