@@ -517,30 +517,15 @@ impl DownloadTool {
             .make_download_request(&download_url, start_byte)
             .await?;
 
-        // Only create/open file after we know the request is successful
-        let mut file = if file_path.exists() && start_byte > 0 {
-            // File exists, open for append
-            OpenOptions::new()
-                .write(true)
-                .append(true)
-                .open(&file_path)
-                .await
-                .map_err(crate::Error::Io)?
-        } else {
-            // Create new file only when we're ready to write
-            File::create(&file_path).await.map_err(crate::Error::Io)?
-        };
-
         // Update total size from response if not known
         Self::update_total_size_from_response(&mut progress, &response, start_byte);
 
-        // Download with progress tracking
-        self.download_with_progress(response, &mut file, &mut progress)
+        // Download with progress tracking - this will create the file only if download succeeds
+        self.download_with_progress(response, &file_path, start_byte, &mut progress)
             .await?;
 
         // Finalize download
         self.finalize_download(
-            file,
             &file_path,
             start_time,
             verify_integrity,
@@ -619,18 +604,47 @@ impl DownloadTool {
     async fn download_with_progress(
         &self,
         response: reqwest::Response,
-        file: &mut File,
+        file_path: &PathBuf,
+        start_byte: u64,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
         let mut stream = response.bytes_stream();
         let mut last_progress_time = SystemTime::now();
         let mut bytes_at_last_time = progress.downloaded;
+        
+        // Only create/open file when we start receiving data
+        let mut file_created = false;
+        let mut file: Option<File> = None;
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result
                 .map_err(|e| crate::Error::Service(format!("Download stream error: {e}")))?;
 
-            file.write_all(&chunk).await.map_err(crate::Error::Io)?;
+            // Create file on first successful chunk
+            if !file_created {
+                let mut file_handle = if file_path.exists() && start_byte > 0 {
+                    // File exists, open for append
+                    OpenOptions::new()
+                        .write(true)
+                        .append(true)
+                        .open(file_path)
+                        .await
+                        .map_err(crate::Error::Io)?
+                } else {
+                    // Create new file only when we have data to write
+                    File::create(file_path).await.map_err(crate::Error::Io)?
+                };
+                
+                // Write the first chunk
+                file_handle.write_all(&chunk).await.map_err(crate::Error::Io)?;
+                file = Some(file_handle);
+                file_created = true;
+            } else {
+                // File already created, write subsequent chunks
+                if let Some(ref mut f) = file {
+                    f.write_all(&chunk).await.map_err(crate::Error::Io)?;
+                }
+            }
 
             progress.downloaded += chunk.len() as u64;
 
@@ -647,6 +661,11 @@ impl DownloadTool {
                 last_progress_time = now;
                 bytes_at_last_time = progress.downloaded;
             }
+        }
+
+        // Ensure we actually received some data
+        if !file_created {
+            return Err(crate::Error::Service("No data received from download".to_string()));
         }
 
         Ok(())
@@ -684,7 +703,6 @@ impl DownloadTool {
     /// Finalize download and create result
     async fn finalize_download(
         &self,
-        mut file: File,
         file_path: &Path,
         start_time: SystemTime,
         verify_integrity: bool,
@@ -692,10 +710,7 @@ impl DownloadTool {
         download_id: String,
         metadata: Option<PaperMetadata>,
     ) -> Result<DownloadResult> {
-        // Flush and sync file
-        file.flush().await.map_err(crate::Error::Io)?;
-        file.sync_all().await.map_err(crate::Error::Io)?;
-        drop(file);
+        // File was already properly closed by the download_with_progress method
 
         let duration = start_time.elapsed().unwrap_or(Duration::ZERO);
         let file_size = tokio::fs::metadata(file_path).await?.len();
