@@ -1,6 +1,7 @@
 use crate::client::providers::{
-    ArxivProvider, CrossRefProvider, ProviderError, ProviderResult, SciHubProvider, SearchContext,
-    SearchQuery, SearchType, SourceProvider,
+    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, ProviderError, ProviderResult, SciHubProvider, 
+    SemanticScholarProvider, SsrnProvider, SearchContext, SearchQuery, SearchType, SourceProvider,
+    UnpaywallProvider,
 };
 use crate::client::PaperMetadata;
 use crate::Config;
@@ -69,13 +70,28 @@ impl MetaSearchClient {
     pub fn new(_app_config: Config, meta_config: MetaSearchConfig) -> Result<Self, ProviderError> {
         let mut providers: Vec<Arc<dyn SourceProvider>> = Vec::new();
 
+        // Add CrossRef provider (highest priority for authoritative metadata)
+        providers.push(Arc::new(CrossRefProvider::new(None)?)); // TODO: Get email from config
+
+        // Add Semantic Scholar provider (very high priority for PDF access + metadata)
+        providers.push(Arc::new(SemanticScholarProvider::new(None)?)); // TODO: Get API key from config
+
+        // Add Unpaywall provider (high priority for legal free PDF discovery)
+        providers.push(Arc::new(UnpaywallProvider::new_with_default_email()?)); // TODO: Get email from config
+
+        // Add CORE provider (high priority for open access collection)
+        providers.push(Arc::new(CoreProvider::new(None)?)); // TODO: Get API key from config
+
+        // Add SSRN provider (high priority for recent papers and preprints)
+        providers.push(Arc::new(SsrnProvider::new()?));
+
         // Add arXiv provider (high priority for CS/physics/math)
         providers.push(Arc::new(ArxivProvider::new()?));
 
-        // Add CrossRef provider (high priority for metadata)
-        providers.push(Arc::new(CrossRefProvider::new(None)?)); // TODO: Get email from config
+        // Add bioRxiv provider (biology preprints)
+        providers.push(Arc::new(BiorxivProvider::new()?));
 
-        // Add Sci-Hub provider (lower priority, for full-text access)
+        // Add Sci-Hub provider (lowest priority, for full-text access)
         providers.push(Arc::new(SciHubProvider::new()?));
 
         info!(
@@ -383,6 +399,54 @@ impl MetaSearchClient {
 
         unique_papers
     }
+
+    /// Try to get a PDF URL from any provider, cascading through them by priority
+    pub async fn get_pdf_url_cascade(&self, doi: &str) -> Result<Option<String>, ProviderError> {
+        info!("Attempting cascade PDF retrieval for DOI: {}", doi);
+        
+        let context = self.create_search_context().await;
+        
+        // Sort providers by priority (highest first)
+        let mut providers: Vec<_> = self.providers.iter().collect();
+        providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+        
+        let mut last_error = None;
+        
+        for provider in providers {
+            info!("Trying PDF retrieval from provider: {} (priority: {})", 
+                provider.name(), provider.priority());
+            
+            // Apply rate limiting
+            if let Err(e) = Self::apply_rate_limit(provider).await {
+                warn!("Rate limit hit for {}: {}", provider.name(), e);
+                last_error = Some(e);
+                continue;
+            }
+            
+            // Try to get PDF URL from this provider
+            match provider.get_pdf_url(doi, &context).await {
+                Ok(Some(pdf_url)) => {
+                    info!("Successfully found PDF URL from {}: {}", provider.name(), pdf_url);
+                    return Ok(Some(pdf_url));
+                }
+                Ok(None) => {
+                    debug!("Provider {} has no PDF for DOI: {}", provider.name(), doi);
+                }
+                Err(e) => {
+                    warn!("Provider {} failed to get PDF: {}", provider.name(), e);
+                    last_error = Some(e);
+                }
+            }
+        }
+        
+        // If we get here, no provider could provide a PDF
+        if let Some(error) = last_error {
+            Err(error)
+        } else {
+            info!("No provider could find a PDF for DOI: {}", doi);
+            Ok(None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -405,7 +469,12 @@ mod tests {
 
         let providers = client.providers();
         assert!(providers.contains(&"arxiv".to_string()));
+        assert!(providers.contains(&"biorxiv".to_string()));
+        assert!(providers.contains(&"core".to_string()));
         assert!(providers.contains(&"crossref".to_string()));
+        assert!(providers.contains(&"semantic_scholar".to_string()));
+        assert!(providers.contains(&"unpaywall".to_string()));
+        assert!(providers.contains(&"ssrn".to_string()));
         assert!(providers.contains(&"sci_hub".to_string()));
     }
 

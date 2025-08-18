@@ -309,13 +309,29 @@ impl ServerHandler for ResearchServerHandler {
 
                     match download_tool.download_paper(input).await {
                         Ok(result) => {
-                            Ok(CallToolResult {
-                                content: Some(vec![Content::text(format!("✅ Download successful!\n\n📄 File: {}\n📦 Size: {} KB\n✓ Status: Complete", 
-                                    result.file_path.as_ref().map(|p| p.display().to_string()).unwrap_or("Unknown".to_string()),
-                                    result.file_size.unwrap_or(0) / 1024))]),
-                                structured_content: None,
-                                is_error: Some(false),
-                            })
+                            // Validate that the file actually has content
+                            let file_size = result.file_size.unwrap_or(0);
+                            if file_size == 0 {
+                                // Clean up zero-byte file if it exists
+                                if let Some(file_path) = &result.file_path {
+                                    if file_path.exists() {
+                                        let _ = std::fs::remove_file(file_path);
+                                    }
+                                }
+                                Ok(CallToolResult {
+                                    content: Some(vec![Content::text(format!("⚠️ Download failed - no content received\n\nDOI: {}\n\nThe paper was found but no downloadable content is available. This could be because:\n• The paper is too new or recently published\n• It's behind a paywall not covered by available sources\n• The DOI might be incorrect\n\nTry checking the publisher's website or your institutional access.", doi))]),
+                                    structured_content: None,
+                                    is_error: Some(true),
+                                })
+                            } else {
+                                Ok(CallToolResult {
+                                    content: Some(vec![Content::text(format!("✅ Download successful!\n\n📄 File: {}\n📦 Size: {} KB\n✓ Status: Complete", 
+                                        result.file_path.as_ref().map(|p| p.display().to_string()).unwrap_or("Unknown".to_string()),
+                                        file_size / 1024))]),
+                                    structured_content: None,
+                                    is_error: Some(false),
+                                })
+                            }
                         }
                         Err(e) => {
                             // Return a helpful error message instead of failing the tool call

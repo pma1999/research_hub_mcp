@@ -13,7 +13,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
 // use tokio_util::io::ReaderStream; // Not needed currently
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, warn, instrument};
 
 /// Input parameters for the paper download tool
 /// IMPORTANT: Either 'doi' or 'url' must be provided (not both optional!)
@@ -298,6 +298,8 @@ impl DownloadTool {
         input: &DownloadInput,
     ) -> Result<(String, Option<PaperMetadata>)> {
         if let Some(doi_str) = &input.doi {
+            info!("Attempting to download paper with DOI: {}", doi_str);
+            
             // Create a search query for the DOI
             let search_query = crate::client::providers::SearchQuery {
                 query: doi_str.clone(),
@@ -307,10 +309,14 @@ impl DownloadTool {
                 params: HashMap::new(),
             };
 
-            // Use the meta search client to find papers with PDF URLs
+            // Use the meta search client to find papers across ALL providers
             let search_result = self.client.search(&search_query).await?;
+            
+            info!("Meta-search found {} papers from {} providers", 
+                search_result.papers.len(), 
+                search_result.successful_providers);
 
-            // Look for a paper with a PDF URL (prioritizing Sci-Hub results)
+            // First, look for any paper with a PDF URL already available
             let paper_with_pdf = search_result
                 .papers
                 .iter()
@@ -319,17 +325,66 @@ impl DownloadTool {
 
             if let Some(paper) = paper_with_pdf {
                 if let Some(pdf_url) = &paper.pdf_url {
-                    Ok((pdf_url.clone(), Some(paper)))
-                } else {
-                    Err(crate::Error::ServiceUnavailable {
-                        service: "MetaSearch".to_string(),
-                        reason: format!("No PDF available for DOI: {doi_str}"),
-                    })
+                    info!("Found PDF URL directly from provider: {}", pdf_url);
+                    return Ok((pdf_url.clone(), Some(paper)));
                 }
+            }
+
+            // If no direct PDF URL, try cascade approach through each provider
+            info!("No direct PDF URL found, attempting cascade retrieval through all providers");
+            
+            // Log what we found from each source
+            for (source, papers) in &search_result.by_source {
+                if !papers.is_empty() {
+                    info!("Provider '{}' found paper metadata but no PDF URL", source);
+                }
+            }
+            
+            // Try cascade PDF retrieval through all providers
+            match self.client.get_pdf_url_cascade(doi_str).await {
+                Ok(Some(pdf_url)) => {
+                    info!("Cascade retrieval successful! Found PDF URL: {}", pdf_url);
+                    // Use the first paper's metadata if available
+                    let metadata = search_result.papers.first().cloned();
+                    return Ok((pdf_url, metadata));
+                }
+                Ok(None) => {
+                    info!("Cascade retrieval completed but no PDF found in any provider");
+                }
+                Err(e) => {
+                    warn!("Cascade retrieval failed with error: {}", e);
+                }
+            }
+            
+            // If cascade also failed, return detailed error with metadata
+            if let Some(paper) = search_result.papers.first() {
+                let error_msg = format!(
+                    "Paper found in {} provider(s) but no downloadable PDF available after checking all sources. \
+                    Paper: '{}' by {} ({}). \
+                    Checked providers: ArXiv, CrossRef, SSRN, Sci-Hub. \
+                    Try: 1) Checking the publisher's website directly, \
+                    2) Institutional access, \
+                    3) Contacting the authors, \
+                    4) Checking preprint servers",
+                    search_result.successful_providers,
+                    paper.title.as_ref().unwrap_or(&"Unknown title".to_string()),
+                    paper.authors.join(", "),
+                    paper.year.map_or("year unknown".to_string(), |y| y.to_string())
+                );
+                
+                Err(crate::Error::ServiceUnavailable {
+                    service: "PDF Download".to_string(),
+                    reason: error_msg,
+                })
             } else {
                 Err(crate::Error::ServiceUnavailable {
                     service: "MetaSearch".to_string(),
-                    reason: format!("No PDF available for DOI: {doi_str}"),
+                    reason: format!(
+                        "DOI '{}' not found in any provider ({} providers checked, {} failed)",
+                        doi_str,
+                        search_result.successful_providers + search_result.failed_providers,
+                        search_result.failed_providers
+                    ),
                 })
             }
         } else if let Some(url) = &input.url {
@@ -449,14 +504,32 @@ impl DownloadTool {
         let total_size = self.get_content_length(&download_url).await.ok();
         progress.total_size = total_size;
 
-        // Check for partial download (resume capability)
-        let (mut file, start_byte) = self.prepare_download_file(&file_path).await?;
+        // Check for partial download (resume capability) but don't create file yet
+        let start_byte = if file_path.exists() {
+            tokio::fs::metadata(&file_path).await?.len()
+        } else {
+            0
+        };
         progress.downloaded = start_byte;
 
-        // Make download request
+        // Make download request first to verify it's valid
         let response = self
             .make_download_request(&download_url, start_byte)
             .await?;
+
+        // Only create/open file after we know the request is successful
+        let mut file = if file_path.exists() && start_byte > 0 {
+            // File exists, open for append
+            OpenOptions::new()
+                .write(true)
+                .append(true)
+                .open(&file_path)
+                .await
+                .map_err(crate::Error::Io)?
+        } else {
+            // Create new file only when we're ready to write
+            File::create(&file_path).await.map_err(crate::Error::Io)?
+        };
 
         // Update total size from response if not known
         Self::update_total_size_from_response(&mut progress, &response, start_byte);
@@ -684,29 +757,6 @@ impl DownloadTool {
         }
     }
 
-    /// Prepare download file (create or open for append if resuming)
-    async fn prepare_download_file(&self, file_path: &Path) -> Result<(File, u64)> {
-        if file_path.exists() {
-            // File exists, open for append and return current size
-            let file = OpenOptions::new()
-                .write(true)
-                .append(true)
-                .open(file_path)
-                .await
-                .map_err(crate::Error::Io)?;
-
-            let metadata = tokio::fs::metadata(file_path)
-                .await
-                .map_err(crate::Error::Io)?;
-
-            Ok((file, metadata.len()))
-        } else {
-            // Create new file
-            let file = File::create(file_path).await.map_err(crate::Error::Io)?;
-
-            Ok((file, 0))
-        }
-    }
 
     /// Calculate SHA256 hash of a file
     async fn calculate_file_hash(&self, file_path: &Path) -> Result<String> {
@@ -921,25 +971,6 @@ mod tests {
         assert!(file_path.starts_with(temp_dir.path()));
     }
 
-    #[tokio::test]
-    async fn test_prepare_download_file() {
-        let tool = create_test_download_tool().unwrap();
-        let temp_dir = TempDir::new().unwrap();
-        let file_path = temp_dir.path().join("test.pdf");
-
-        // Test new file creation
-        let (file, start_byte) = tool.prepare_download_file(&file_path).await.unwrap();
-        assert_eq!(start_byte, 0);
-        drop(file);
-
-        // Write some data
-        tokio::fs::write(&file_path, b"test data").await.unwrap();
-
-        // Test resume (file exists)
-        let (file, start_byte) = tool.prepare_download_file(&file_path).await.unwrap();
-        assert_eq!(start_byte, 9); // "test data".len()
-        drop(file);
-    }
 
     #[tokio::test]
     async fn test_file_hash_calculation() {

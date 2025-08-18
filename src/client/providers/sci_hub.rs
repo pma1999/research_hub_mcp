@@ -154,9 +154,37 @@ impl SciHubProvider {
                     pdf_url = Some(if src.starts_with("//") {
                         format!("https:{}", src)
                     } else if src.starts_with("/") {
-                        format!("https://sci-hub.se{}", src)
-                    } else {
+                        // Properly resolve relative URLs
+                        match url::Url::parse("https://sci-hub.se") {
+                            Ok(base) => match base.join(src) {
+                                Ok(absolute_url) => absolute_url.to_string(),
+                                Err(e) => {
+                                    warn!("Failed to resolve relative URL '{}': {}", src, e);
+                                    continue;
+                                }
+                            },
+                            Err(e) => {
+                                warn!("Invalid base URL: {}", e);
+                                continue;
+                            }
+                        }
+                    } else if src.starts_with("http") {
                         src.to_string()
+                    } else {
+                        // Handle other relative URLs
+                        match url::Url::parse("https://sci-hub.se") {
+                            Ok(base) => match base.join(src) {
+                                Ok(absolute_url) => absolute_url.to_string(),
+                                Err(e) => {
+                                    warn!("Failed to resolve relative URL '{}': {}", src, e);
+                                    continue;
+                                }
+                            },
+                            Err(e) => {
+                                warn!("Invalid base URL: {}", e);
+                                continue;
+                            }
+                        }
                     });
                     break;
                 }

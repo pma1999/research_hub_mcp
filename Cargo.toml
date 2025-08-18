@@ -12,7 +12,7 @@ rust-version = "1.70"
 
 [dependencies]
 # MCP Framework
-rmcp = { version = "0.5", features = ["transport-io"] }
+rmcp = { version = "0.5", features = ["transport-io", "transport-child-process"] }
 
 # Async runtime
 tokio = { version = "1.0", features = ["full"] }
@@ -108,6 +108,7 @@ vergen = { version = "8.0", features = ["build", "git", "gitcl"] }
 [[bin]]
 name = "rust-research-mcp"
 path = "src/main.rs"
+
 
 [lib]
 name = "rust_research_mcp"

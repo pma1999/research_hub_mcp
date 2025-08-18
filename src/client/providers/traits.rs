@@ -161,4 +161,17 @@ pub trait SourceProvider: Send + Sync {
     fn priority(&self) -> u8 {
         50 // Default medium priority
     }
+    
+    /// Attempt to get a direct PDF download URL for a DOI
+    /// This is called when standard search doesn't return a PDF URL
+    /// Providers can override this to implement specialized PDF retrieval
+    async fn get_pdf_url(
+        &self,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<String>, ProviderError> {
+        // Default implementation: try search and extract PDF URL
+        let result = self.get_by_doi(doi, context).await?;
+        Ok(result.and_then(|paper| paper.pdf_url))
+    }
 }

@@ -9,7 +9,11 @@
       "Bash(chmod:*)",
       "Bash(/opt/homebrew/bin/rust-research-mcp --version)",
       "Bash(cargo test:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "WebSearch",
+      "Bash(python3:*)",
+      "Bash(rm:*)",
+      "Bash(RUST_LOG=info cargo test --test e2e_test_suite test_url_resolution -- --nocapture)"
     ],
     "deny": [],
     "ask": [],
