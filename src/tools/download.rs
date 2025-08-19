@@ -1,4 +1,5 @@
 use crate::client::{Doi, MetaSearchClient, PaperMetadata};
+use crate::services::CategorizationService;
 use crate::{Config, Result};
 use futures::StreamExt;
 use reqwest::Client;
@@ -31,6 +32,8 @@ pub struct DownloadInput {
     pub filename: Option<String>,
     /// Target directory (optional, uses default download directory)
     pub directory: Option<String>,
+    /// Category for organizing the download (optional, creates subdirectory)
+    pub category: Option<String>,
     /// Whether to overwrite existing files
     #[serde(default)]
     pub overwrite: bool,
@@ -142,6 +145,7 @@ pub struct DownloadTool {
     download_queue: Arc<RwLock<Vec<DownloadQueueItem>>>,
     active_downloads: Arc<RwLock<HashMap<String, DownloadState>>>,
     progress_sender: Option<mpsc::UnboundedSender<DownloadProgress>>,
+    categorization_service: CategorizationService,
 }
 
 impl std::fmt::Debug for DownloadTool {
@@ -153,13 +157,14 @@ impl std::fmt::Debug for DownloadTool {
             .field("download_queue", &"RwLock<Vec<DownloadQueueItem>>")
             .field("active_downloads", &"RwLock<HashMap>")
             .field("progress_sender", &"Option<UnboundedSender>")
+            .field("categorization_service", &"CategorizationService")
             .finish()
     }
 }
 
 impl DownloadTool {
     /// Create a new download tool
-    pub fn new(client: Arc<MetaSearchClient>, config: Arc<Config>) -> Self {
+    pub fn new(client: Arc<MetaSearchClient>, config: Arc<Config>) -> Result<Self> {
         info!("Initializing paper download tool");
 
         let http_client = Client::builder()
@@ -168,14 +173,21 @@ impl DownloadTool {
             .build()
             .expect("Failed to create HTTP client for downloads");
 
-        Self {
+        // Create categorization service
+        let categorization_service = CategorizationService::new(config.categorization.clone())
+            .map_err(|e| {
+                crate::Error::Service(format!("Failed to create categorization service: {e}"))
+            })?;
+
+        Ok(Self {
             client,
             http_client,
             config,
             download_queue: Arc::new(RwLock::new(Vec::new())),
             active_downloads: Arc::new(RwLock::new(HashMap::new())),
             progress_sender: None,
-        }
+            categorization_service,
+        })
     }
 
     /// Set progress callback for download notifications
@@ -411,6 +423,23 @@ impl DownloadTool {
             .directory
             .as_ref()
             .map_or_else(|| self.get_default_download_directory(), PathBuf::from);
+
+        // Add category subdirectory if provided
+        if let Some(category) = &input.category {
+            if self.categorization_service.is_enabled() {
+                // Sanitize the category to ensure it's filesystem safe
+                let sanitized_category = self.categorization_service.sanitize_category(category);
+                
+                // Resolve any conflicts with existing directories/files
+                let final_category = self.categorization_service.resolve_category_conflict(
+                    &base_dir,
+                    &sanitized_category,
+                );
+                
+                base_dir = base_dir.join(final_category);
+                info!("Using category subdirectory: {:?}", base_dir);
+            }
+        }
 
         // Ensure directory exists with better error handling
         if let Err(e) = tokio::fs::create_dir_all(&base_dir).await {
@@ -931,7 +960,7 @@ mod tests {
         let config = create_test_config();
         let meta_config = crate::client::MetaSearchConfig::default();
         let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
-        Ok(DownloadTool::new(client, config))
+        DownloadTool::new(client, config)
     }
 
     #[test]
@@ -942,6 +971,7 @@ mod tests {
             url: None,
             filename: None,
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -953,6 +983,7 @@ mod tests {
             url: Some("https://example.com/paper.pdf".to_string()),
             filename: None,
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -964,6 +995,7 @@ mod tests {
             url: None,
             filename: None,
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -975,6 +1007,7 @@ mod tests {
             url: Some("https://example.com/paper.pdf".to_string()),
             filename: None,
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -986,6 +1019,7 @@ mod tests {
             url: None,
             filename: Some("../malicious.pdf".to_string()),
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -1034,6 +1068,7 @@ mod tests {
             url: None,
             filename: Some("test.pdf".to_string()),
             directory: Some(temp_dir.path().to_string_lossy().to_string()),
+            category: None,
             overwrite: false,
             verify_integrity: true,
         };
@@ -1084,7 +1119,7 @@ mod tests {
         config.downloads.directory = PathBuf::from("/tmp/test-downloads");
         let meta_config = crate::client::MetaSearchConfig::default();
         let client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
-        let tool = DownloadTool::new(client, Arc::new(config));
+        let tool = DownloadTool::new(client, Arc::new(config)).unwrap();
 
         // Test that the tool uses the custom directory
         let dir = tool.get_default_download_directory();
@@ -1096,6 +1131,7 @@ mod tests {
             url: None,
             filename: Some("test.pdf".to_string()),
             directory: None, // No override, should use config default
+            category: None,
             overwrite: false,
             verify_integrity: false,
         };

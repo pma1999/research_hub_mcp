@@ -18,6 +18,8 @@ pub struct Config {
     pub logging: LoggingConfig,
     /// Rate limiting configuration
     pub rate_limiting: RateLimitingConfig,
+    /// Categorization configuration
+    pub categorization: crate::services::CategorizationConfig,
     /// Environment profile (development, production)
     #[serde(default = "default_profile")]
     pub profile: String,
@@ -160,6 +162,7 @@ impl Default for Config {
             downloads: DownloadsConfig::default(),
             logging: LoggingConfig::default(),
             rate_limiting: RateLimitingConfig::default(),
+            categorization: crate::services::CategorizationConfig::default(),
             profile: default_profile(),
             schema_version: default_schema_version(),
         }

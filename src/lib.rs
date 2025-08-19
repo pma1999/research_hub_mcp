@@ -9,6 +9,7 @@ pub mod error;
 pub mod resilience;
 pub mod server;
 pub mod service;
+pub mod services;
 pub mod tools;
 
 pub use client::{Doi, MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata};
@@ -18,4 +19,4 @@ pub use resilience::health::HealthCheckManager;
 pub use resilience::{CircuitBreaker, RetryConfig, RetryPolicy, TimeoutConfig, TimeoutExt};
 pub use server::Server;
 pub use service::{DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler};
-pub use tools::{DownloadTool, MetadataExtractor, SearchTool, CodeSearchTool, BibliographyTool};
+pub use tools::{DownloadTool, MetadataExtractor, SearchTool, CodeSearchTool, BibliographyTool, CategorizeTool};

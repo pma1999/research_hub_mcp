@@ -353,6 +353,7 @@ async fn test_download_tool() {
         url: None,
         filename: None,
         directory: None,
+        category: None,
         overwrite: false,
         verify_integrity: false,
     };
@@ -366,6 +367,7 @@ async fn test_download_tool() {
         url: Some("https://example.com/test.pdf".to_string()),
         filename: None,
         directory: None,
+        category: None,
         overwrite: false,
         verify_integrity: false,
     };
@@ -611,13 +613,14 @@ mod integration_tests {
                     MetaSearchClient::new((*config).clone(), meta_config)
                         .expect("Failed to create MetaSearchClient"),
                 );
-                let download_tool = DownloadTool::new(client, config.clone());
+                let download_tool = DownloadTool::new(client, config.clone()).expect("Failed to create DownloadTool");
 
                 let download_input = ActualDownloadInput {
                     doi: Some(paper.metadata.doi.clone()),
                     url: None,
                     filename: Some("test_integration.pdf".to_string()),
                     directory: Some("/tmp".to_string()),
+                    category: None,
                     overwrite: true,
                     verify_integrity: false,
                 };

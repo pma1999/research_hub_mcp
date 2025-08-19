@@ -18,7 +18,11 @@
       "Bash(cargo publish:*)",
       "Bash(git add:*)",
       "Bash(git tag:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(source .env)",
+      "Bash(cargo install:*)",
+      "Bash(./target/release/rust-research-mcp --version)"
     ],
     "deny": [],
     "ask": [],

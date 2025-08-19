@@ -67,7 +67,7 @@ impl ResearchServerHandler {
         let search_tool = SearchTool::new(config.clone())?;
 
         // Initialize download tool
-        let download_tool = DownloadTool::new(client, config.clone());
+        let download_tool = DownloadTool::new(client, config.clone())?;
 
         // Initialize metadata extractor
         let metadata_extractor = MetadataExtractor::new(config.clone())?;
@@ -333,6 +333,7 @@ impl ServerHandler for ResearchServerHandler {
                         url: None,
                         filename,
                         directory: None,
+                        category: None,
                         overwrite: false,
                         verify_integrity: true,
                     };

@@ -1,5 +1,6 @@
 use crate::client::providers::{SearchQuery, SearchType as ProviderSearchType};
 use crate::client::{MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata};
+use crate::services::CategorizationService;
 use crate::{Config, Result};
 // use rmcp::tool; // Will be enabled when rmcp integration is complete
 use schemars::JsonSchema;
@@ -64,6 +65,8 @@ pub struct SearchResult {
     pub search_time_ms: u64,
     /// Source mirror that provided the results
     pub source_mirror: Option<String>,
+    /// Suggested category for organizing downloaded papers
+    pub category: Option<String>,
 }
 
 /// Individual paper result
@@ -78,6 +81,8 @@ pub struct PaperResult {
     pub available: bool,
     /// Source where this result came from
     pub source: String,
+    /// Suggested category for organizing this paper
+    pub category: Option<String>,
 }
 
 /// Cache entry for search results
@@ -108,6 +113,7 @@ pub struct SearchTool {
     meta_client: Arc<MetaSearchClient>,
     cache: Arc<RwLock<HashMap<String, CacheEntry>>>,
     config: Arc<Config>,
+    categorization_service: CategorizationService,
 }
 
 impl std::fmt::Debug for SearchTool {
@@ -116,6 +122,7 @@ impl std::fmt::Debug for SearchTool {
             .field("meta_client", &"MetaSearchClient")
             .field("cache", &"RwLock<HashMap>")
             .field("config", &"Config")
+            .field("categorization_service", &"CategorizationService")
             .finish()
     }
 }
@@ -131,10 +138,17 @@ impl SearchTool {
             crate::Error::Service(format!("Failed to create meta-search client: {e}"))
         })?;
 
+        // Create categorization service
+        let categorization_service = CategorizationService::new(config.categorization.clone())
+            .map_err(|e| {
+                crate::Error::Service(format!("Failed to create categorization service: {e}"))
+            })?;
+
         Ok(Self {
             meta_client: Arc::new(meta_client),
             cache: Arc::new(RwLock::new(HashMap::new())),
             config,
+            categorization_service,
         })
     }
 
@@ -177,12 +191,23 @@ impl SearchTool {
             .map_err(|e| crate::Error::Service(format!("Meta-search failed: {e}")))?;
 
         // Convert to our SearchResult format
-        let result = Self::convert_meta_result_to_search_result(
+        let mut result = Self::convert_meta_result_to_search_result(
             input.query.clone(),
             input.search_type.clone(),
             meta_result,
             &input,
         );
+
+        // Add categorization if enabled and papers were found
+        if self.categorization_service.is_enabled() && !result.papers.is_empty() {
+            let category = self.categorize_papers(&input.query, &result.papers).await;
+            result.category = Some(category.clone());
+            
+            // Set category for each paper result
+            for paper in &mut result.papers {
+                paper.category = Some(category.clone());
+            }
+        }
 
         // Cache the result
         self.cache_result(&cache_key, &result).await;
@@ -324,6 +349,7 @@ impl SearchTool {
                     relevance_score: (index as f64).mul_add(-0.01, 1.0), // Simple scoring based on order
                     available: true, // Assume available since providers returned them
                     source,
+                    category: None, // Will be set later by categorization
                 }
             })
             .collect();
@@ -360,6 +386,85 @@ impl SearchTool {
             has_more: returned_count >= input.limit, // Estimate based on limit
             search_time_ms: meta_result.total_search_time.as_millis() as u64,
             source_mirror: Some(source_summary),
+            category: None, // Will be set later by categorization
+        }
+    }
+
+    /// Categorize papers using LLM based on query and abstracts
+    async fn categorize_papers(&self, query: &str, papers: &[PaperResult]) -> String {
+        info!("Categorizing papers for query: '{}'", query);
+        
+        // Extract paper metadata for categorization
+        let paper_metadata: Vec<PaperMetadata> = papers
+            .iter()
+            .map(|paper| paper.metadata.clone())
+            .collect();
+
+        // Generate categorization prompt
+        let prompt = self.categorization_service.generate_category_prompt(query, &paper_metadata);
+        
+        debug!("Categorization prompt generated ({} chars)", prompt.len());
+
+        // Since this is an MCP server, the LLM calling us would need to categorize
+        // For now, we'll use a simple heuristic categorization based on the query
+        // In the future, this could be replaced with an actual LLM call
+        let category_response = self.simple_heuristic_categorization(query, &paper_metadata);
+        
+        // Sanitize the category
+        let category = self.categorization_service.sanitize_category(&category_response);
+        
+        info!("Categorized papers as: '{}'", category);
+        category
+    }
+
+    /// Simple heuristic categorization (fallback when no LLM available)
+    fn simple_heuristic_categorization(&self, query: &str, papers: &[PaperMetadata]) -> String {
+        let query_lower = query.to_lowercase();
+        
+        // Collect keywords from query and paper titles/abstracts
+        let mut keywords = vec![query_lower.clone()];
+        
+        for paper in papers.iter().take(3) { // Analyze first 3 papers
+            if let Some(title) = &paper.title {
+                keywords.push(title.to_lowercase());
+            }
+            if let Some(abstract_text) = &paper.abstract_text {
+                keywords.push(abstract_text[..abstract_text.len().min(200)].to_lowercase());
+            }
+        }
+        
+        let all_text = keywords.join(" ");
+        
+        // Simple keyword-based categorization
+        if all_text.contains("machine learning") || all_text.contains("neural network") || all_text.contains("deep learning") {
+            "machine_learning".to_string()
+        } else if all_text.contains("quantum") || all_text.contains("physics") {
+            "quantum_physics".to_string()
+        } else if all_text.contains("biology") || all_text.contains("genetics") || all_text.contains("biomedical") {
+            "biology_genetics".to_string()
+        } else if all_text.contains("computer") || all_text.contains("algorithm") || all_text.contains("software") {
+            "computer_science".to_string()
+        } else if all_text.contains("climate") || all_text.contains("environment") || all_text.contains("sustainability") {
+            "environmental_science".to_string()
+        } else if all_text.contains("medicine") || all_text.contains("medical") || all_text.contains("health") {
+            "medical_research".to_string()
+        } else if all_text.contains("chemistry") || all_text.contains("chemical") {
+            "chemistry".to_string()
+        } else if all_text.contains("mathematics") || all_text.contains("mathematical") || all_text.contains("math") {
+            "mathematics".to_string()
+        } else {
+            // Extract first meaningful words from query
+            let words: Vec<&str> = query_lower
+                .split_whitespace()
+                .filter(|w| w.len() > 2 && !["the", "and", "for", "with", "from", "into"].contains(w))
+                .take(3)
+                .collect();
+            
+            if words.is_empty() {
+                self.categorization_service.default_category().to_string()
+            } else {
+                words.join("_")
+            }
         }
     }
 }
@@ -544,6 +649,7 @@ mod tests {
             has_more: false,
             search_time_ms: 100,
             source_mirror: None,
+            category: None,
         };
 
         let cache_key = SearchTool::generate_cache_key(&input);
