@@ -345,7 +345,7 @@ async fn test_download_tool() {
         MetaSearchClient::new((*config).clone(), meta_config)
             .expect("Failed to create MetaSearchClient"),
     );
-    let download_tool = DownloadTool::new(client, config);
+    let download_tool = DownloadTool::new(client, config).expect("Failed to create DownloadTool");
 
     // Test input validation
     let invalid_input = ActualDownloadInput {

@@ -345,18 +345,16 @@ mod tests {
 
     #[test]
     fn test_clean_doi() {
-        let provider = SciHubProvider::new().unwrap();
-
         assert_eq!(
-            provider.clean_doi("10.1038/nature12373"),
+            SciHubProvider::clean_doi("10.1038/nature12373"),
             "10.1038/nature12373"
         );
         assert_eq!(
-            provider.clean_doi("doi:10.1038/nature12373"),
+            SciHubProvider::clean_doi("doi:10.1038/nature12373"),
             "10.1038/nature12373"
         );
         assert_eq!(
-            provider.clean_doi("https://doi.org/10.1038/nature12373"),
+            SciHubProvider::clean_doi("https://doi.org/10.1038/nature12373"),
             "10.1038/nature12373"
         );
     }

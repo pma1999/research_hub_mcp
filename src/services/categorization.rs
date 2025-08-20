@@ -101,17 +101,28 @@ impl CategorizationService {
 
         // Truncate if too long
         if prompt.len() > self.config.max_prompt_length {
-            let truncated_length = self.config.max_prompt_length - 200; // Leave room for requirements
-            prompt = format!(
-                "{}\n\n[Content truncated to fit prompt limits]\n\n{}",
-                &prompt[..truncated_length.min(prompt.len())],
-                "Requirements:\n\
+            let requirements_text = "Requirements:\n\
                 - 5-8 words maximum\n\
                 - Use snake_case format (lowercase with underscores)\n\
                 - Filesystem safe (no special characters)\n\
                 - Descriptive of the research domain/topic\n\n\
-                Return only the folder name, nothing else."
-            );
+                Return only the folder name, nothing else.";
+            let truncation_notice = "\n\n[Content truncated to fit prompt limits]\n\n";
+            let available_length = self.config.max_prompt_length 
+                - requirements_text.len() 
+                - truncation_notice.len();
+            
+            if available_length > 0 {
+                prompt = format!(
+                    "{}{}{}",
+                    &prompt[..available_length.min(prompt.len())],
+                    truncation_notice,
+                    requirements_text
+                );
+            } else {
+                // If even the requirements don't fit, just use requirements
+                prompt = requirements_text.to_string();
+            }
         }
 
         debug!("Generated categorization prompt ({} chars)", prompt.len());
@@ -213,6 +224,11 @@ impl CategorizationService {
     /// Get default category
     pub fn default_category(&self) -> &str {
         &self.config.default_category
+    }
+
+    /// Get max abstracts configuration
+    pub fn max_abstracts(&self) -> usize {
+        self.config.max_abstracts
     }
 }
 

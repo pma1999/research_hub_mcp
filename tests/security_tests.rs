@@ -93,7 +93,7 @@ async fn test_path_traversal_attempts() {
 
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
-    let download_tool = DownloadTool::new(meta_client, Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client, Arc::new(config.clone())).unwrap();
 
     let path_traversal_payloads = vec![
         "../../../etc/passwd",
@@ -110,6 +110,7 @@ async fn test_path_traversal_attempts() {
             url: Some("https://test.com/fake.pdf".to_string()),
             filename: Some(payload.to_string()),
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: false,
         };
@@ -179,7 +180,7 @@ async fn test_null_byte_injection() {
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
     let search_tool = SearchTool::new(Arc::new(config.clone())).unwrap();
-    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone())).unwrap();
 
     let null_byte_payloads = vec![
         "test\0.pdf",
@@ -212,6 +213,7 @@ async fn test_null_byte_injection() {
             url: Some("https://test.com/fake.pdf".to_string()),
             filename: Some(payload.to_string()),
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: false,
         };
@@ -235,7 +237,7 @@ async fn test_command_injection_attempts() {
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
     let search_tool = SearchTool::new(Arc::new(config.clone())).unwrap();
-    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone())).unwrap();
 
     let command_injection_payloads = vec![
         "; rm -rf /",
@@ -271,6 +273,7 @@ async fn test_command_injection_attempts() {
             url: Some("https://test.com/fake.pdf".to_string()),
             filename: Some(payload.to_string()),
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: false,
         };
@@ -315,7 +318,7 @@ async fn test_unicode_handling() {
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
     let search_tool = SearchTool::new(Arc::new(config.clone())).unwrap();
-    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone())).unwrap();
 
     let unicode_payloads = vec![
         "test\u{202E}fdp.test", // Right-to-left override
@@ -344,6 +347,7 @@ async fn test_unicode_handling() {
             url: Some("https://test.com/fake.pdf".to_string()),
             filename: Some(payload.to_string()),
             directory: None,
+            category: None,
             overwrite: false,
             verify_integrity: false,
         };
@@ -382,7 +386,7 @@ async fn test_memory_exhaustion_protection() {
 
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
-    let download_tool = DownloadTool::new(meta_client, Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client, Arc::new(config.clone())).unwrap();
 
     // Test with various large file scenarios
     let large_file_url = "https://test.com/large_file.pdf";
@@ -393,6 +397,7 @@ async fn test_memory_exhaustion_protection() {
         url: Some(large_file_url.to_string()),
         filename: None,
         directory: None,
+        category: None,
         overwrite: false,
         verify_integrity: false,
     };

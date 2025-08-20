@@ -1,7 +1,7 @@
 use crate::tools::{
     download::DownloadInput as ActualDownloadInput, 
     metadata::MetadataInput as ActualMetadataInput,
-    search::SearchInput as ActualSearchInput,
+    search::{SearchInput as ActualSearchInput, SearchResult},
     code_search::CodeSearchInput,
     bibliography::BibliographyInput,
 };
@@ -13,7 +13,8 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{future::Future, sync::Arc};
+use std::{future::Future, sync::Arc, collections::HashMap, time::{SystemTime, Duration}};
+use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
 // Tool input structures
@@ -43,8 +44,15 @@ pub struct MetadataInput {
     pub input: String,
 }
 
-/// Main MCP server handler implementing rmcp
+/// Cache entry for paper categories from recent searches
 #[derive(Debug, Clone)]
+struct CategoryCacheEntry {
+    category: Option<String>,
+    timestamp: SystemTime,
+}
+
+/// Main MCP server handler implementing rmcp
+#[derive(Debug)]
 pub struct ResearchServerHandler {
     #[allow(dead_code)]
     config: Arc<Config>,
@@ -53,6 +61,8 @@ pub struct ResearchServerHandler {
     metadata_extractor: MetadataExtractor,
     code_search_tool: CodeSearchTool,
     bibliography_tool: BibliographyTool,
+    /// Cache of DOI -> Category mappings from recent searches
+    category_cache: Arc<RwLock<HashMap<String, CategoryCacheEntry>>>,
 }
 
 impl ResearchServerHandler {
@@ -85,6 +95,7 @@ impl ResearchServerHandler {
             metadata_extractor,
             code_search_tool,
             bibliography_tool,
+            category_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -93,6 +104,51 @@ impl ResearchServerHandler {
     pub async fn ping(&self) -> Result<()> {
         debug!("Ping received - server is healthy");
         Ok(())
+    }
+
+    /// Cache category information from search results
+    async fn cache_paper_categories(&self, results: &SearchResult) {
+        let mut cache = self.category_cache.write().await;
+        let now = SystemTime::now();
+        
+        for paper in &results.papers {
+            if !paper.metadata.doi.is_empty() {
+                if let Some(category) = &paper.category {
+                    debug!("Caching category '{}' for DOI '{}'", category, paper.metadata.doi);
+                    cache.insert(
+                        paper.metadata.doi.clone(),
+                        CategoryCacheEntry {
+                            category: Some(category.clone()),
+                            timestamp: now,
+                        },
+                    );
+                }
+            }
+        }
+        
+        // Clean up old entries (older than 1 hour)
+        let one_hour_ago = now - Duration::from_secs(3600);
+        cache.retain(|doi, entry| {
+            if entry.timestamp < one_hour_ago {
+                debug!("Removing expired cache entry for DOI '{}'", doi);
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    /// Get cached category for a DOI
+    async fn get_cached_category(&self, doi: &str) -> Option<String> {
+        let cache = self.category_cache.read().await;
+        if let Some(entry) = cache.get(doi) {
+            debug!("Found cached category '{}' for DOI '{}'", 
+                   entry.category.as_deref().unwrap_or("None"), doi);
+            entry.category.clone()
+        } else {
+            debug!("No cached category found for DOI '{}'", doi);
+            None
+        }
     }
 }
 
@@ -285,6 +341,9 @@ impl ServerHandler for ResearchServerHandler {
                         ErrorData::internal_error(format!("Search failed: {e}"), None)
                     })?;
 
+                    // Cache the category information for each paper
+                    self.cache_paper_categories(&results).await;
+
                     Ok(CallToolResult {
                         content: Some(vec![Content::text(format!("📚 Found {} papers for '{}'\n\n{}\n\n💡 Tip: Papers from {} may be available for download. Very recent papers (2024-2025) might not be available yet.", 
                             results.returned_count,
@@ -328,12 +387,15 @@ impl ServerHandler for ResearchServerHandler {
                         .and_then(|v| v.as_str())
                         .map(ToString::to_string);
 
+                    // Look up category from recent search results
+                    let category = self.get_cached_category(doi).await;
+
                     let input = ActualDownloadInput {
                         doi: Some(doi.to_string()),
                         url: None,
                         filename,
                         directory: None,
-                        category: None,
+                        category,
                         overwrite: false,
                         verify_integrity: true,
                     };

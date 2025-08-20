@@ -959,7 +959,7 @@ mod tests {
             },
         ];
 
-        let deduplicated = client.deduplicate_papers(papers).await;
+        let deduplicated = client.deduplicate_papers(papers);
         assert_eq!(deduplicated.len(), 1);
     }
 }

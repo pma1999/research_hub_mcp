@@ -516,7 +516,7 @@ mod tests {
         };
 
         assert_eq!(
-            provider.build_query(&title_query),
+            OpenReviewProvider::build_query(&title_query),
             "transformer attention mechanism"
         );
 
@@ -528,7 +528,7 @@ mod tests {
             params: HashMap::new(),
         };
 
-        assert_eq!(provider.build_query(&author_query), "Yoshua Bengio");
+        assert_eq!(OpenReviewProvider::build_query(&author_query), "Yoshua Bengio");
     }
 
     #[test]

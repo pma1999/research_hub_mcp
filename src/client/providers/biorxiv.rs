@@ -451,7 +451,7 @@ mod tests {
         ];
 
         for (input, expected) in test_cases {
-            let result = provider.extract_biorxiv_doi(input);
+            let result = BiorxivProvider::extract_biorxiv_doi(input);
             assert_eq!(result.as_deref(), expected, "Failed for input: {}", input);
         }
     }

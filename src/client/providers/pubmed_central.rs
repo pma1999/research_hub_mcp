@@ -473,7 +473,7 @@ mod tests {
         };
 
         assert_eq!(
-            provider.build_query(&doi_query),
+            PubMedCentralProvider::build_query(&doi_query),
             "10.1371/journal.pone.0000001[doi]"
         );
 
@@ -486,7 +486,7 @@ mod tests {
         };
 
         assert_eq!(
-            provider.build_query(&title_query),
+            PubMedCentralProvider::build_query(&title_query),
             "CRISPR gene editing[title]"
         );
     }

@@ -614,16 +614,16 @@ mod tests {
         let provider = MdpiProvider::new().unwrap();
 
         assert_eq!(
-            provider.extract_doi("DOI: 10.3390/s21010123"),
+            MdpiProvider::extract_doi("DOI: 10.3390/s21010123"),
             Some("10.3390/s21010123".to_string())
         );
 
         assert_eq!(
-            provider.extract_doi("https://doi.org/10.3390/materials14020456"),
+            MdpiProvider::extract_doi("https://doi.org/10.3390/materials14020456"),
             Some("10.3390/materials14020456".to_string())
         );
 
-        assert_eq!(provider.extract_doi("No DOI here"), None);
+        assert_eq!(MdpiProvider::extract_doi("No DOI here"), None);
     }
 
     #[test]
@@ -631,12 +631,12 @@ mod tests {
         let provider = MdpiProvider::new().unwrap();
 
         assert_eq!(
-            provider.extract_article_id("https://www.mdpi.com/1424-8220/21/1/123"),
+            MdpiProvider::extract_article_id("https://www.mdpi.com/1424-8220/21/1/123"),
             Some("1424-8220-00001-00123".to_string())
         );
 
         assert_eq!(
-            provider.extract_article_id("https://www.mdpi.com/invalid/url"),
+            MdpiProvider::extract_article_id("https://www.mdpi.com/invalid/url"),
             None
         );
     }
@@ -670,7 +670,7 @@ mod tests {
         };
 
         assert_eq!(
-            provider.build_query(&title_query),
+            MdpiProvider::build_query(&title_query),
             "title:(machine learning sensors)"
         );
 
@@ -682,7 +682,7 @@ mod tests {
             params: HashMap::new(),
         };
 
-        assert_eq!(provider.build_query(&author_query), "author:(John Smith)");
+        assert_eq!(MdpiProvider::build_query(&author_query), "author:(John Smith)");
 
         let doi_query = SearchQuery {
             query: "10.3390/s21010123".to_string(),
@@ -692,7 +692,7 @@ mod tests {
             params: HashMap::new(),
         };
 
-        assert_eq!(provider.build_query(&doi_query), "10.3390/s21010123");
+        assert_eq!(MdpiProvider::build_query(&doi_query), "10.3390/s21010123");
     }
 
     #[test]
@@ -750,7 +750,7 @@ mod tests {
             article_number: None,
         };
 
-        let paper = provider.convert_to_paper(&article);
+        let paper = MdpiProvider::convert_to_paper(&article);
 
         assert_eq!(paper.title.unwrap(), "Test MDPI Paper");
         assert_eq!(paper.authors.len(), 2);

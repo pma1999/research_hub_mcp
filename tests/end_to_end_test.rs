@@ -55,7 +55,7 @@ async fn test_complete_paper_search_workflow() {
     let meta_config = MetaSearchConfig::default();
     let meta_client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
     let search_tool = SearchTool::new(Arc::new(config.clone())).unwrap();
-    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone()));
+    let download_tool = DownloadTool::new(meta_client.clone(), Arc::new(config.clone())).unwrap();
     let metadata_extractor = MetadataExtractor::new(Arc::new(config.clone())).unwrap();
 
     // Scenario 1: Search for paper by DOI
@@ -81,6 +81,7 @@ async fn test_complete_paper_search_workflow() {
         url: None,
         filename: None,
         directory: None,
+        category: None,
         overwrite: false,
         verify_integrity: false,
     };

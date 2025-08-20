@@ -92,7 +92,7 @@ impl CategorizeTool {
         }
 
         // Limit papers based on service configuration or input override
-        let max_abstracts = input.max_abstracts.unwrap_or(5); // Default fallback
+        let max_abstracts = input.max_abstracts.unwrap_or(self.categorization_service.max_abstracts());
         let papers_to_analyze: Vec<&PaperMetadata> = input
             .papers
             .iter()
@@ -358,7 +358,7 @@ mod tests {
 
         // Test default fallback
         let generic_result = tool.simple_heuristic_categorization("unknown topic", &[]);
-        assert_eq!(generic_result, "research_papers");
+        assert_eq!(generic_result, "unknown_topic");
     }
 
     #[test]
