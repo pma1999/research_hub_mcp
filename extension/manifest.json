@@ -1,0 +1,96 @@
+{
+  "name": "Rust Research MCP",
+  "version": "0.6.2",
+  "description": "Academic research paper search, download, and management tools powered by Rust",
+  "author": "C. Thomas Brittain",
+  "license": "GPL-3.0",
+  "homepage": "https://github.com/Ladvien/research_hub_mcp",
+  "mcp": {
+    "command": "rust-research-mcp",
+    "args": [],
+    "env": {
+      "RUST_LOG": "info",
+      "RSH_DOWNLOAD_DIRECTORY": "~/Documents/Research-Papers"
+    }
+  },
+  "dependencies": {
+    "rust-research-mcp": {
+      "type": "cargo",
+      "package": "rust-research-mcp",
+      "version": "^0.6.2"
+    }
+  },
+  "installation": {
+    "steps": [
+      {
+        "type": "cargo_install",
+        "package": "rust-research-mcp",
+        "version": "0.6.2"
+      },
+      {
+        "type": "create_directory",
+        "path": "~/Documents/Research-Papers"
+      }
+    ]
+  },
+  "tools": [
+    {
+      "name": "search_papers",
+      "description": "Search for academic papers by DOI, title, author, or keywords across multiple databases (arXiv, PubMed, bioRxiv, etc.)"
+    },
+    {
+      "name": "download_paper",
+      "description": "Download academic papers by DOI or URL with automatic file organization and categorization"
+    },
+    {
+      "name": "extract_metadata",
+      "description": "Extract detailed metadata (title, authors, abstract, citations) from PDF files"
+    },
+    {
+      "name": "generate_bibliography",
+      "description": "Generate formatted bibliographies in various citation styles (APA, MLA, Chicago, BibTeX)"
+    },
+    {
+      "name": "categorize_papers",
+      "description": "Automatically categorize papers using AI-powered analysis of abstracts and keywords"
+    }
+  ],
+  "configuration": {
+    "download_directory": {
+      "type": "string",
+      "default": "~/Documents/Research-Papers",
+      "description": "Directory where downloaded papers will be saved"
+    },
+    "file_organization": {
+      "type": "string",
+      "default": "categorized",
+      "options": ["flat", "categorized", "by_date"],
+      "description": "How to organize downloaded files"
+    },
+    "categorization_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable automatic AI-powered paper categorization"
+    },
+    "max_concurrent_downloads": {
+      "type": "number",
+      "default": 3,
+      "description": "Maximum number of simultaneous downloads"
+    }
+  },
+  "permissions": [
+    "network",
+    "filesystem.read",
+    "filesystem.write"
+  ],
+  "tags": [
+    "research",
+    "academic",
+    "papers",
+    "science",
+    "bibliography",
+    "pdf",
+    "arxiv",
+    "pubmed"
+  ]
+}

@@ -72,3 +72,16 @@ test_*.log
 NOTES.md
 TODO.md
 .notes/
+
+# Metadata cache
+.metadata_cache/
+
+# Editor temp files
+*.orig
+*.bak
+*.tmp
+*.temp
+
+# OS temp files
+Thumbs.db
+Desktop.ini
