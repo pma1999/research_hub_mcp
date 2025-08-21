@@ -465,41 +465,40 @@ impl DownloadTool {
                         base_dir, e
                     ),
                 });
-            } else {
-                // For other errors, still try fallback but with clearer messaging
-                let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
-                    home_dir.join("Documents").join("Research-Papers")
-                } else {
-                    PathBuf::from("/tmp/papers")
-                };
-                
-                warn!("Primary directory failed, trying fallback: {:?}", fallback_dir);
-                
-                tokio::fs::create_dir_all(&fallback_dir)
-                    .await
-                    .map_err(|fallback_err| {
-                        crate::Error::InvalidInput {
-                            field: "download_directory".to_string(),
-                            reason: format!(
-                                "❌ Cannot create download directory ❌\n\n\
-                                Neither the configured directory nor fallback location worked.\n\n\
-                                💡 Try these solutions:\n\
-                                1. Grant Claude Desktop folder permissions in System Settings\n\
-                                2. Use a different directory: ~/Documents/Research-Papers\n\
-                                3. Check disk space and permissions\n\n\
-                                📁 Configured: {:?}\n\
-                                📁 Fallback tried: {:?}\n\
-                                🔧 Original error: {}\n\
-                                🔧 Fallback error: {}",
-                                base_dir, fallback_dir, e, fallback_err
-                            ),
-                        }
-                    })?;
-                    
-                // Update the base_dir to the fallback
-                base_dir = fallback_dir;
-                info!("Using fallback directory: {:?}", base_dir);
             }
+            // For other errors, still try fallback but with clearer messaging
+            let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
+                home_dir.join("Documents").join("Research-Papers")
+            } else {
+                PathBuf::from("/tmp/papers")
+            };
+            
+            warn!("Primary directory failed, trying fallback: {:?}", fallback_dir);
+            
+            tokio::fs::create_dir_all(&fallback_dir)
+                .await
+                .map_err(|fallback_err| {
+                    crate::Error::InvalidInput {
+                        field: "download_directory".to_string(),
+                        reason: format!(
+                            "❌ Cannot create download directory ❌\n\n\
+                            Neither the configured directory nor fallback location worked.\n\n\
+                            💡 Try these solutions:\n\
+                            1. Grant Claude Desktop folder permissions in System Settings\n\
+                            2. Use a different directory: ~/Documents/Research-Papers\n\
+                            3. Check disk space and permissions\n\n\
+                            📁 Configured: {:?}\n\
+                            📁 Fallback tried: {:?}\n\
+                            🔧 Original error: {}\n\
+                            🔧 Fallback error: {}",
+                            base_dir, fallback_dir, e, fallback_err
+                        ),
+                    }
+                })?;
+                
+            // Update the base_dir to the fallback
+            base_dir = fallback_dir;
+            info!("Using fallback directory: {:?}", base_dir);
         }
 
         // Determine filename

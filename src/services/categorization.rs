@@ -199,11 +199,10 @@ impl CategorizationService {
                 // Directory exists, this is fine - use the existing category
                 debug!("Using existing category directory: {}", current_category);
                 return current_category;
-            } else {
-                // File exists with same name, need to resolve conflict
-                current_category = format!("{}_{}", original_category, counter);
-                counter += 1;
             }
+            // File exists with same name, need to resolve conflict
+            current_category = format!("{}_{}", original_category, counter);
+            counter += 1;
         }
 
         if current_category != original_category {

@@ -102,13 +102,13 @@ pub struct PaperMetadata {
 /// Bibliography generation tool
 #[derive(Debug, Clone)]
 pub struct BibliographyTool {
-    config: Arc<Config>,
+    _config: Arc<Config>,
 }
 
 impl BibliographyTool {
     /// Create a new bibliography tool
     pub fn new(config: Arc<Config>) -> Result<Self> {
-        Ok(Self { config })
+        Ok(Self { _config: config })
     }
 
     /// Generate bibliography from paper identifiers
