@@ -1,14 +1,22 @@
 {
-  "name": "Rust Research MCP",
+  "dxt_version": "0.1",
+  "name": "rust-research-mcp",
+  "display_name": "Rust Research MCP",
   "version": "0.6.3",
-  "description": "Academic research paper search, download, and management tools powered by Rust",
-  "author": "C. Thomas Brittain",
-  "mcp": {
-    "command": "/Users/ladvien/.cargo/bin/rust-research-mcp",
-    "args": [],
-    "env": {
-      "RUST_LOG": "info",
-      "RSH_DOWNLOAD_DIRECTORY": "~/Documents/Research-Papers"
+  "description": "Academic research paper search and download tools",
+  "author": {
+    "name": "C. Thomas Brittain"
+  },
+  "server": {
+    "type": "rust",
+    "entry_point": "/Users/ladvien/.cargo/bin/rust-research-mcp",
+    "mcp_config": {
+      "command": "/Users/ladvien/.cargo/bin/rust-research-mcp",
+      "args": [],
+      "env": {
+        "RUST_LOG": "info",
+        "RSH_DOWNLOAD_DIRECTORY": "~/Documents/Research-Papers"
+      }
     }
   }
 }
