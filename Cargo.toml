@@ -8,7 +8,7 @@ license = "GPL-3.0"
 name = "rust-research-mcp"
 repository = "https://github.com/Ladvien/research_hub_mcp"
 rust-version = "1.70"
-version = "0.6.4"
+version = "0.6.5"
 
 [dependencies]
 # MCP Framework
