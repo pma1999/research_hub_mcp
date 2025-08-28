@@ -3,7 +3,7 @@ use super::{
     retry_with_policy, CircuitBreaker, HealthCheckManager, PingHealthCheck, RetryPolicy, TimeoutExt,
 };
 use crate::error::ErrorCategory;
-use crate::{Error, Result};
+use crate::Error;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

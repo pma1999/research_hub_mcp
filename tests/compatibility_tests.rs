@@ -1,6 +1,5 @@
 use rust_research_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
 use std::env;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 /// Environment compatibility tests for different platforms and configurations

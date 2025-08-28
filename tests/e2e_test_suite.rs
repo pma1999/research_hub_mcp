@@ -1,4 +1,4 @@
-use rmcp::{model::*, ServerHandler};
+use rmcp::ServerHandler;
 use rust_research_mcp::{
     client::{
         providers::{

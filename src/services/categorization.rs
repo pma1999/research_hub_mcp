@@ -63,9 +63,14 @@ impl CategorizationService {
             .filter_map(|paper| paper.abstract_text.as_ref())
             .take(self.config.max_abstracts)
             .map(|abstract_text| {
-                // Truncate long abstracts to prevent token overflow
+                // Truncate long abstracts to prevent token overflow (respecting Unicode boundaries)
                 if abstract_text.len() > 500 {
-                    format!("{}...", &abstract_text[..500])
+                    // Find the last valid UTF-8 boundary within 500 bytes
+                    let mut end = 500.min(abstract_text.len());
+                    while end > 0 && !abstract_text.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}...", &abstract_text[..end])
                 } else {
                     abstract_text.clone()
                 }

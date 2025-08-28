@@ -1126,13 +1126,13 @@ mod tests {
     #[test]
     fn test_reference_extraction() {
         let extractor = create_test_extractor();
-        let text = r#"
+        let text = r"
 References
 
 [1] Smith, J. (2023). Test Paper. Journal of Testing.
 [2] Doe, J. et al. (2022). Another Paper. DOI: 10.1234/test
 [3] Johnson, M. (2021). Third Paper. Conference Proceedings.
-        "#;
+        ";
 
         let refs = extractor.extract_references(text);
         assert_eq!(refs.len(), 3);

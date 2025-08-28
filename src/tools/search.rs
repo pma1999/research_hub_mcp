@@ -245,11 +245,31 @@ impl SearchTool {
             });
         }
 
-        // Basic sanitization - reject potentially malicious input
-        if input.query.contains('\0') || input.query.contains('\x1b') {
+        // Enhanced security validation - reject potentially malicious input
+        let query_lower = input.query.to_lowercase();
+        let suspicious_patterns = [
+            // SQL Injection patterns
+            "' or 1=1", "or 1=1 --", "' union select", "'; insert into", 
+            "' or 'x'='x", "'; exec ", "'; drop table", "; drop table",
+            // XSS patterns  
+            "<script>", "<img src=", "onerror=", "javascript:", "<svg onload=",
+            "';alert(", "<iframe src=", "&lt;script&gt;",
+            // Command injection patterns
+            "; rm -rf", "rm -rf /", "| cat /etc/passwd", "cat /etc/passwd",
+            "| ls", "; ls", "&& rm", "; cat", "| cat", "&& wget", 
+            "`rm -rf", "$(rm -rf", "; shutdown", "| nc", "nc ",
+        ];
+        
+        if input.query.contains('\0') 
+            || input.query.contains('\x1b')
+            || input.query.contains("$(")
+            || input.query.contains("`")
+            || input.query.contains("|")
+            || suspicious_patterns.iter().any(|&pattern| query_lower.contains(pattern))
+            || input.query.len() > 10_000_000 { // 10MB limit to prevent DoS
             return Err(crate::Error::InvalidInput {
                 field: "query".to_string(),
-                reason: "Query contains invalid characters".to_string(),
+                reason: "Query contains potentially malicious content or is too large".to_string(),
             });
         }
 

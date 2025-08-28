@@ -291,12 +291,37 @@ impl DownloadTool {
             })?;
         }
 
-        // Validate filename if provided
+        // Validate filename if provided - enhanced security checks
         if let Some(filename) = &input.filename {
-            if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+            // Check for path traversal attempts
+            if filename.contains("..") 
+                || filename.contains('/') 
+                || filename.contains('\\') 
+                || filename.contains(';')
+                || filename.contains('|')
+                || filename.contains('&')
+                || filename.contains('`')
+                || filename.contains('$')
+                || filename.contains('>')
+                || filename.contains('<')
+                || filename.starts_with('-')
+                || filename.contains("..\\")
+                || filename.contains("....")
+                || filename.contains("%2e%2e")
+                || filename.contains("%2f")
+                || filename.contains("%5c")
+                || filename.is_empty() 
+                || filename.len() > 255 {
                 return Err(crate::Error::InvalidInput {
                     field: "filename".to_string(),
-                    reason: "Invalid filename: cannot contain path separators".to_string(),
+                    reason: "Invalid filename: contains unsafe characters or path traversal attempts".to_string(),
+                });
+            }
+            // Check for null bytes
+            if filename.contains('\0') {
+                return Err(crate::Error::InvalidInput {
+                    field: "filename".to_string(),
+                    reason: "Invalid filename: contains null bytes".to_string(),
                 });
             }
         }

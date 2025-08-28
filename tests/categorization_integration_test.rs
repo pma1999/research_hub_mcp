@@ -6,7 +6,6 @@ use rust_research_mcp::{
     MetaSearchClient,
     services::CategorizationService,
     tools::categorize::CategorizeInput,
-    tools::search::{SearchInput, SearchType},
     tools::download::DownloadInput,
     client::PaperMetadata,
 };

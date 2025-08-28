@@ -572,7 +572,7 @@ mod tests {
             readers: None,
             writers: None,
             signatures: None,
-            tcdate: Some(1640995200000), // 2022-01-01 timestamp
+            tcdate: Some(1_640_995_200_000), // 2022-01-01 timestamp
             tmdate: None,
         };
 

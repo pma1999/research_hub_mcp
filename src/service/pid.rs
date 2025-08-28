@@ -255,6 +255,6 @@ mod tests {
         assert!(PidFile::is_process_running(std::process::id()));
 
         // Very high PID unlikely to be running
-        assert!(!PidFile::is_process_running(999999));
+        assert!(!PidFile::is_process_running(999_999));
     }
 }
