@@ -14,6 +14,8 @@ pub struct SciHubProvider {
     client: Client,
     mirrors: Vec<String>,
     current_mirror_index: std::sync::atomic::AtomicUsize,
+    user_agents: Vec<String>,
+    current_user_agent_index: std::sync::atomic::AtomicUsize,
 }
 
 impl SciHubProvider {
@@ -21,22 +23,37 @@ impl SciHubProvider {
     pub fn new() -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+            // Don't set user agent here - we'll rotate them per request
             .build()
             .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
-        // Known Sci-Hub mirrors (update these as needed)
+        // Updated Sci-Hub mirrors (as of 2024)
         let mirrors = vec![
             "https://sci-hub.se".to_string(),
-            "https://sci-hub.st".to_string(),
+            "https://sci-hub.st".to_string(), 
             "https://sci-hub.ru".to_string(),
             "https://sci-hub.tw".to_string(),
+            "https://sci-hub.ren".to_string(),
+            "https://sci-hub.cat".to_string(),
+            "https://sci-hub.ee".to_string(),
+        ];
+
+        // Pool of realistic user agents to rotate through
+        let user_agents = vec![
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36".to_string(),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36".to_string(),
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15".to_string(),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0".to_string(),
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36".to_string(),
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:123.0) Gecko/20100101 Firefox/123.0".to_string(),
         ];
 
         Ok(Self {
             client,
             mirrors,
             current_mirror_index: std::sync::atomic::AtomicUsize::new(0),
+            user_agents,
+            current_user_agent_index: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
@@ -51,6 +68,19 @@ impl SciHubProvider {
             std::sync::atomic::Ordering::Relaxed,
         );
         mirror
+    }
+
+    /// Get the next user agent to use
+    fn get_next_user_agent(&self) -> String {
+        let index = self
+            .current_user_agent_index
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let user_agent = self.user_agents[index % self.user_agents.len()].clone();
+        self.current_user_agent_index.store(
+            (index + 1) % self.user_agents.len(),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+        user_agent
     }
 
     /// Clean DOI format for Sci-Hub
@@ -101,20 +131,36 @@ impl SciHubProvider {
         query: &str,
     ) -> Result<Option<PaperMetadata>, ProviderError> {
         let url = format!("{}/{}", mirror, urlencoding::encode(query));
+        let user_agent = self.get_next_user_agent();
 
-        debug!("Trying Sci-Hub URL: {}", url);
+        debug!("Trying Sci-Hub URL: {} with user agent: {}", url, user_agent);
 
         let response = self
             .client
             .get(&url)
+            .header("User-Agent", user_agent)
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.5")
+            .header("Accept-Encoding", "gzip, deflate")
+            .header("DNT", "1")
+            .header("Connection", "keep-alive")
+            .header("Upgrade-Insecure-Requests", "1")
             .send()
             .await
             .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
 
         if !response.status().is_success() {
+            // For 403 errors, provide more context about potential solutions
+            if response.status() == 403 {
+                return Err(ProviderError::Network(format!(
+                    "HTTP 403 Forbidden from mirror {}: Access denied, possibly due to geographic blocking or rate limiting. Will try other mirrors.",
+                    mirror
+                )));
+            }
             return Err(ProviderError::Network(format!(
-                "HTTP {}",
-                response.status()
+                "HTTP {} from mirror {}",
+                response.status(),
+                mirror
             )));
         }
 

@@ -144,7 +144,9 @@ impl Error {
                 match *code {
                     // Rate limiting (handle first to avoid unreachable pattern)
                     429 => ErrorCategory::RateLimited,
-                    // 4xx client errors are permanent
+                    // 403 Forbidden for Sci-Hub should be treated as transient (mirror blocking)
+                    403 => ErrorCategory::Transient,
+                    // Other 4xx client errors are permanent (except 403)
                     400..=499 => ErrorCategory::Permanent,
                     // 5xx server errors are transient
                     500..=599 => ErrorCategory::Transient,
@@ -225,5 +227,111 @@ impl From<crate::client::providers::ProviderError> for Error {
             },
             crate::client::providers::ProviderError::Other(msg) => Self::Provider(msg),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_error_categorization() {
+        // Permanent errors
+        assert_eq!(
+            Error::InvalidInput {
+                field: "test".to_string(),
+                reason: "test".to_string()
+            }
+            .category(),
+            ErrorCategory::Permanent
+        );
+
+        // Transient errors
+        assert_eq!(
+            Error::NetworkTimeout {
+                timeout: Duration::from_secs(30),
+                message: "test".to_string()
+            }
+            .category(),
+            ErrorCategory::Transient
+        );
+
+        // Rate limited errors
+        assert_eq!(
+            Error::RateLimitExceeded {
+                retry_after: Duration::from_secs(60)
+            }
+            .category(),
+            ErrorCategory::RateLimited
+        );
+
+        // Sci-Hub specific errors - updated for 403 handling
+        assert_eq!(
+            Error::SciHub {
+                code: 403,
+                message: "Forbidden".to_string()
+            }
+            .category(),
+            ErrorCategory::Transient // Changed: 403 is now transient for Sci-Hub
+        );
+
+        assert_eq!(
+            Error::SciHub {
+                code: 429,
+                message: "Too Many Requests".to_string()
+            }
+            .category(),
+            ErrorCategory::RateLimited
+        );
+
+        assert_eq!(
+            Error::SciHub {
+                code: 500,
+                message: "Internal Server Error".to_string()
+            }
+            .category(),
+            ErrorCategory::Transient
+        );
+
+        // Other 4xx errors should still be permanent
+        assert_eq!(
+            Error::SciHub {
+                code: 404,
+                message: "Not Found".to_string()
+            }
+            .category(),
+            ErrorCategory::Permanent
+        );
+    }
+
+    #[test]
+    fn test_retry_logic() {
+        let transient_error = Error::NetworkTimeout {
+            timeout: Duration::from_secs(30),
+            message: "test".to_string(),
+        };
+        assert!(transient_error.is_retryable());
+
+        let permanent_error = Error::InvalidInput {
+            field: "test".to_string(),
+            reason: "test".to_string(),
+        };
+        assert!(!permanent_error.is_retryable());
+
+        let rate_limited_error = Error::RateLimitExceeded {
+            retry_after: Duration::from_secs(60),
+        };
+        assert!(rate_limited_error.is_retryable());
+        assert_eq!(
+            rate_limited_error.retry_after(),
+            Some(Duration::from_secs(60))
+        );
+
+        // Test that Sci-Hub 403 errors are now retryable
+        let scihub_403_error = Error::SciHub {
+            code: 403,
+            message: "Forbidden".to_string(),
+        };
+        assert!(scihub_403_error.is_retryable());
     }
 }

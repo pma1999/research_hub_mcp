@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tokio::io::AsyncReadExt;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, instrument, warn};
 
@@ -230,6 +231,57 @@ impl Default for ExtractionPatterns {
 }
 
 impl MetadataExtractor {
+    /// Validate PDF file before attempting to parse
+    async fn validate_pdf_file(file_path: &Path) -> Result<()> {
+        // Check file exists and has valid size
+        let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
+            crate::Error::InvalidInput {
+                field: "file_path".to_string(),
+                reason: format!("Cannot access file: {e}"),
+            }
+        })?;
+
+        if metadata.len() == 0 {
+            return Err(crate::Error::Parse {
+                context: "PDF validation".to_string(),
+                message: "File is empty (0 bytes)".to_string(),
+            });
+        }
+
+        if metadata.len() < 1024 {
+            return Err(crate::Error::Parse {
+                context: "PDF validation".to_string(),
+                message: format!("File is too small ({} bytes) to be a valid PDF", metadata.len()),
+            });
+        }
+
+        // Check for PDF magic bytes
+        let mut file = tokio::fs::File::open(file_path).await.map_err(|e| {
+            crate::Error::Io(e)
+        })?;
+
+        let mut header = [0u8; 8];
+        file.read_exact(&mut header).await.map_err(|e| {
+            crate::Error::Parse {
+                context: "PDF validation".to_string(),
+                message: format!("Cannot read file header: {e}"),
+            }
+        })?;
+
+        // Check for PDF signature
+        if !header.starts_with(b"%PDF-") {
+            return Err(crate::Error::Parse {
+                context: "PDF validation".to_string(),
+                message: format!(
+                    "Invalid file header - not a PDF file. Got: {:?}",
+                    String::from_utf8_lossy(&header[..5])
+                ),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Create a new metadata extractor
     pub fn new(config: Arc<Config>) -> Result<Self> {
         info!("Initializing metadata extraction tool");
@@ -395,16 +447,34 @@ impl MetadataExtractor {
     ) -> Result<ExtractedMetadata> {
         debug!("Loading PDF document: {:?}", file_path);
 
-        // Load PDF document
+        // Validate PDF file before attempting to parse
+        Self::validate_pdf_file(file_path).await?;
+
+        // Load PDF document with better error handling
         let doc = tokio::task::spawn_blocking({
             let path = file_path.to_path_buf();
-            move || Document::load(path)
+            move || {
+                match Document::load(&path) {
+                    Ok(doc) => Ok(doc),
+                    Err(e) => {
+                        // Try to provide more specific error information
+                        if let Ok(metadata) = std::fs::metadata(&path) {
+                            if metadata.len() == 0 {
+                                return Err(format!("PDF file is empty (0 bytes)"));
+                            } else if metadata.len() < 1024 {
+                                return Err(format!("PDF file is too small ({} bytes), likely corrupted", metadata.len()));
+                            }
+                        }
+                        Err(format!("PDF parsing failed: {}", e))
+                    }
+                }
+            }
         })
         .await
         .map_err(|e| crate::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?
         .map_err(|e| crate::Error::Parse {
             context: "PDF loading".to_string(),
-            message: format!("Failed to load PDF: {e}"),
+            message: e,
         })?;
 
         // Extract text from PDF

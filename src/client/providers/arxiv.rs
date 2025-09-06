@@ -43,6 +43,29 @@ impl ArxivProvider {
     }
 
 
+    /// Resolve relative URLs to absolute URLs
+    fn resolve_pdf_url(href: &str) -> Result<String, ProviderError> {
+        // If already absolute, return as-is
+        if href.starts_with("http://") || href.starts_with("https://") {
+            return Ok(href.to_string());
+        }
+        
+        // If relative, resolve against arXiv base URL
+        if href.starts_with("/") {
+            return Ok(format!("https://arxiv.org{}", href));
+        }
+        
+        // If it's a relative path without leading slash, assume it's relative to base
+        if !href.contains("://") && href.contains(".pdf") {
+            return Ok(format!("https://arxiv.org/{}", href));
+        }
+        
+        // If all else fails, validate it's a proper URL
+        Url::parse(href)
+            .map(|u| u.to_string())
+            .map_err(|e| ProviderError::Parse(format!("Invalid PDF URL '{}': {}", href, e)))
+    }
+
     /// Build arXiv API URL for search
     fn build_search_url(&self, query: &SearchQuery) -> Result<String, ProviderError> {
         let mut url = Url::parse(&self.base_url)
@@ -137,7 +160,9 @@ impl ArxivProvider {
                         if let Some(href) = child.attribute("href") {
                             if let Some(link_type) = child.attribute("type") {
                                 if link_type == "application/pdf" {
-                                    paper.pdf_url = Some(href.to_string());
+                                    // Resolve relative URLs to absolute URLs
+                                    let pdf_url = Self::resolve_pdf_url(href)?;
+                                    paper.pdf_url = Some(pdf_url);
                                 }
                             }
                         }
@@ -385,5 +410,33 @@ mod tests {
             url.contains("search_query=doi%3A10.1103")
                 || url.contains("search_query") && url.contains("doi")
         );
+    }
+
+    #[test]
+    fn test_pdf_url_resolution() {
+        // Test absolute URL (should remain unchanged)
+        let absolute_url = "https://arxiv.org/pdf/2409.10516v1.pdf";
+        let result = ArxivProvider::resolve_pdf_url(absolute_url).unwrap();
+        assert_eq!(result, absolute_url);
+
+        // Test relative URL with leading slash
+        let relative_slash = "/pdf/2409.10516v1.pdf";
+        let result = ArxivProvider::resolve_pdf_url(relative_slash).unwrap();
+        assert_eq!(result, "https://arxiv.org/pdf/2409.10516v1.pdf");
+
+        // Test relative URL without leading slash
+        let relative_no_slash = "pdf/2409.10516v1.pdf";
+        let result = ArxivProvider::resolve_pdf_url(relative_no_slash).unwrap();
+        assert_eq!(result, "https://arxiv.org/pdf/2409.10516v1.pdf");
+
+        // Test HTTP absolute URL
+        let http_url = "http://arxiv.org/pdf/2409.10516v1.pdf";
+        let result = ArxivProvider::resolve_pdf_url(http_url).unwrap();
+        assert_eq!(result, http_url);
+
+        // Test invalid URL (should return error)
+        let invalid_url = "not-a-valid-url";
+        let result = ArxivProvider::resolve_pdf_url(invalid_url);
+        assert!(result.is_err());
     }
 }
