@@ -510,13 +510,13 @@ async fn test_cascade_pdf_retrieval() {
 #[tokio::test]
 async fn test_rate_limiting() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
-    
+
     // Initialize rate limiter with test configuration
     let mut test_config = rust_research_mcp::config::RateLimitingConfig::default();
     test_config.allow_burst = false; // Disable burst for predictable testing
     test_config.providers.insert("arxiv".to_string(), 1.0); // 1 req/sec for testing
     provider.init_rate_limiter(&test_config).await;
-    
+
     let _context = create_search_context();
 
     // Make multiple rapid requests
@@ -613,7 +613,8 @@ mod integration_tests {
                     MetaSearchClient::new((*config).clone(), meta_config)
                         .expect("Failed to create MetaSearchClient"),
                 );
-                let download_tool = DownloadTool::new(client, config.clone()).expect("Failed to create DownloadTool");
+                let download_tool = DownloadTool::new(client, config.clone())
+                    .expect("Failed to create DownloadTool");
 
                 let download_input = ActualDownloadInput {
                     doi: Some(paper.metadata.doi.clone()),

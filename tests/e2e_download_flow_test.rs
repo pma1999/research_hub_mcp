@@ -36,13 +36,13 @@ async fn test_e2e_download_and_metadata_flow() -> Result<()> {
 
     // Attempt the download (this might fail in CI environments without internet)
     let download_result = download_tool.download_paper(download_input).await;
-    
+
     match download_result {
         Ok(result) => {
             // If download succeeded, test metadata extraction
             if let Some(file_path) = result.file_path {
                 println!("Successfully downloaded paper to: {:?}", file_path);
-                
+
                 // Test metadata extraction on the downloaded file
                 let metadata_input = MetadataInput {
                     file_path: file_path.to_string_lossy().to_string(),
@@ -53,11 +53,11 @@ async fn test_e2e_download_and_metadata_flow() -> Result<()> {
                 };
 
                 let metadata_result = metadata_extractor.extract_metadata(metadata_input).await?;
-                
+
                 // Verify the metadata extraction worked
                 match metadata_result.status {
-                    rust_research_mcp::tools::metadata::ExtractionStatus::Success |
-                    rust_research_mcp::tools::metadata::ExtractionStatus::Partial => {
+                    rust_research_mcp::tools::metadata::ExtractionStatus::Success
+                    | rust_research_mcp::tools::metadata::ExtractionStatus::Partial => {
                         println!("Metadata extraction successful");
                         if let Some(metadata) = metadata_result.metadata {
                             println!("Extracted title: {:?}", metadata.title);
@@ -73,17 +73,18 @@ async fn test_e2e_download_and_metadata_flow() -> Result<()> {
         Err(e) => {
             // Download failed - this is expected in CI environments or if the paper isn't available
             println!("Download failed (expected in test environment): {}", e);
-            
+
             // Verify the error message is informative
             let error_str = e.to_string();
             assert!(
-                error_str.contains("not found") || 
-                error_str.contains("providers checked") ||
-                error_str.contains("PDF") ||
-                error_str.contains("DOI") ||
-                error_str.contains("network") ||
-                error_str.contains("timeout"),
-                "Error message should be informative: {}", error_str
+                error_str.contains("not found")
+                    || error_str.contains("providers checked")
+                    || error_str.contains("PDF")
+                    || error_str.contains("DOI")
+                    || error_str.contains("network")
+                    || error_str.contains("timeout"),
+                "Error message should be informative: {}",
+                error_str
             );
         }
     }
@@ -107,7 +108,10 @@ async fn test_metadata_extraction_error_handling() -> Result<()> {
     };
 
     let result = metadata_extractor.extract_metadata(metadata_input).await?;
-    assert!(matches!(result.status, rust_research_mcp::tools::metadata::ExtractionStatus::Failed));
+    assert!(matches!(
+        result.status,
+        rust_research_mcp::tools::metadata::ExtractionStatus::Failed
+    ));
     assert!(result.error.is_some());
     assert!(result.error.as_ref().unwrap().contains("not found"));
 
@@ -125,9 +129,12 @@ async fn test_metadata_extraction_error_handling() -> Result<()> {
     };
 
     let result = metadata_extractor.extract_metadata(metadata_input).await?;
-    assert!(matches!(result.status, rust_research_mcp::tools::metadata::ExtractionStatus::Failed));
+    assert!(matches!(
+        result.status,
+        rust_research_mcp::tools::metadata::ExtractionStatus::Failed
+    ));
     assert!(result.error.is_some());
-    
+
     let error_msg = result.error.as_ref().unwrap();
     assert!(error_msg.contains("Invalid file header") || error_msg.contains("PDF"));
 
@@ -155,13 +162,14 @@ async fn test_url_resolution_errors() -> Result<()> {
 
     let result = download_tool.download_paper(download_input).await;
     assert!(result.is_err());
-    
+
     let error_message = result.unwrap_err().to_string();
     assert!(
-        error_message.contains("Invalid URL") || 
-        error_message.contains("relative URL") ||
-        error_message.contains("url"),
-        "Error should mention URL issue: {}", error_message
+        error_message.contains("Invalid URL")
+            || error_message.contains("relative URL")
+            || error_message.contains("url"),
+        "Error should mention URL issue: {}",
+        error_message
     );
 
     Ok(())
@@ -188,15 +196,16 @@ async fn test_provider_failure_messages() -> Result<()> {
 
     let result = download_tool.download_paper(download_input).await;
     assert!(result.is_err());
-    
+
     let error_message = result.unwrap_err().to_string();
-    
+
     // Verify the error message contains helpful information
     assert!(
-        error_message.contains("not found") || 
-        error_message.contains("providers checked") ||
-        error_message.contains("DOI"),
-        "Error should be informative about provider search: {}", error_message
+        error_message.contains("not found")
+            || error_message.contains("providers checked")
+            || error_message.contains("DOI"),
+        "Error should be informative about provider search: {}",
+        error_message
     );
 
     Ok(())
@@ -212,7 +221,7 @@ async fn test_concurrent_downloads() -> Result<()> {
 
     // Create multiple download requests
     let mut handles = Vec::new();
-    
+
     for i in 0..3 {
         let tool_clone = download_tool.clone();
         let handle = tokio::spawn(async move {
@@ -225,7 +234,7 @@ async fn test_concurrent_downloads() -> Result<()> {
                 overwrite: false,
                 verify_integrity: false,
             };
-            
+
             tool_clone.download_paper(download_input).await
         });
         handles.push(handle);
@@ -233,16 +242,24 @@ async fn test_concurrent_downloads() -> Result<()> {
 
     // Wait for all downloads to complete (they should all fail gracefully)
     let results = futures::future::join_all(handles).await;
-    
+
     for (i, result) in results.into_iter().enumerate() {
         let download_result = result.expect("Task should complete");
-        
+
         // All should fail (test DOIs), but gracefully
-        assert!(download_result.is_err(), "Download {} should fail with test DOI", i);
-        
+        assert!(
+            download_result.is_err(),
+            "Download {} should fail with test DOI",
+            i
+        );
+
         // Error messages should be reasonable
         let error_msg = download_result.unwrap_err().to_string();
-        assert!(!error_msg.is_empty(), "Error message should not be empty for download {}", i);
+        assert!(
+            !error_msg.is_empty(),
+            "Error message should not be empty for download {}",
+            i
+        );
     }
 
     Ok(())

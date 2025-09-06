@@ -1,3 +1,3 @@
 pub mod categorization;
 
-pub use categorization::{CategorizationService, CategorizationConfig};
+pub use categorization::{CategorizationConfig, CategorizationService};

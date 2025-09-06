@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2025-01-06
+
+### Fixed
+- **ArXiv URL Resolution**: Fixed "relative URL without a base" errors by implementing proper URL resolution logic
+- **Sci-Hub Access Issues**: Enhanced 403 error handling with mirror rotation and user agent cycling
+- **Connection Errors**: Improved network error handling and context for better user feedback
+- **PDF Metadata Validation**: Added comprehensive PDF file validation before parsing attempts
+- **Error Categorization**: Changed Sci-Hub 403 errors from permanent to transient for better retry behavior
+
+### Enhanced
+- **Mirror Management**: Updated Sci-Hub mirrors with more recent working URLs
+- **User Agent Rotation**: Implemented realistic browser user agent rotation for better access
+- **Error Messages**: Significantly improved error messages with actionable suggestions
+- **Test Coverage**: Added comprehensive unit, integration, and E2E tests for error scenarios
+- **Resilience**: Better handling of transient failures with appropriate retry logic
+
+### Added
+- New integration tests for download cascade behavior
+- E2E tests for full download and metadata extraction flow
+- Comprehensive error categorization tests
+- PDF validation with magic byte checking
+
 ## [0.3.0] - 2025-08-17
 
 ### Added

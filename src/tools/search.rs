@@ -202,7 +202,7 @@ impl SearchTool {
         if self.categorization_service.is_enabled() && !result.papers.is_empty() {
             let category = self.categorize_papers(&input.query, &result.papers).await;
             result.category = Some(category.clone());
-            
+
             // Set category for each paper result
             for paper in &mut result.papers {
                 paper.category = Some(category.clone());
@@ -249,24 +249,52 @@ impl SearchTool {
         let query_lower = input.query.to_lowercase();
         let suspicious_patterns = [
             // SQL Injection patterns
-            "' or 1=1", "or 1=1 --", "' union select", "'; insert into", 
-            "' or 'x'='x", "'; exec ", "'; drop table", "; drop table",
-            // XSS patterns  
-            "<script>", "<img src=", "onerror=", "javascript:", "<svg onload=",
-            "';alert(", "<iframe src=", "&lt;script&gt;",
+            "' or 1=1",
+            "or 1=1 --",
+            "' union select",
+            "'; insert into",
+            "' or 'x'='x",
+            "'; exec ",
+            "'; drop table",
+            "; drop table",
+            // XSS patterns
+            "<script>",
+            "<img src=",
+            "onerror=",
+            "javascript:",
+            "<svg onload=",
+            "';alert(",
+            "<iframe src=",
+            "&lt;script&gt;",
             // Command injection patterns
-            "; rm -rf", "rm -rf /", "| cat /etc/passwd", "cat /etc/passwd",
-            "| ls", "; ls", "&& rm", "; cat", "| cat", "&& wget", 
-            "`rm -rf", "$(rm -rf", "; shutdown", "| nc", "nc ",
+            "; rm -rf",
+            "rm -rf /",
+            "| cat /etc/passwd",
+            "cat /etc/passwd",
+            "| ls",
+            "; ls",
+            "&& rm",
+            "; cat",
+            "| cat",
+            "&& wget",
+            "`rm -rf",
+            "$(rm -rf",
+            "; shutdown",
+            "| nc",
+            "nc ",
         ];
-        
-        if input.query.contains('\0') 
+
+        if input.query.contains('\0')
             || input.query.contains('\x1b')
             || input.query.contains("$(")
             || input.query.contains("`")
             || input.query.contains("|")
-            || suspicious_patterns.iter().any(|&pattern| query_lower.contains(pattern))
-            || input.query.len() > 10_000_000 { // 10MB limit to prevent DoS
+            || suspicious_patterns
+                .iter()
+                .any(|&pattern| query_lower.contains(pattern))
+            || input.query.len() > 10_000_000
+        {
+            // 10MB limit to prevent DoS
             return Err(crate::Error::InvalidInput {
                 field: "query".to_string(),
                 reason: "Query contains potentially malicious content or is too large".to_string(),
@@ -362,7 +390,8 @@ impl SearchTool {
                         papers
                             .iter()
                             .any(|p| p.doi == paper.doi || p.title == paper.title)
-                    }).map_or_else(|| "Unknown".to_string(), |(source, _)| source.clone());
+                    })
+                    .map_or_else(|| "Unknown".to_string(), |(source, _)| source.clone());
 
                 PaperResult {
                     metadata: paper,
@@ -413,26 +442,28 @@ impl SearchTool {
     /// Categorize papers using LLM based on query and abstracts
     async fn categorize_papers(&self, query: &str, papers: &[PaperResult]) -> String {
         info!("Categorizing papers for query: '{}'", query);
-        
+
         // Extract paper metadata for categorization
-        let paper_metadata: Vec<PaperMetadata> = papers
-            .iter()
-            .map(|paper| paper.metadata.clone())
-            .collect();
+        let paper_metadata: Vec<PaperMetadata> =
+            papers.iter().map(|paper| paper.metadata.clone()).collect();
 
         // Generate categorization prompt
-        let prompt = self.categorization_service.generate_category_prompt(query, &paper_metadata);
-        
+        let prompt = self
+            .categorization_service
+            .generate_category_prompt(query, &paper_metadata);
+
         debug!("Categorization prompt generated ({} chars)", prompt.len());
 
         // Since this is an MCP server, the LLM calling us would need to categorize
         // For now, we'll use a simple heuristic categorization based on the query
         // In the future, this could be replaced with an actual LLM call
         let category_response = self.simple_heuristic_categorization(query, &paper_metadata);
-        
+
         // Sanitize the category
-        let category = self.categorization_service.sanitize_category(&category_response);
-        
+        let category = self
+            .categorization_service
+            .sanitize_category(&category_response);
+
         info!("Categorized papers as: '{}'", category);
         category
     }
@@ -440,11 +471,12 @@ impl SearchTool {
     /// Simple heuristic categorization (fallback when no LLM available)
     fn simple_heuristic_categorization(&self, query: &str, papers: &[PaperMetadata]) -> String {
         let query_lower = query.to_lowercase();
-        
+
         // Collect keywords from query and paper titles/abstracts
         let mut keywords = vec![query_lower.clone()];
-        
-        for paper in papers.iter().take(3) { // Analyze first 3 papers
+
+        for paper in papers.iter().take(3) {
+            // Analyze first 3 papers
             if let Some(title) = &paper.title {
                 keywords.push(title.to_lowercase());
             }
@@ -452,34 +484,54 @@ impl SearchTool {
                 keywords.push(abstract_text[..abstract_text.len().min(200)].to_lowercase());
             }
         }
-        
+
         let all_text = keywords.join(" ");
-        
+
         // Simple keyword-based categorization
-        if all_text.contains("machine learning") || all_text.contains("neural network") || all_text.contains("deep learning") {
+        if all_text.contains("machine learning")
+            || all_text.contains("neural network")
+            || all_text.contains("deep learning")
+        {
             "machine_learning".to_string()
         } else if all_text.contains("quantum") || all_text.contains("physics") {
             "quantum_physics".to_string()
-        } else if all_text.contains("biology") || all_text.contains("genetics") || all_text.contains("biomedical") {
+        } else if all_text.contains("biology")
+            || all_text.contains("genetics")
+            || all_text.contains("biomedical")
+        {
             "biology_genetics".to_string()
-        } else if all_text.contains("computer") || all_text.contains("algorithm") || all_text.contains("software") {
+        } else if all_text.contains("computer")
+            || all_text.contains("algorithm")
+            || all_text.contains("software")
+        {
             "computer_science".to_string()
-        } else if all_text.contains("climate") || all_text.contains("environment") || all_text.contains("sustainability") {
+        } else if all_text.contains("climate")
+            || all_text.contains("environment")
+            || all_text.contains("sustainability")
+        {
             "environmental_science".to_string()
-        } else if all_text.contains("medicine") || all_text.contains("medical") || all_text.contains("health") {
+        } else if all_text.contains("medicine")
+            || all_text.contains("medical")
+            || all_text.contains("health")
+        {
             "medical_research".to_string()
         } else if all_text.contains("chemistry") || all_text.contains("chemical") {
             "chemistry".to_string()
-        } else if all_text.contains("mathematics") || all_text.contains("mathematical") || all_text.contains("math") {
+        } else if all_text.contains("mathematics")
+            || all_text.contains("mathematical")
+            || all_text.contains("math")
+        {
             "mathematics".to_string()
         } else {
             // Extract first meaningful words from query
             let words: Vec<&str> = query_lower
                 .split_whitespace()
-                .filter(|w| w.len() > 2 && !["the", "and", "for", "with", "from", "into"].contains(w))
+                .filter(|w| {
+                    w.len() > 2 && !["the", "and", "for", "with", "from", "into"].contains(w)
+                })
                 .take(3)
                 .collect();
-            
+
             if words.is_empty() {
                 self.categorization_service.default_category().to_string()
             } else {

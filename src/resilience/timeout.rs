@@ -33,7 +33,8 @@ impl Default for TimeoutConfig {
 
 impl TimeoutConfig {
     /// Create a fast timeout configuration for development
-    #[must_use] pub const fn fast() -> Self {
+    #[must_use]
+    pub const fn fast() -> Self {
         Self {
             default_timeout: Duration::from_secs(5),
             network_timeout: Duration::from_secs(3),
@@ -44,7 +45,8 @@ impl TimeoutConfig {
     }
 
     /// Create a slow timeout configuration for production
-    #[must_use] pub const fn slow() -> Self {
+    #[must_use]
+    pub const fn slow() -> Self {
         Self {
             default_timeout: Duration::from_secs(60),
             network_timeout: Duration::from_secs(30),
@@ -55,7 +57,8 @@ impl TimeoutConfig {
     }
 
     /// Get timeout for a specific operation type
-    #[must_use] pub const fn get_timeout(&self, operation_type: TimeoutType) -> Duration {
+    #[must_use]
+    pub const fn get_timeout(&self, operation_type: TimeoutType) -> Duration {
         match operation_type {
             TimeoutType::Default => self.default_timeout,
             TimeoutType::Network => self.network_timeout,
@@ -230,7 +233,8 @@ pub struct TimeoutManager {
 
 impl TimeoutManager {
     /// Create a new timeout manager
-    #[must_use] pub const fn new(config: TimeoutConfig) -> Self {
+    #[must_use]
+    pub const fn new(config: TimeoutConfig) -> Self {
         Self { config }
     }
 
@@ -256,7 +260,8 @@ impl TimeoutManager {
     }
 
     /// Get the current timeout configuration
-    #[must_use] pub const fn config(&self) -> &TimeoutConfig {
+    #[must_use]
+    pub const fn config(&self) -> &TimeoutConfig {
         &self.config
     }
 

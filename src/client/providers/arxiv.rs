@@ -42,24 +42,23 @@ impl ArxivProvider {
         debug!("Initialized rate limiter for arXiv provider");
     }
 
-
     /// Resolve relative URLs to absolute URLs
     fn resolve_pdf_url(href: &str) -> Result<String, ProviderError> {
         // If already absolute, return as-is
         if href.starts_with("http://") || href.starts_with("https://") {
             return Ok(href.to_string());
         }
-        
+
         // If relative, resolve against arXiv base URL
         if href.starts_with("/") {
             return Ok(format!("https://arxiv.org{}", href));
         }
-        
+
         // If it's a relative path without leading slash, assume it's relative to base
         if !href.contains("://") && href.contains(".pdf") {
             return Ok(format!("https://arxiv.org/{}", href));
         }
-        
+
         // If all else fails, validate it's a proper URL
         Url::parse(href)
             .map(|u| u.to_string())
@@ -236,20 +235,22 @@ impl SourceProvider for ArxivProvider {
         // Apply rate limiting
         let rate_limit_result = {
             let mut guard = self.rate_limiter.lock().await;
-            
+
             if guard.is_none() {
                 // Create with default config if not initialized
                 let default_config = crate::config::RateLimitingConfig::default();
-                *guard = Some(ProviderRateLimiter::new("arxiv".to_string(), &default_config));
+                *guard = Some(ProviderRateLimiter::new(
+                    "arxiv".to_string(),
+                    &default_config,
+                ));
                 debug!("Created default rate limiter for arXiv provider");
             }
-            
+
             guard.as_mut().unwrap().acquire().await
         };
-        
-        rate_limit_result.map_err(|e| {
-            ProviderError::Other(format!("Rate limiting error: {}", e))
-        })?;
+
+        rate_limit_result
+            .map_err(|e| ProviderError::Other(format!("Rate limiting error: {}", e)))?;
 
         // Build the search URL
         let url = self.build_search_url(query)?;

@@ -1,19 +1,31 @@
 use crate::tools::{
-    download::DownloadInput as ActualDownloadInput, 
+    bibliography::BibliographyInput,
+    code_search::CodeSearchInput,
+    download::DownloadInput as ActualDownloadInput,
     metadata::MetadataInput as ActualMetadataInput,
     search::{SearchInput as ActualSearchInput, SearchResult},
-    code_search::CodeSearchInput,
-    bibliography::BibliographyInput,
 };
-use crate::{Config, DownloadTool, MetaSearchClient, MetadataExtractor, Result, SearchTool, CodeSearchTool, BibliographyTool};
+use crate::{
+    BibliographyTool, CodeSearchTool, Config, DownloadTool, MetaSearchClient, MetadataExtractor,
+    Result, SearchTool,
+};
 use rmcp::{
-    model::{ServerInfo, ServerCapabilities, InitializeRequestParam, InitializeResult, ProtocolVersion, Implementation, PaginatedRequestParam, ListToolsResult, Tool, CallToolRequestParam, CallToolResult, Content},
+    model::{
+        CallToolRequestParam, CallToolResult, Content, Implementation, InitializeRequestParam,
+        InitializeResult, ListToolsResult, PaginatedRequestParam, ProtocolVersion,
+        ServerCapabilities, ServerInfo, Tool,
+    },
     service::{RequestContext, RoleServer},
     ErrorData, ServerHandler,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::{future::Future, sync::Arc, collections::HashMap, time::{SystemTime, Duration}};
+use std::{
+    collections::HashMap,
+    future::Future,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::sync::RwLock;
 use tracing::{debug, info, instrument};
 
@@ -110,11 +122,14 @@ impl ResearchServerHandler {
     async fn cache_paper_categories(&self, results: &SearchResult) {
         let mut cache = self.category_cache.write().await;
         let now = SystemTime::now();
-        
+
         for paper in &results.papers {
             if !paper.metadata.doi.is_empty() {
                 if let Some(category) = &paper.category {
-                    debug!("Caching category '{}' for DOI '{}'", category, paper.metadata.doi);
+                    debug!(
+                        "Caching category '{}' for DOI '{}'",
+                        category, paper.metadata.doi
+                    );
                     cache.insert(
                         paper.metadata.doi.clone(),
                         CategoryCacheEntry {
@@ -125,7 +140,7 @@ impl ResearchServerHandler {
                 }
             }
         }
-        
+
         // Clean up old entries (older than 1 hour)
         let one_hour_ago = now - Duration::from_secs(3600);
         cache.retain(|doi, entry| {
@@ -142,8 +157,11 @@ impl ResearchServerHandler {
     async fn get_cached_category(&self, doi: &str) -> Option<String> {
         let cache = self.category_cache.read().await;
         if let Some(entry) = cache.get(doi) {
-            debug!("Found cached category '{}' for DOI '{}'", 
-                   entry.category.as_deref().unwrap_or("None"), doi);
+            debug!(
+                "Found cached category '{}' for DOI '{}'",
+                entry.category.as_deref().unwrap_or("None"),
+                doi
+            );
             entry.category.clone()
         } else {
             debug!("No cached category found for DOI '{}'", doi);
@@ -328,7 +346,10 @@ impl ServerHandler for ResearchServerHandler {
                             None,
                         )
                     })?;
-                    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as u32;
+                    let limit = args
+                        .get("limit")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(10) as u32;
 
                     let input = ActualSearchInput {
                         query: query.to_string(),
@@ -499,33 +520,33 @@ impl ServerHandler for ResearchServerHandler {
                     })
                 }
                 "search_code" => {
-                    let input: CodeSearchInput = serde_json::from_value(
-                        serde_json::Value::Object(request.arguments.unwrap_or_default()),
-                    )
+                    let input: CodeSearchInput = serde_json::from_value(serde_json::Value::Object(
+                        request.arguments.unwrap_or_default(),
+                    ))
                     .map_err(|e| {
                         ErrorData::invalid_params(format!("Invalid code search input: {e}"), None)
                     })?;
 
-                    let results = code_search_tool
-                        .search(input)
-                        .await
-                        .map_err(|e| {
-                            ErrorData::internal_error(
-                                format!("Code search failed: {e}"),
-                                None,
-                            )
-                        })?;
+                    let results = code_search_tool.search(input).await.map_err(|e| {
+                        ErrorData::internal_error(format!("Code search failed: {e}"), None)
+                    })?;
 
                     if results.is_empty() {
                         Ok(CallToolResult {
-                            content: Some(vec![Content::text("🔍 No code patterns found matching your search criteria.".to_string())]),
+                            content: Some(vec![Content::text(
+                                "🔍 No code patterns found matching your search criteria."
+                                    .to_string(),
+                            )]),
                             structured_content: None,
                             is_error: Some(false),
                         })
                     } else {
-                        let formatted_results = results.iter()
+                        let formatted_results = results
+                            .iter()
                             .map(|result| {
-                                let matches_text = result.matches.iter()
+                                let matches_text = result
+                                    .matches
+                                    .iter()
                                     .take(5) // Limit to first 5 matches per file
                                     .map(|m| {
                                         let context_before = if !m.context_before.is_empty() {
@@ -533,42 +554,54 @@ impl ServerHandler for ResearchServerHandler {
                                         } else {
                                             String::new()
                                         };
-                                        
+
                                         let context_after = if !m.context_after.is_empty() {
                                             format!("\n  {}", m.context_after.join("\n  "))
                                         } else {
                                             String::new()
                                         };
-                                        
-                                        let lang_info = m.language.as_ref()
+
+                                        let lang_info = m
+                                            .language
+                                            .as_ref()
                                             .map(|l| format!(" [{}]", l))
                                             .unwrap_or_default();
-                                        
-                                        format!("{}► Line {}{}: {}{}", 
-                                               context_before, 
-                                               m.line_number, 
-                                               lang_info,
-                                               m.line, 
-                                               context_after)
+
+                                        format!(
+                                            "{}► Line {}{}: {}{}",
+                                            context_before,
+                                            m.line_number,
+                                            lang_info,
+                                            m.line,
+                                            context_after
+                                        )
                                     })
                                     .collect::<Vec<_>>()
                                     .join("\n\n");
-                                
-                                let title_info = result.paper_title.as_ref()
+
+                                let title_info = result
+                                    .paper_title
+                                    .as_ref()
                                     .map(|t| format!("📄 Paper: {}\n", t))
                                     .unwrap_or_default();
-                                    
-                                format!("📁 File: {}\n{}🎯 {} matches found:\n\n{}", 
-                                       result.file_path,
-                                       title_info,
-                                       result.total_matches,
-                                       matches_text)
+
+                                format!(
+                                    "📁 File: {}\n{}🎯 {} matches found:\n\n{}",
+                                    result.file_path,
+                                    title_info,
+                                    result.total_matches,
+                                    matches_text
+                                )
                             })
                             .collect::<Vec<_>>()
                             .join(&format!("\n\n{}\n\n", "─".repeat(60)));
 
                         Ok(CallToolResult {
-                            content: Some(vec![Content::text(format!("🔍 Found {} files with matching code patterns:\n\n{}", results.len(), formatted_results))]),
+                            content: Some(vec![Content::text(format!(
+                                "🔍 Found {} files with matching code patterns:\n\n{}",
+                                results.len(),
+                                formatted_results
+                            ))]),
                             structured_content: None,
                             is_error: Some(false),
                         })
@@ -582,25 +615,26 @@ impl ServerHandler for ResearchServerHandler {
                         ErrorData::invalid_params(format!("Invalid bibliography input: {e}"), None)
                     })?;
 
-                    let result = bibliography_tool
-                        .generate(input)
-                        .await
-                        .map_err(|e| {
-                            ErrorData::internal_error(
-                                format!("Bibliography generation failed: {e}"),
-                                None,
-                            )
-                        })?;
+                    let result = bibliography_tool.generate(input).await.map_err(|e| {
+                        ErrorData::internal_error(
+                            format!("Bibliography generation failed: {e}"),
+                            None,
+                        )
+                    })?;
 
-                    let mut output = format!("📚 Generated {} citations in {:?} format:\n\n", 
-                                           result.citations.len(), result.format);
-                    
+                    let mut output = format!(
+                        "📚 Generated {} citations in {:?} format:\n\n",
+                        result.citations.len(),
+                        result.format
+                    );
+
                     output.push_str(&result.bibliography);
-                    
+
                     if !result.errors.is_empty() {
                         output.push_str("\n\n⚠️ Errors encountered:\n");
                         for error in &result.errors {
-                            output.push_str(&format!("• {}: {}\n", error.identifier, error.message));
+                            output
+                                .push_str(&format!("• {}: {}\n", error.identifier, error.message));
                         }
                     }
 

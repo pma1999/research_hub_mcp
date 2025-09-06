@@ -35,20 +35,20 @@ async fn test_download_cascade_with_provider_failures() -> Result<()> {
 
     // This should attempt the cascade and eventually fail gracefully
     let result = download_tool.download_paper(download_input).await;
-    
+
     // We expect this to fail because it's a test DOI, but it should fail gracefully
     // with a proper error message indicating no providers found the paper
     assert!(result.is_err());
-    
+
     let error_message = result.unwrap_err().to_string();
     println!("Error message: {}", error_message);
     assert!(
-        error_message.contains("DOI") || 
-        error_message.contains("not found") || 
-        error_message.contains("Invalid") ||
-        error_message.contains("Either DOI or URL must be provided") ||
-        error_message.contains("provider") ||
-        error_message.contains("failed")
+        error_message.contains("DOI")
+            || error_message.contains("not found")
+            || error_message.contains("Invalid")
+            || error_message.contains("Either DOI or URL must be provided")
+            || error_message.contains("provider")
+            || error_message.contains("failed")
     );
 
     Ok(())
@@ -75,7 +75,7 @@ async fn test_url_validation_error_handling() -> Result<()> {
 
     let result = download_tool.download_paper(download_input).await;
     assert!(result.is_err());
-    
+
     let error_message = result.unwrap_err().to_string();
     assert!(error_message.contains("Invalid URL") || error_message.contains("url"));
 
@@ -103,7 +103,7 @@ async fn test_input_validation() -> Result<()> {
 
     let result = download_tool.download_paper(download_input).await;
     assert!(result.is_err());
-    
+
     let error_message = result.unwrap_err().to_string();
     assert!(error_message.contains("Either DOI or URL must be provided"));
 
@@ -116,18 +116,18 @@ async fn test_provider_health_and_error_handling() -> Result<()> {
     let config = create_test_config();
     let meta_config = MetaSearchConfig::default();
     let client = Arc::new(MetaSearchClient::new(config, meta_config)?);
-    
+
     // Test provider health checks
     let health_results = client.health_check().await;
-    
+
     // Should have multiple providers
     assert!(!health_results.is_empty());
-    
+
     // Should include our main providers
     assert!(health_results.contains_key("arxiv"));
     assert!(health_results.contains_key("crossref"));
     assert!(health_results.contains_key("sci_hub"));
-    
+
     Ok(())
 }
 
@@ -176,17 +176,44 @@ async fn test_provider_error_categorization() -> Result<()> {
 
     // Test different error types and their categorization
     let errors = vec![
-        (Error::SciHub { code: 403, message: "Forbidden".to_string() }, ErrorCategory::Transient),
-        (Error::SciHub { code: 404, message: "Not Found".to_string() }, ErrorCategory::Permanent),
-        (Error::SciHub { code: 429, message: "Rate Limited".to_string() }, ErrorCategory::RateLimited),
-        (Error::SciHub { code: 500, message: "Server Error".to_string() }, ErrorCategory::Transient),
+        (
+            Error::SciHub {
+                code: 403,
+                message: "Forbidden".to_string(),
+            },
+            ErrorCategory::Transient,
+        ),
+        (
+            Error::SciHub {
+                code: 404,
+                message: "Not Found".to_string(),
+            },
+            ErrorCategory::Permanent,
+        ),
+        (
+            Error::SciHub {
+                code: 429,
+                message: "Rate Limited".to_string(),
+            },
+            ErrorCategory::RateLimited,
+        ),
+        (
+            Error::SciHub {
+                code: 500,
+                message: "Server Error".to_string(),
+            },
+            ErrorCategory::Transient,
+        ),
     ];
 
     for (error, expected_category) in errors {
         assert_eq!(error.category(), expected_category);
-        
+
         // Test retry logic
-        let should_retry = matches!(expected_category, ErrorCategory::Transient | ErrorCategory::RateLimited);
+        let should_retry = matches!(
+            expected_category,
+            ErrorCategory::Transient | ErrorCategory::RateLimited
+        );
         assert_eq!(error.is_retryable(), should_retry);
     }
 

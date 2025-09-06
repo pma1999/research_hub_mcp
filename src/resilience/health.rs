@@ -36,9 +36,9 @@ impl HealthStatus {
     pub fn reason(&self) -> Option<&str> {
         match self {
             Self::Healthy => None,
-            Self::Degraded { reason }
-            | Self::Unhealthy { reason }
-            | Self::Unknown { reason } => Some(reason),
+            Self::Degraded { reason } | Self::Unhealthy { reason } | Self::Unknown { reason } => {
+                Some(reason)
+            }
         }
     }
 }
@@ -145,7 +145,9 @@ impl HealthCheckManager {
         debug!("Running health check for '{}'", name);
 
         // Run health check with timeout
-        let result = if let Ok(result) = tokio::time::timeout(timeout, check.check_health()).await { result } else {
+        let result = if let Ok(result) = tokio::time::timeout(timeout, check.check_health()).await {
+            result
+        } else {
             warn!("Health check '{}' timed out after {:?}", name, timeout);
             HealthCheckResult::new(
                 HealthStatus::Unknown {

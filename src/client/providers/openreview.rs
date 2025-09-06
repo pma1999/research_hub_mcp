@@ -207,7 +207,7 @@ impl OpenReviewProvider {
             .tcdate
             .map(|ts| {
                 // Convert timestamp (milliseconds) to year
-                
+
                 u32::try_from(ts / 1000 / 60 / 60 / 24 / 365).unwrap_or(0) + 1970
             })
             .or_else(|| {
@@ -528,7 +528,10 @@ mod tests {
             params: HashMap::new(),
         };
 
-        assert_eq!(OpenReviewProvider::build_query(&author_query), "Yoshua Bengio");
+        assert_eq!(
+            OpenReviewProvider::build_query(&author_query),
+            "Yoshua Bengio"
+        );
     }
 
     #[test]

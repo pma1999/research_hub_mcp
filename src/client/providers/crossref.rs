@@ -300,7 +300,10 @@ impl SourceProvider for CrossRefProvider {
             .collect();
 
         let search_time = start_time.elapsed();
-        let total_available = crossref_response.message.total_results.map(|t| u32::try_from(t).unwrap_or(u32::MAX));
+        let total_available = crossref_response
+            .message
+            .total_results
+            .map(|t| u32::try_from(t).unwrap_or(u32::MAX));
         let has_more = u32::try_from(papers.len()).unwrap_or(u32::MAX) >= query.max_results;
 
         let mut metadata = HashMap::new();

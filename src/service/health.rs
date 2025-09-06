@@ -46,7 +46,8 @@ pub struct HealthCheck {
 
 impl HealthCheck {
     /// Create a new health check service
-    #[must_use] pub fn new(port: u16) -> Self {
+    #[must_use]
+    pub fn new(port: u16) -> Self {
         let status = HealthStatus {
             healthy: true,
             message: "Service is healthy".to_string(),

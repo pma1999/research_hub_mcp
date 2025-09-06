@@ -682,7 +682,10 @@ mod tests {
             params: HashMap::new(),
         };
 
-        assert_eq!(MdpiProvider::build_query(&author_query), "author:(John Smith)");
+        assert_eq!(
+            MdpiProvider::build_query(&author_query),
+            "author:(John Smith)"
+        );
 
         let doi_query = SearchQuery {
             query: "10.3390/s21010123".to_string(),

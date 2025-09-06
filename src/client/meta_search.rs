@@ -73,37 +73,26 @@ impl MetaSearchClient {
         let providers: Vec<Arc<dyn SourceProvider>> = vec![
             // CrossRef provider (highest priority for authoritative metadata)
             Arc::new(CrossRefProvider::new(None)?), // TODO: Get email from config
-            
             // Semantic Scholar provider (very high priority for PDF access + metadata)
             Arc::new(SemanticScholarProvider::new(None)?), // TODO: Get API key from config
-            
             // Unpaywall provider (high priority for legal free PDF discovery)
             Arc::new(UnpaywallProvider::new_with_default_email()?), // TODO: Get email from config
-            
             // PubMed Central provider (very high priority for biomedical papers)
             Arc::new(PubMedCentralProvider::new(None)?), // TODO: Get API key from config
-            
             // CORE provider (high priority for open access collection)
             Arc::new(CoreProvider::new(None)?), // TODO: Get API key from config
-            
             // SSRN provider (high priority for recent papers and preprints)
             Arc::new(SsrnProvider::new()?),
-            
             // arXiv provider (high priority for CS/physics/math)
             Arc::new(ArxivProvider::new()?),
-            
             // bioRxiv provider (biology preprints)
             Arc::new(BiorxivProvider::new()?),
-            
             // OpenReview provider (high priority for ML conference papers)
             Arc::new(OpenReviewProvider::new()?),
-            
             // MDPI provider (good priority for open access journals)
             Arc::new(MdpiProvider::new()?),
-            
             // ResearchGate provider (lower priority due to access limitations)
             Arc::new(ResearchGateProvider::new()?),
-            
             // Sci-Hub provider (lowest priority, for full-text access)
             Arc::new(SciHubProvider::new()?),
         ];
@@ -176,8 +165,7 @@ impl MetaSearchClient {
             .await;
 
         // Aggregate results
-        let meta_result = self
-            .aggregate_results(provider_results, provider_errors, start_time);
+        let meta_result = self.aggregate_results(provider_results, provider_errors, start_time);
 
         info!(
             "Meta-search completed: {} total papers from {} providers in {:?}",
@@ -423,10 +411,10 @@ impl MetaSearchClient {
         // Open Access & General Academic
         else if self.contains_open_access_keywords(query) {
             match provider_name {
-                "unpaywall" => 12, // Specialized in open access
-                "core" => 10,      // Large open access collection
-                "mdpi" => 8,       // Open access publisher
-                "biorxiv" | "arxiv" => 5,    // Open preprints
+                "unpaywall" => 12,        // Specialized in open access
+                "core" => 10,             // Large open access collection
+                "mdpi" => 8,              // Open access publisher
+                "biorxiv" | "arxiv" => 5, // Open preprints
                 _ => 0,
             }
         } else {
@@ -479,8 +467,8 @@ impl MetaSearchClient {
             SearchType::Subject => {
                 // Subject searches benefit from specialized providers
                 match provider_name {
-                    "arxiv" | "pubmed_central" => 8,   // Good subject classification
-                    "semantic_scholar" => 6, // AI-powered classification
+                    "arxiv" | "pubmed_central" => 8, // Good subject classification
+                    "semantic_scholar" => 6,         // AI-powered classification
                     _ => 0,
                 }
             }
@@ -501,11 +489,11 @@ impl MetaSearchClient {
         // If query suggests need for full-text/PDF access
         if query.contains("pdf") || query.contains("full text") || query.contains("download") {
             match provider_name {
-                "arxiv" | "biorxiv" => 12,         // Always has PDFs
-                "unpaywall" => 10,       // Specialized in free PDFs
+                "arxiv" | "biorxiv" => 12,                           // Always has PDFs
+                "unpaywall" => 10,                                   // Specialized in free PDFs
                 "semantic_scholar" | "pubmed_central" | "mdpi" => 8, // Often has PDF links/full text
-                "ssrn" | "core" => 6,             // Often has PDFs/full text
-                "sci_hub" => 15,         // Always tries for PDFs (but lowest base priority)
+                "ssrn" | "core" => 6,                                // Often has PDFs/full text
+                "sci_hub" => 15, // Always tries for PDFs (but lowest base priority)
                 _ => 0,
             }
         }
@@ -516,9 +504,9 @@ impl MetaSearchClient {
             || query.contains("2023")
         {
             match provider_name {
-                "arxiv" | "biorxiv" => 10,   // Latest preprints
-                "ssrn" => 8,       // Recent working papers
-                "openreview" => 6, // Recent ML papers
+                "arxiv" | "biorxiv" => 10, // Latest preprints
+                "ssrn" => 8,               // Recent working papers
+                "openreview" => 6,         // Recent ML papers
                 _ => 0,
             }
         } else {
@@ -537,9 +525,9 @@ impl MetaSearchClient {
         // Boost for recent year mentions
         if query.contains("2024") || query.contains("2023") {
             match provider_name {
-                "arxiv" | "biorxiv" => 8,          // Best for recent preprints
-                "ssrn" | "openreview" => 6,       // Recent working papers/ML conference papers
-                "semantic_scholar" => 4, // Good recent coverage
+                "arxiv" | "biorxiv" => 8,   // Best for recent preprints
+                "ssrn" | "openreview" => 6, // Recent working papers/ML conference papers
+                "semantic_scholar" => 4,    // Good recent coverage
                 _ => 0,
             }
         }

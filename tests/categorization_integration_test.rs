@@ -1,13 +1,7 @@
 use rust_research_mcp::{
-    Config, 
-    CategorizeTool,
+    client::PaperMetadata, services::CategorizationService, tools::categorize::CategorizeInput,
+    tools::download::DownloadInput, CategorizeTool, Config, DownloadTool, MetaSearchClient,
     SearchTool,
-    DownloadTool,
-    MetaSearchClient,
-    services::CategorizationService,
-    tools::categorize::CategorizeInput,
-    tools::download::DownloadInput,
-    client::PaperMetadata,
 };
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -28,13 +22,16 @@ async fn test_categorization_feature_integration() {
     assert_eq!(service.max_abstracts(), 3);
 
     // Test 2: Category Sanitization Works
-    assert_eq!(service.sanitize_category("Machine Learning Research"), "machine_learning_research");
+    assert_eq!(
+        service.sanitize_category("Machine Learning Research"),
+        "machine_learning_research"
+    );
     assert_eq!(service.sanitize_category("AI & ML!"), "ai_ml");
     assert_eq!(service.sanitize_category(""), "research_papers"); // Fallback
 
     // Test 3: Categorization Tool Works
     let tool = CategorizeTool::new(config.clone()).unwrap();
-    
+
     let test_papers = vec![
         PaperMetadata {
             doi: "10.1000/ml1".to_string(),
@@ -136,25 +133,34 @@ async fn test_categorization_workflow() {
     let tool = CategorizeTool::new(config).unwrap();
 
     // Test different categorizations
-    let ml_result = tool.categorize_papers(CategorizeInput {
-        query: "machine learning healthcare".to_string(),
-        papers: vec![papers[0].clone()],
-        max_abstracts: Some(1),
-    }).await.unwrap();
+    let ml_result = tool
+        .categorize_papers(CategorizeInput {
+            query: "machine learning healthcare".to_string(),
+            papers: vec![papers[0].clone()],
+            max_abstracts: Some(1),
+        })
+        .await
+        .unwrap();
     assert_eq!(ml_result.sanitized_category, "machine_learning");
 
-    let quantum_result = tool.categorize_papers(CategorizeInput {
-        query: "quantum computing".to_string(),
-        papers: vec![papers[1].clone()],
-        max_abstracts: Some(1),
-    }).await.unwrap();
+    let quantum_result = tool
+        .categorize_papers(CategorizeInput {
+            query: "quantum computing".to_string(),
+            papers: vec![papers[1].clone()],
+            max_abstracts: Some(1),
+        })
+        .await
+        .unwrap();
     assert_eq!(quantum_result.sanitized_category, "quantum_physics");
 
-    let agent_result = tool.categorize_papers(CategorizeInput {
-        query: "multi-agent systems".to_string(),
-        papers: vec![papers[2].clone()],
-        max_abstracts: Some(1),
-    }).await.unwrap();
+    let agent_result = tool
+        .categorize_papers(CategorizeInput {
+            query: "multi-agent systems".to_string(),
+            papers: vec![papers[2].clone()],
+            max_abstracts: Some(1),
+        })
+        .await
+        .unwrap();
     assert_eq!(agent_result.sanitized_category, "agentic_systems");
 
     println!("✅ Categorization Workflow Test Passed!");
@@ -172,29 +178,30 @@ async fn test_categorization_disabled() {
     let tool = CategorizeTool::new(config).unwrap();
     assert!(!tool.is_enabled());
 
-    let papers = vec![
-        PaperMetadata {
-            doi: "10.1000/test".to_string(),
-            title: Some("Test Paper".to_string()),
-            authors: vec!["Author".to_string()],
-            journal: None,
-            year: Some(2024),
-            abstract_text: Some("Test abstract".to_string()),
-            pdf_url: None,
-            file_size: None,
-        }
-    ];
+    let papers = vec![PaperMetadata {
+        doi: "10.1000/test".to_string(),
+        title: Some("Test Paper".to_string()),
+        authors: vec!["Author".to_string()],
+        journal: None,
+        year: Some(2024),
+        abstract_text: Some("Test abstract".to_string()),
+        pdf_url: None,
+        file_size: None,
+    }];
 
-    let result = tool.categorize_papers(CategorizeInput {
-        query: "test query".to_string(),
-        papers,
-        max_abstracts: Some(1),
-    }).await.unwrap();
+    let result = tool
+        .categorize_papers(CategorizeInput {
+            query: "test query".to_string(),
+            papers,
+            max_abstracts: Some(1),
+        })
+        .await
+        .unwrap();
 
     assert!(result.is_fallback);
     assert_eq!(result.papers_analyzed, 0);
     assert_eq!(result.abstracts_used, 0);
-    
+
     println!("✅ Categorization Disabled Test Passed!");
     println!("   - Service correctly returns fallback when disabled");
 }

@@ -1,28 +1,28 @@
 use crate::{Config, Result};
+use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, info, instrument};
-use regex::Regex;
-use std::fs;
 
 /// Input parameters for the code search tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct CodeSearchInput {
     /// Pattern to search for (regex supported)
     pub pattern: String,
-    
+
     /// Programming language filter (optional)
     pub language: Option<String>,
-    
+
     /// Directory to search in (defaults to download directory)
     pub search_dir: Option<String>,
-    
+
     /// Maximum number of results to return
     #[serde(default = "default_limit")]
     pub limit: u32,
-    
+
     /// Include context lines around matches
     #[serde(default = "default_context")]
     pub context_lines: u32,
@@ -41,13 +41,13 @@ fn default_context() -> u32 {
 pub struct CodeSearchResult {
     /// File path where code was found
     pub file_path: String,
-    
+
     /// Paper title (if extractable)
     pub paper_title: Option<String>,
-    
+
     /// Matched code snippets
     pub matches: Vec<CodeMatch>,
-    
+
     /// Total number of matches found
     pub total_matches: usize,
 }
@@ -57,16 +57,16 @@ pub struct CodeSearchResult {
 pub struct CodeMatch {
     /// Line number in the file
     pub line_number: usize,
-    
+
     /// The matched line
     pub line: String,
-    
+
     /// Context before the match
     pub context_before: Vec<String>,
-    
+
     /// Context after the match
     pub context_after: Vec<String>,
-    
+
     /// Detected programming language
     pub language: Option<String>,
 }
@@ -87,18 +87,22 @@ impl CodeSearchTool {
     #[instrument(skip(self))]
     pub async fn search(&self, input: CodeSearchInput) -> Result<Vec<CodeSearchResult>> {
         info!("Searching for code pattern: {}", input.pattern);
-        
+
         // Compile regex pattern
-        let regex = Regex::new(&input.pattern)
-            .map_err(|e| crate::Error::InvalidInput {
-                field: "pattern".to_string(),
-                reason: format!("Invalid regex pattern: {}", e),
-            })?;
-        
+        let regex = Regex::new(&input.pattern).map_err(|e| crate::Error::InvalidInput {
+            field: "pattern".to_string(),
+            reason: format!("Invalid regex pattern: {}", e),
+        })?;
+
         // Determine search directory
-        let search_dir = input.search_dir.clone()
-            .unwrap_or_else(|| self.config.downloads.directory.to_string_lossy().to_string());
-        
+        let search_dir = input.search_dir.clone().unwrap_or_else(|| {
+            self.config
+                .downloads
+                .directory
+                .to_string_lossy()
+                .to_string()
+        });
+
         let search_path = Path::new(&search_dir);
         if !search_path.exists() {
             return Err(crate::Error::InvalidInput {
@@ -106,16 +110,16 @@ impl CodeSearchTool {
                 reason: format!("Search directory not found: {}", search_dir),
             });
         }
-        
+
         // Search for code in PDF text files (we'll need to extract text first)
         let mut results = Vec::new();
         let mut total_processed = 0;
-        
+
         // Walk through directory
         for entry in fs::read_dir(search_path)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             // Process PDF files and text files
             if path.extension().and_then(|s| s.to_str()) == Some("pdf") {
                 if let Ok(text) = self.extract_text_from_pdf(&path).await {
@@ -127,7 +131,7 @@ impl CodeSearchTool {
                     ) {
                         results.push(result);
                         total_processed += 1;
-                        
+
                         if total_processed >= input.limit {
                             break;
                         }
@@ -143,7 +147,7 @@ impl CodeSearchTool {
                     ) {
                         results.push(result);
                         total_processed += 1;
-                        
+
                         if total_processed >= input.limit {
                             break;
                         }
@@ -151,21 +155,21 @@ impl CodeSearchTool {
                 }
             }
         }
-        
+
         info!("Found {} results with code patterns", results.len());
         Ok(results)
     }
-    
+
     /// Extract text from PDF (simplified version - would need proper PDF library)
     async fn extract_text_from_pdf(&self, path: &Path) -> Result<String> {
         debug!("Extracting text from PDF: {:?}", path);
-        
+
         // For now, we'll use a simple approach
         // In production, we'd use a proper PDF extraction library
         if let Ok(bytes) = fs::read(path) {
             // Look for text patterns in PDF
             let text = String::from_utf8_lossy(&bytes);
-            
+
             // Extract code blocks (simplified heuristic)
             let code_blocks = self.extract_code_blocks(&text);
             Ok(code_blocks.join("\n"))
@@ -176,13 +180,13 @@ impl CodeSearchTool {
             })
         }
     }
-    
+
     /// Extract code blocks from text
     fn extract_code_blocks(&self, text: &str) -> Vec<String> {
         let mut blocks = Vec::new();
         let mut in_code_block = false;
         let mut current_block = Vec::new();
-        
+
         for line in text.lines() {
             // Simple heuristics for code detection
             if self.looks_like_code(line) {
@@ -199,18 +203,18 @@ impl CodeSearchTool {
                 current_block.push(line.to_string());
             }
         }
-        
+
         if !current_block.is_empty() {
             blocks.push(current_block.join("\n"));
         }
-        
+
         blocks
     }
-    
+
     /// Check if a line looks like code
     fn looks_like_code(&self, line: &str) -> bool {
         let trimmed = line.trim();
-        
+
         // Common code patterns
         trimmed.starts_with("def ")
             || trimmed.starts_with("function ")
@@ -234,7 +238,7 @@ impl CodeSearchTool {
             || (trimmed.starts_with("{") && trimmed.ends_with("}"))
             || (trimmed.starts_with("[") && trimmed.ends_with("]"))
     }
-    
+
     /// Search for pattern in text
     fn search_in_text(
         &self,
@@ -245,7 +249,7 @@ impl CodeSearchTool {
     ) -> Option<CodeSearchResult> {
         let mut matches = Vec::new();
         let lines: Vec<&str> = text.lines().collect();
-        
+
         for (idx, line) in lines.iter().enumerate() {
             if regex.is_match(line) {
                 // Check language filter
@@ -254,21 +258,19 @@ impl CodeSearchTool {
                         continue;
                     }
                 }
-                
+
                 // Get context
                 let start = idx.saturating_sub(input.context_lines as usize);
                 let end = (idx + input.context_lines as usize + 1).min(lines.len());
-                
-                let context_before: Vec<String> = lines[start..idx]
-                    .iter()
-                    .map(|s| s.to_string())
-                    .collect();
-                    
+
+                let context_before: Vec<String> =
+                    lines[start..idx].iter().map(|s| s.to_string()).collect();
+
                 let context_after: Vec<String> = lines[(idx + 1)..end]
                     .iter()
                     .map(|s| s.to_string())
                     .collect();
-                
+
                 matches.push(CodeMatch {
                     line_number: idx + 1,
                     line: line.to_string(),
@@ -276,13 +278,13 @@ impl CodeSearchTool {
                     context_after,
                     language: self.detect_language(line),
                 });
-                
+
                 if matches.len() >= input.limit as usize {
                     break;
                 }
             }
         }
-        
+
         if matches.is_empty() {
             None
         } else {
@@ -294,11 +296,11 @@ impl CodeSearchTool {
             })
         }
     }
-    
+
     /// Detect programming language from code line
     fn detect_language(&self, line: &str) -> Option<String> {
         let trimmed = line.trim();
-        
+
         if trimmed.starts_with("def ") || trimmed.starts_with("import ") {
             Some("python".to_string())
         } else if trimmed.starts_with("function ") || trimmed.contains("const ") {
@@ -313,7 +315,7 @@ impl CodeSearchTool {
             None
         }
     }
-    
+
     /// Extract paper title from text (simplified)
     fn extract_paper_title(&self, text: &str) -> Option<String> {
         // Look for common title patterns
@@ -342,20 +344,29 @@ mod tests {
     fn test_code_detection() {
         let config = Arc::new(Config::default());
         let tool = CodeSearchTool::new(config).unwrap();
-        
+
         assert!(tool.looks_like_code("def main():"));
         assert!(tool.looks_like_code("    return x + y"));
         assert!(tool.looks_like_code("const value = 42;"));
         assert!(!tool.looks_like_code("This is regular text"));
     }
-    
+
     #[test]
     fn test_language_detection() {
         let config = Arc::new(Config::default());
         let tool = CodeSearchTool::new(config).unwrap();
-        
-        assert_eq!(tool.detect_language("def main():"), Some("python".to_string()));
-        assert_eq!(tool.detect_language("fn main() {"), Some("rust".to_string()));
-        assert_eq!(tool.detect_language("function test() {"), Some("javascript".to_string()));
+
+        assert_eq!(
+            tool.detect_language("def main():"),
+            Some("python".to_string())
+        );
+        assert_eq!(
+            tool.detect_language("fn main() {"),
+            Some("rust".to_string())
+        );
+        assert_eq!(
+            tool.detect_language("function test() {"),
+            Some("javascript".to_string())
+        );
     }
 }

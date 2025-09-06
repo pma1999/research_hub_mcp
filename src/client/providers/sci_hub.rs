@@ -30,7 +30,7 @@ impl SciHubProvider {
         // Updated Sci-Hub mirrors (as of 2024)
         let mirrors = vec![
             "https://sci-hub.se".to_string(),
-            "https://sci-hub.st".to_string(), 
+            "https://sci-hub.st".to_string(),
             "https://sci-hub.ru".to_string(),
             "https://sci-hub.tw".to_string(),
             "https://sci-hub.ren".to_string(),
@@ -133,13 +133,19 @@ impl SciHubProvider {
         let url = format!("{}/{}", mirror, urlencoding::encode(query));
         let user_agent = self.get_next_user_agent();
 
-        debug!("Trying Sci-Hub URL: {} with user agent: {}", url, user_agent);
+        debug!(
+            "Trying Sci-Hub URL: {} with user agent: {}",
+            url, user_agent
+        );
 
         let response = self
             .client
             .get(&url)
             .header("User-Agent", user_agent)
-            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+            .header(
+                "Accept",
+                "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            )
             .header("Accept-Language", "en-US,en;q=0.5")
             .header("Accept-Encoding", "gzip, deflate")
             .header("DNT", "1")

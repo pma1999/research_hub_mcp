@@ -41,9 +41,8 @@ pub struct CategorizationService {
 impl CategorizationService {
     /// Create a new categorization service
     pub fn new(config: CategorizationConfig) -> Result<Self> {
-        let snake_case_regex = Regex::new(r"[^a-zA-Z0-9_]").map_err(|e| {
-            crate::Error::Service(format!("Failed to compile regex: {}", e))
-        })?;
+        let snake_case_regex = Regex::new(r"[^a-zA-Z0-9_]")
+            .map_err(|e| crate::Error::Service(format!("Failed to compile regex: {}", e)))?;
 
         Ok(Self {
             config,
@@ -52,11 +51,7 @@ impl CategorizationService {
     }
 
     /// Generate category from search query and paper metadata
-    pub fn generate_category_prompt(
-        &self,
-        query: &str,
-        papers: &[PaperMetadata],
-    ) -> String {
+    pub fn generate_category_prompt(&self, query: &str, papers: &[PaperMetadata]) -> String {
         // Collect abstracts, limiting to configured maximum
         let abstracts: Vec<String> = papers
             .iter()
@@ -101,7 +96,7 @@ impl CategorizationService {
             - Filesystem safe (no special characters)\n\
             - Descriptive of the research domain/topic\n\
             - Examples: machine_learning_nlp, quantum_computing_theory, biology_genetics\n\n\
-            Return only the folder name, nothing else."
+            Return only the folder name, nothing else.",
         );
 
         // Truncate if too long
@@ -113,10 +108,9 @@ impl CategorizationService {
                 - Descriptive of the research domain/topic\n\n\
                 Return only the folder name, nothing else.";
             let truncation_notice = "\n\n[Content truncated to fit prompt limits]\n\n";
-            let available_length = self.config.max_prompt_length 
-                - requirements_text.len() 
-                - truncation_notice.len();
-            
+            let available_length =
+                self.config.max_prompt_length - requirements_text.len() - truncation_notice.len();
+
             if available_length > 0 {
                 prompt = format!(
                     "{}{}{}",
@@ -136,10 +130,8 @@ impl CategorizationService {
 
     /// Sanitize and validate category name from LLM response
     pub fn sanitize_category(&self, category_response: &str) -> String {
-        let lowercased = category_response
-            .trim()
-            .to_lowercase();
-            
+        let lowercased = category_response.trim().to_lowercase();
+
         let category = lowercased
             .lines()
             .next() // Take only first line
@@ -181,16 +173,16 @@ impl CategorizationService {
             return self.config.default_category.clone();
         }
 
-        info!("Sanitized category: '{}' -> '{}'", category_response.trim(), sanitized);
+        info!(
+            "Sanitized category: '{}' -> '{}'",
+            category_response.trim(),
+            sanitized
+        );
         sanitized
     }
 
     /// Resolve category conflicts by adding numbers
-    pub fn resolve_category_conflict<P: AsRef<Path>>(
-        &self,
-        base_dir: P,
-        category: &str,
-    ) -> String {
+    pub fn resolve_category_conflict<P: AsRef<Path>>(&self, base_dir: P, category: &str) -> String {
         let base_path = base_dir.as_ref();
         let original_category = category.to_string();
         let mut current_category = original_category.clone();
@@ -251,16 +243,34 @@ mod tests {
         let service = create_test_service();
 
         // Valid categories
-        assert_eq!(service.sanitize_category("machine_learning"), "machine_learning");
-        assert_eq!(service.sanitize_category("quantum computing"), "quantum_computing");
-        assert_eq!(service.sanitize_category("Biology & Genetics"), "biology_genetics");
+        assert_eq!(
+            service.sanitize_category("machine_learning"),
+            "machine_learning"
+        );
+        assert_eq!(
+            service.sanitize_category("quantum computing"),
+            "quantum_computing"
+        );
+        assert_eq!(
+            service.sanitize_category("Biology & Genetics"),
+            "biology_genetics"
+        );
 
         // Invalid characters
-        assert_eq!(service.sanitize_category("ML/AI Research!"), "ml_ai_research");
-        assert_eq!(service.sanitize_category("Computer-Science"), "computer_science");
+        assert_eq!(
+            service.sanitize_category("ML/AI Research!"),
+            "ml_ai_research"
+        );
+        assert_eq!(
+            service.sanitize_category("Computer-Science"),
+            "computer_science"
+        );
 
         // Multiple underscores
-        assert_eq!(service.sanitize_category("machine___learning"), "machine_learning");
+        assert_eq!(
+            service.sanitize_category("machine___learning"),
+            "machine_learning"
+        );
 
         // Too short or empty
         assert_eq!(service.sanitize_category(""), "research_papers");
@@ -271,8 +281,14 @@ mod tests {
         assert_eq!(service.sanitize_category(long_category), "research_papers");
 
         // Quoted responses
-        assert_eq!(service.sanitize_category("\"machine_learning\""), "machine_learning");
-        assert_eq!(service.sanitize_category("'quantum_physics'"), "quantum_physics");
+        assert_eq!(
+            service.sanitize_category("\"machine_learning\""),
+            "machine_learning"
+        );
+        assert_eq!(
+            service.sanitize_category("'quantum_physics'"),
+            "quantum_physics"
+        );
     }
 
     #[test]
@@ -305,22 +321,23 @@ mod tests {
     #[test]
     fn test_generate_category_prompt() {
         let service = create_test_service();
-        
-        let papers = vec![
-            PaperMetadata {
-                doi: "10.1000/test1".to_string(),
-                title: Some("Machine Learning in Healthcare".to_string()),
-                authors: vec!["Smith, J.".to_string()],
-                journal: None,
-                year: Some(2023),
-                abstract_text: Some("This paper explores machine learning applications in medical diagnosis.".to_string()),
-                pdf_url: None,
-                file_size: None,
-            }
-        ];
+
+        let papers = vec![PaperMetadata {
+            doi: "10.1000/test1".to_string(),
+            title: Some("Machine Learning in Healthcare".to_string()),
+            authors: vec!["Smith, J.".to_string()],
+            journal: None,
+            year: Some(2023),
+            abstract_text: Some(
+                "This paper explores machine learning applications in medical diagnosis."
+                    .to_string(),
+            ),
+            pdf_url: None,
+            file_size: None,
+        }];
 
         let prompt = service.generate_category_prompt("machine learning", &papers);
-        
+
         assert!(prompt.contains("machine learning"));
         assert!(prompt.contains("machine learning applications in medical diagnosis"));
         assert!(prompt.contains("snake_case format"));
@@ -331,24 +348,22 @@ mod tests {
     fn test_prompt_truncation() {
         let mut config = CategorizationConfig::default();
         config.max_prompt_length = 500; // Very short for testing
-        
+
         let service = CategorizationService::new(config).unwrap();
-        
-        let papers = vec![
-            PaperMetadata {
-                doi: "10.1000/test1".to_string(),
-                title: Some("Very Long Title".to_string()),
-                authors: vec!["Author".to_string()],
-                journal: None,
-                year: Some(2023),
-                abstract_text: Some("A".repeat(1000)), // Very long abstract
-                pdf_url: None,
-                file_size: None,
-            }
-        ];
+
+        let papers = vec![PaperMetadata {
+            doi: "10.1000/test1".to_string(),
+            title: Some("Very Long Title".to_string()),
+            authors: vec!["Author".to_string()],
+            journal: None,
+            year: Some(2023),
+            abstract_text: Some("A".repeat(1000)), // Very long abstract
+            pdf_url: None,
+            file_size: None,
+        }];
 
         let prompt = service.generate_category_prompt("test query", &papers);
-        
+
         assert!(prompt.len() <= 500);
         assert!(prompt.contains("Content truncated"));
     }

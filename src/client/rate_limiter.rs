@@ -231,21 +231,25 @@ impl AdaptiveRateLimiter {
 impl ProviderRateLimiter {
     /// Create a new provider-specific rate limiter using configuration
     pub fn new(provider_name: String, config: &crate::config::RateLimitingConfig) -> Self {
-        let rate = config.providers.get(&provider_name)
+        let rate = config
+            .providers
+            .get(&provider_name)
             .copied()
             .unwrap_or(config.default_rate);
-        
+
         let rate_config = RateLimitConfig {
             requests_per_second: rate,
             adaptive: config.adaptive,
             min_rate: config.min_rate,
             max_rate: config.max_rate,
         };
-        
+
         let inner = AdaptiveRateLimiter::new(rate_config);
-        
-        debug!("Created provider rate limiter for '{}' at {} req/sec", 
-               provider_name, rate);
+
+        debug!(
+            "Created provider rate limiter for '{}' at {} req/sec",
+            provider_name, rate
+        );
 
         Self {
             provider_name,
@@ -261,7 +265,7 @@ impl ProviderRateLimiter {
     /// Wait until it's safe to make a request with progress indication
     pub async fn acquire(&mut self) -> Result<(), crate::Error> {
         let start = Instant::now();
-        
+
         // Check if we can use burst allowance
         if self.allow_burst && self.can_burst() {
             self.use_burst();
@@ -270,21 +274,27 @@ impl ProviderRateLimiter {
 
         // Calculate wait time before actual wait
         let wait_time = self.inner.inner.time_until_ready();
-        
+
         if let Some(duration) = wait_time {
             if self.show_progress && duration > Duration::from_millis(500) {
-                info!("⏳ Rate limiting {} - waiting {:.1}s", 
-                      self.provider_name, duration.as_secs_f64());
+                info!(
+                    "⏳ Rate limiting {} - waiting {:.1}s",
+                    self.provider_name,
+                    duration.as_secs_f64()
+                );
             }
         }
 
         self.inner.acquire().await;
-        
+
         if self.show_progress {
             let elapsed = start.elapsed();
             if elapsed > Duration::from_millis(100) {
-                debug!("Rate limit wait for {}: {:.1}s", 
-                       self.provider_name, elapsed.as_secs_f64());
+                debug!(
+                    "Rate limit wait for {}: {:.1}s",
+                    self.provider_name,
+                    elapsed.as_secs_f64()
+                );
             }
         }
 
@@ -299,7 +309,7 @@ impl ProviderRateLimiter {
     /// Check if request can use burst allowance
     fn can_burst(&self) -> bool {
         let now = Instant::now();
-        
+
         match self.burst_start {
             None => true, // First request can always burst
             Some(start) => {
@@ -316,7 +326,7 @@ impl ProviderRateLimiter {
     /// Use one burst allowance
     fn use_burst(&mut self) {
         let now = Instant::now();
-        
+
         match self.burst_start {
             None => {
                 // Start new burst window
@@ -336,8 +346,10 @@ impl ProviderRateLimiter {
         }
 
         if self.show_progress {
-            debug!("Using burst allowance for {} ({}/{})", 
-                   self.provider_name, self.burst_count, self.burst_size);
+            debug!(
+                "Using burst allowance for {} ({}/{})",
+                self.provider_name, self.burst_count, self.burst_size
+            );
         }
     }
 

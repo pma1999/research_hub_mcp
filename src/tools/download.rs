@@ -246,7 +246,10 @@ impl DownloadTool {
             } else {
                 return Err(crate::Error::InvalidInput {
                     field: "file_path".to_string(),
-                    reason: format!("File already exists: {file_path}", file_path = file_path.display()),
+                    reason: format!(
+                        "File already exists: {file_path}",
+                        file_path = file_path.display()
+                    ),
                 });
             }
         }
@@ -294,9 +297,9 @@ impl DownloadTool {
         // Validate filename if provided - enhanced security checks
         if let Some(filename) = &input.filename {
             // Check for path traversal attempts
-            if filename.contains("..") 
-                || filename.contains('/') 
-                || filename.contains('\\') 
+            if filename.contains("..")
+                || filename.contains('/')
+                || filename.contains('\\')
                 || filename.contains(';')
                 || filename.contains('|')
                 || filename.contains('&')
@@ -310,11 +313,14 @@ impl DownloadTool {
                 || filename.contains("%2e%2e")
                 || filename.contains("%2f")
                 || filename.contains("%5c")
-                || filename.is_empty() 
-                || filename.len() > 255 {
+                || filename.is_empty()
+                || filename.len() > 255
+            {
                 return Err(crate::Error::InvalidInput {
                     field: "filename".to_string(),
-                    reason: "Invalid filename: contains unsafe characters or path traversal attempts".to_string(),
+                    reason:
+                        "Invalid filename: contains unsafe characters or path traversal attempts"
+                            .to_string(),
                 });
             }
             // Check for null bytes
@@ -454,13 +460,12 @@ impl DownloadTool {
             if self.categorization_service.is_enabled() {
                 // Sanitize the category to ensure it's filesystem safe
                 let sanitized_category = self.categorization_service.sanitize_category(category);
-                
+
                 // Resolve any conflicts with existing directories/files
-                let final_category = self.categorization_service.resolve_category_conflict(
-                    &base_dir,
-                    &sanitized_category,
-                );
-                
+                let final_category = self
+                    .categorization_service
+                    .resolve_category_conflict(&base_dir, &sanitized_category);
+
                 base_dir = base_dir.join(final_category);
                 info!("Using category subdirectory: {:?}", base_dir);
             }
@@ -469,9 +474,10 @@ impl DownloadTool {
         // Ensure directory exists with better error handling
         if let Err(e) = tokio::fs::create_dir_all(&base_dir).await {
             // Check if this is a permissions issue (common with Claude Desktop sandbox)
-            if e.to_string().contains("Read-only file system") || 
-               e.to_string().contains("Permission denied") ||
-               e.to_string().contains("Operation not permitted") {
+            if e.to_string().contains("Read-only file system")
+                || e.to_string().contains("Permission denied")
+                || e.to_string().contains("Operation not permitted")
+            {
                 return Err(crate::Error::InvalidInput {
                     field: "permissions".to_string(),
                     reason: format!(
@@ -497,16 +503,18 @@ impl DownloadTool {
             } else {
                 PathBuf::from("/tmp/papers")
             };
-            
-            warn!("Primary directory failed, trying fallback: {:?}", fallback_dir);
-            
+
+            warn!(
+                "Primary directory failed, trying fallback: {:?}",
+                fallback_dir
+            );
+
             tokio::fs::create_dir_all(&fallback_dir)
                 .await
-                .map_err(|fallback_err| {
-                    crate::Error::InvalidInput {
-                        field: "download_directory".to_string(),
-                        reason: format!(
-                            "❌ Cannot create download directory ❌\n\n\
+                .map_err(|fallback_err| crate::Error::InvalidInput {
+                    field: "download_directory".to_string(),
+                    reason: format!(
+                        "❌ Cannot create download directory ❌\n\n\
                             Neither the configured directory nor fallback location worked.\n\n\
                             💡 Try these solutions:\n\
                             1. Grant Claude Desktop folder permissions in System Settings\n\
@@ -516,11 +524,10 @@ impl DownloadTool {
                             📁 Fallback tried: {:?}\n\
                             🔧 Original error: {}\n\
                             🔧 Fallback error: {}",
-                            base_dir, fallback_dir, e, fallback_err
-                        ),
-                    }
+                        base_dir, fallback_dir, e, fallback_err
+                    ),
                 })?;
-                
+
             // Update the base_dir to the fallback
             base_dir = fallback_dir;
             info!("Using fallback directory: {:?}", base_dir);
@@ -584,7 +591,10 @@ impl DownloadTool {
         }
 
         // Final fallback
-        format!("paper_{timestamp}.pdf", timestamp = chrono::Utc::now().timestamp())
+        format!(
+            "paper_{timestamp}.pdf",
+            timestamp = chrono::Utc::now().timestamp()
+        )
     }
 
     /// Execute the actual download

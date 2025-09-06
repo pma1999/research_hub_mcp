@@ -219,20 +219,20 @@ impl Default for LoggingConfig {
 impl Default for RateLimitingConfig {
     fn default() -> Self {
         let mut providers = HashMap::new();
-        
+
         // Academic sources - higher rates (respectful but efficient)
         providers.insert("arxiv".to_string(), 2.0);
         providers.insert("pubmed".to_string(), 2.0);
         providers.insert("pubmed_central".to_string(), 2.0);
         providers.insert("biorxiv".to_string(), 2.0);
-        
+
         // Commercial/API sources - moderate rates
         providers.insert("crossref".to_string(), 1.5);
         providers.insert("semantic_scholar".to_string(), 1.5);
         providers.insert("unpaywall".to_string(), 1.5);
         providers.insert("core".to_string(), 1.5);
         providers.insert("ssrn".to_string(), 1.0);
-        
+
         // Sci-Hub and similar - conservative rates
         providers.insert("sci_hub".to_string(), 0.5);
         providers.insert("researchgate".to_string(), 1.0);
@@ -560,31 +560,46 @@ impl Config {
         if self.rate_limiting.adaptive != new_config.rate_limiting.adaptive {
             self.rate_limiting.adaptive = new_config.rate_limiting.adaptive;
             changed = true;
-            debug!("Hot reloaded adaptive rate limiting: {}", new_config.rate_limiting.adaptive);
+            debug!(
+                "Hot reloaded adaptive rate limiting: {}",
+                new_config.rate_limiting.adaptive
+            );
         }
 
         if self.rate_limiting.show_progress != new_config.rate_limiting.show_progress {
             self.rate_limiting.show_progress = new_config.rate_limiting.show_progress;
             changed = true;
-            debug!("Hot reloaded show progress: {}", new_config.rate_limiting.show_progress);
+            debug!(
+                "Hot reloaded show progress: {}",
+                new_config.rate_limiting.show_progress
+            );
         }
 
         if self.rate_limiting.allow_burst != new_config.rate_limiting.allow_burst {
             self.rate_limiting.allow_burst = new_config.rate_limiting.allow_burst;
             changed = true;
-            debug!("Hot reloaded allow burst: {}", new_config.rate_limiting.allow_burst);
+            debug!(
+                "Hot reloaded allow burst: {}",
+                new_config.rate_limiting.allow_burst
+            );
         }
 
         if self.rate_limiting.burst_size != new_config.rate_limiting.burst_size {
             self.rate_limiting.burst_size = new_config.rate_limiting.burst_size;
             changed = true;
-            debug!("Hot reloaded burst size: {}", new_config.rate_limiting.burst_size);
+            debug!(
+                "Hot reloaded burst size: {}",
+                new_config.rate_limiting.burst_size
+            );
         }
 
         if self.rate_limiting.default_rate != new_config.rate_limiting.default_rate {
             self.rate_limiting.default_rate = new_config.rate_limiting.default_rate;
             changed = true;
-            debug!("Hot reloaded default rate: {}", new_config.rate_limiting.default_rate);
+            debug!(
+                "Hot reloaded default rate: {}",
+                new_config.rate_limiting.default_rate
+            );
         }
 
         if self.rate_limiting.providers != new_config.rate_limiting.providers {
@@ -686,26 +701,32 @@ impl Config {
                 reason: "Default rate limit must be greater than 0".to_string(),
             });
         }
-        
-        if self.rate_limiting.min_rate <= 0.0 || self.rate_limiting.min_rate > self.rate_limiting.max_rate {
+
+        if self.rate_limiting.min_rate <= 0.0
+            || self.rate_limiting.min_rate > self.rate_limiting.max_rate
+        {
             return Err(crate::Error::InvalidInput {
                 field: "rate_limiting.min_rate".to_string(),
-                reason: "Minimum rate must be greater than 0 and less than maximum rate".to_string(),
+                reason: "Minimum rate must be greater than 0 and less than maximum rate"
+                    .to_string(),
             });
         }
-        
+
         if self.rate_limiting.burst_size == 0 {
             return Err(crate::Error::InvalidInput {
                 field: "rate_limiting.burst_size".to_string(),
                 reason: "Burst size must be greater than 0".to_string(),
             });
         }
-        
+
         for (provider, rate) in &self.rate_limiting.providers {
             if *rate <= 0.0 {
                 return Err(crate::Error::InvalidInput {
                     field: format!("rate_limiting.providers.{}", provider),
-                    reason: format!("Rate limit for provider '{}' must be greater than 0", provider),
+                    reason: format!(
+                        "Rate limit for provider '{}' must be greater than 0",
+                        provider
+                    ),
                 });
             }
         }

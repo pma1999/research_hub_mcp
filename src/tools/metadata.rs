@@ -234,12 +234,13 @@ impl MetadataExtractor {
     /// Validate PDF file before attempting to parse
     async fn validate_pdf_file(file_path: &Path) -> Result<()> {
         // Check file exists and has valid size
-        let metadata = tokio::fs::metadata(file_path).await.map_err(|e| {
-            crate::Error::InvalidInput {
-                field: "file_path".to_string(),
-                reason: format!("Cannot access file: {e}"),
-            }
-        })?;
+        let metadata =
+            tokio::fs::metadata(file_path)
+                .await
+                .map_err(|e| crate::Error::InvalidInput {
+                    field: "file_path".to_string(),
+                    reason: format!("Cannot access file: {e}"),
+                })?;
 
         if metadata.len() == 0 {
             return Err(crate::Error::Parse {
@@ -251,22 +252,25 @@ impl MetadataExtractor {
         if metadata.len() < 1024 {
             return Err(crate::Error::Parse {
                 context: "PDF validation".to_string(),
-                message: format!("File is too small ({} bytes) to be a valid PDF", metadata.len()),
+                message: format!(
+                    "File is too small ({} bytes) to be a valid PDF",
+                    metadata.len()
+                ),
             });
         }
 
         // Check for PDF magic bytes
-        let mut file = tokio::fs::File::open(file_path).await.map_err(|e| {
-            crate::Error::Io(e)
-        })?;
+        let mut file = tokio::fs::File::open(file_path)
+            .await
+            .map_err(|e| crate::Error::Io(e))?;
 
         let mut header = [0u8; 8];
-        file.read_exact(&mut header).await.map_err(|e| {
-            crate::Error::Parse {
+        file.read_exact(&mut header)
+            .await
+            .map_err(|e| crate::Error::Parse {
                 context: "PDF validation".to_string(),
                 message: format!("Cannot read file header: {e}"),
-            }
-        })?;
+            })?;
 
         // Check for PDF signature
         if !header.starts_with(b"%PDF-") {
@@ -345,7 +349,10 @@ impl MetadataExtractor {
             return Ok(MetadataResult {
                 status: ExtractionStatus::Failed,
                 metadata: None,
-                error: Some(format!("File not found: {file_path}", file_path = input.file_path)),
+                error: Some(format!(
+                    "File not found: {file_path}",
+                    file_path = input.file_path
+                )),
                 processing_time_ms: 0,
                 file_path: input.file_path,
             });
@@ -462,7 +469,10 @@ impl MetadataExtractor {
                             if metadata.len() == 0 {
                                 return Err(format!("PDF file is empty (0 bytes)"));
                             } else if metadata.len() < 1024 {
-                                return Err(format!("PDF file is too small ({} bytes), likely corrupted", metadata.len()));
+                                return Err(format!(
+                                    "PDF file is too small ({} bytes), likely corrupted",
+                                    metadata.len()
+                                ));
                             }
                         }
                         Err(format!("PDF parsing failed: {}", e))

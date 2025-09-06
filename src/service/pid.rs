@@ -166,22 +166,26 @@ impl PidFile {
     }
 
     /// Get the PID
-    #[must_use] pub const fn pid(&self) -> u32 {
+    #[must_use]
+    pub const fn pid(&self) -> u32 {
         self.pid
     }
 
     /// Get the path
-    #[must_use] pub fn path(&self) -> &Path {
+    #[must_use]
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
     /// Check if the PID file is locked
-    #[must_use] pub const fn is_locked(&self) -> bool {
+    #[must_use]
+    pub const fn is_locked(&self) -> bool {
         self.locked
     }
 
     /// Get standard PID file path for the service
-    #[must_use] pub fn standard_path() -> PathBuf {
+    #[must_use]
+    pub fn standard_path() -> PathBuf {
         // Try different standard locations
         if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             // User runtime directory (systemd style)

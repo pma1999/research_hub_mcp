@@ -19,4 +19,6 @@ pub use resilience::health::HealthCheckManager;
 pub use resilience::{CircuitBreaker, RetryConfig, RetryPolicy, TimeoutConfig, TimeoutExt};
 pub use server::Server;
 pub use service::{DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler};
-pub use tools::{DownloadTool, MetadataExtractor, SearchTool, CodeSearchTool, BibliographyTool, CategorizeTool};
+pub use tools::{
+    BibliographyTool, CategorizeTool, CodeSearchTool, DownloadTool, MetadataExtractor, SearchTool,
+};

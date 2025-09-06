@@ -219,7 +219,9 @@ impl CoreProvider {
             "Failed to parse CORE response with any known format: {}",
             response_text
         );
-        Err(ProviderError::Parse("Failed to parse CORE API response: unknown format".to_string()))
+        Err(ProviderError::Parse(
+            "Failed to parse CORE API response: unknown format".to_string(),
+        ))
     }
 
     /// Get paper by DOI

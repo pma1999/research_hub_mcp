@@ -1,5 +1,5 @@
 use futures::stream::StreamExt;
-use signal_hook::consts::signal::{SIGTERM, SIGINT, SIGQUIT, SIGHUP};
+use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
 use signal_hook_tokio::Signals;
 use std::sync::Arc;
 use tokio::sync::{watch, RwLock};

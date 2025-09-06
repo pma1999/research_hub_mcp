@@ -37,7 +37,6 @@ impl ResearchGateProvider {
         })
     }
 
-
     /// Check if a URL is a valid `ResearchGate` publication URL
     fn is_researchgate_url(&self, url: &str) -> bool {
         url.contains("researchgate.net/publication/") || url.contains("researchgate.net/profile/")

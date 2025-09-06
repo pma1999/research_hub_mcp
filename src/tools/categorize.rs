@@ -92,12 +92,11 @@ impl CategorizeTool {
         }
 
         // Limit papers based on service configuration or input override
-        let max_abstracts = input.max_abstracts.unwrap_or(self.categorization_service.max_abstracts());
-        let papers_to_analyze: Vec<&PaperMetadata> = input
-            .papers
-            .iter()
-            .take(max_abstracts)
-            .collect();
+        let max_abstracts = input
+            .max_abstracts
+            .unwrap_or(self.categorization_service.max_abstracts());
+        let papers_to_analyze: Vec<&PaperMetadata> =
+            input.papers.iter().take(max_abstracts).collect();
 
         // Count abstracts available
         let abstracts_used = papers_to_analyze
@@ -127,8 +126,10 @@ impl CategorizeTool {
         let category_response = self.simple_heuristic_categorization(&input.query, &input.papers);
 
         // Sanitize the category
-        let sanitized_category = self.categorization_service.sanitize_category(&category_response);
-        
+        let sanitized_category = self
+            .categorization_service
+            .sanitize_category(&category_response);
+
         let is_fallback = sanitized_category == self.categorization_service.default_category();
 
         info!(
@@ -182,11 +183,12 @@ impl CategorizeTool {
     /// Simple heuristic categorization (fallback when no LLM available)
     fn simple_heuristic_categorization(&self, query: &str, papers: &[PaperMetadata]) -> String {
         let query_lower = query.to_lowercase();
-        
+
         // Collect keywords from query and paper titles/abstracts
         let mut keywords = vec![query_lower.clone()];
-        
-        for paper in papers.iter().take(3) { // Analyze first 3 papers
+
+        for paper in papers.iter().take(3) {
+            // Analyze first 3 papers
             if let Some(title) = &paper.title {
                 keywords.push(title.to_lowercase());
             }
@@ -194,38 +196,64 @@ impl CategorizeTool {
                 keywords.push(abstract_text[..abstract_text.len().min(200)].to_lowercase());
             }
         }
-        
+
         let all_text = keywords.join(" ");
-        
+
         // Simple keyword-based categorization
-        if all_text.contains("machine learning") || all_text.contains("neural network") || all_text.contains("deep learning") {
+        if all_text.contains("machine learning")
+            || all_text.contains("neural network")
+            || all_text.contains("deep learning")
+        {
             "machine_learning".to_string()
         } else if all_text.contains("quantum") || all_text.contains("physics") {
             "quantum_physics".to_string()
-        } else if all_text.contains("biology") || all_text.contains("genetics") || all_text.contains("biomedical") {
+        } else if all_text.contains("biology")
+            || all_text.contains("genetics")
+            || all_text.contains("biomedical")
+        {
             "biology_genetics".to_string()
-        } else if all_text.contains("computer") || all_text.contains("algorithm") || all_text.contains("software") {
+        } else if all_text.contains("computer")
+            || all_text.contains("algorithm")
+            || all_text.contains("software")
+        {
             "computer_science".to_string()
-        } else if all_text.contains("climate") || all_text.contains("environment") || all_text.contains("sustainability") {
+        } else if all_text.contains("climate")
+            || all_text.contains("environment")
+            || all_text.contains("sustainability")
+        {
             "environmental_science".to_string()
-        } else if all_text.contains("medicine") || all_text.contains("medical") || all_text.contains("health") {
+        } else if all_text.contains("medicine")
+            || all_text.contains("medical")
+            || all_text.contains("health")
+        {
             "medical_research".to_string()
         } else if all_text.contains("chemistry") || all_text.contains("chemical") {
             "chemistry".to_string()
-        } else if all_text.contains("mathematics") || all_text.contains("mathematical") || all_text.contains("math") {
+        } else if all_text.contains("mathematics")
+            || all_text.contains("mathematical")
+            || all_text.contains("math")
+        {
             "mathematics".to_string()
-        } else if all_text.contains("ohat") || all_text.contains("systematic review") || all_text.contains("literature review") {
+        } else if all_text.contains("ohat")
+            || all_text.contains("systematic review")
+            || all_text.contains("literature review")
+        {
             "systematic_review".to_string()
-        } else if all_text.contains("agent") || all_text.contains("multi-agent") || all_text.contains("agentic") {
+        } else if all_text.contains("agent")
+            || all_text.contains("multi-agent")
+            || all_text.contains("agentic")
+        {
             "agentic_systems".to_string()
         } else {
             // Extract first meaningful words from query
             let words: Vec<&str> = query_lower
                 .split_whitespace()
-                .filter(|w| w.len() > 2 && !["the", "and", "for", "with", "from", "into"].contains(w))
+                .filter(|w| {
+                    w.len() > 2 && !["the", "and", "for", "with", "from", "into"].contains(w)
+                })
                 .take(3)
                 .collect();
-            
+
             if words.is_empty() {
                 self.categorization_service.default_category().to_string()
             } else {
@@ -258,7 +286,10 @@ mod tests {
                 authors: vec!["Smith, J.".to_string()],
                 journal: None,
                 year: Some(2023),
-                abstract_text: Some("This paper explores machine learning applications in medical diagnosis.".to_string()),
+                abstract_text: Some(
+                    "This paper explores machine learning applications in medical diagnosis."
+                        .to_string(),
+                ),
                 pdf_url: None,
                 file_size: None,
             },
@@ -268,7 +299,10 @@ mod tests {
                 authors: vec!["Doe, J.".to_string()],
                 journal: None,
                 year: Some(2023),
-                abstract_text: Some("We present a novel deep learning approach for image classification.".to_string()),
+                abstract_text: Some(
+                    "We present a novel deep learning approach for image classification."
+                        .to_string(),
+                ),
                 pdf_url: None,
                 file_size: None,
             },
@@ -278,7 +312,7 @@ mod tests {
     #[test]
     fn test_categorize_input_validation() {
         let tool = create_test_categorize_tool().unwrap();
-        
+
         // Empty query should fail
         let empty_query = CategorizeInput {
             query: "".to_string(),
@@ -315,7 +349,7 @@ mod tests {
     #[tokio::test]
     async fn test_categorize_papers() {
         let tool = create_test_categorize_tool().unwrap();
-        
+
         let input = CategorizeInput {
             query: "machine learning in healthcare".to_string(),
             papers: create_test_papers(),
@@ -323,7 +357,7 @@ mod tests {
         };
 
         let result = tool.categorize_papers(input).await.unwrap();
-        
+
         assert!(!result.category.is_empty());
         assert!(!result.sanitized_category.is_empty());
         assert_eq!(result.papers_analyzed, 2);
@@ -341,19 +375,20 @@ mod tests {
         assert_eq!(ml_result, "machine_learning");
 
         // Test quantum physics categorization
-        let quantum_papers = vec![
-            PaperMetadata {
-                doi: "10.1000/quantum1".to_string(),
-                title: Some("Quantum Computing Theory".to_string()),
-                authors: vec!["Einstein, A.".to_string()],
-                journal: None,
-                year: Some(2023),
-                abstract_text: Some("This paper discusses quantum mechanics and quantum computing.".to_string()),
-                pdf_url: None,
-                file_size: None,
-            }
-        ];
-        let quantum_result = tool.simple_heuristic_categorization("quantum physics", &quantum_papers);
+        let quantum_papers = vec![PaperMetadata {
+            doi: "10.1000/quantum1".to_string(),
+            title: Some("Quantum Computing Theory".to_string()),
+            authors: vec!["Einstein, A.".to_string()],
+            journal: None,
+            year: Some(2023),
+            abstract_text: Some(
+                "This paper discusses quantum mechanics and quantum computing.".to_string(),
+            ),
+            pdf_url: None,
+            file_size: None,
+        }];
+        let quantum_result =
+            tool.simple_heuristic_categorization("quantum physics", &quantum_papers);
         assert_eq!(quantum_result, "quantum_physics");
 
         // Test default fallback
@@ -366,7 +401,7 @@ mod tests {
         let config = Arc::new(Config::default());
         let tool = CategorizeTool::new(config);
         assert!(tool.is_ok());
-        
+
         let tool = tool.unwrap();
         assert!(tool.is_enabled()); // Should be enabled by default
     }

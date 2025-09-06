@@ -363,10 +363,7 @@ impl SourceProvider for PubMedCentralProvider {
         let articles = self.fetch_articles(&pmc_ids, context).await?;
         let search_time = start_time.elapsed();
 
-        let papers: Vec<PaperMetadata> = articles
-            .iter()
-            .map(Self::convert_to_paper)
-            .collect();
+        let papers: Vec<PaperMetadata> = articles.iter().map(Self::convert_to_paper).collect();
 
         let papers_count = u32::try_from(papers.len()).unwrap_or(u32::MAX);
         info!(
