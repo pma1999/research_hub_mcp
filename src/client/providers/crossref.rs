@@ -1,11 +1,13 @@
 use super::traits::{
     ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
+use crate::client::circuit_breaker_service::CircuitBreakerService;
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use url::Url;
@@ -62,6 +64,7 @@ pub struct CrossRefProvider {
     client: Client,
     base_url: String,
     email: Option<String>,
+    circuit_breaker_service: Arc<CircuitBreakerService>,
 }
 
 impl CrossRefProvider {
@@ -77,6 +80,7 @@ impl CrossRefProvider {
             client,
             base_url: "https://api.crossref.org/works".to_string(),
             email,
+            circuit_breaker_service: Arc::new(CircuitBreakerService::new()),
         })
     }
 
@@ -174,7 +178,20 @@ impl CrossRefProvider {
 
 impl Default for CrossRefProvider {
     fn default() -> Self {
-        Self::new(None).expect("Failed to create CrossRefProvider")
+        match Self::new(None) {
+            Ok(provider) => provider,
+            Err(_) => {
+                // Fallback to a minimal client with very basic configuration
+                // This should never fail under normal circumstances
+                let client = Client::new();
+                Self {
+                    client,
+                    base_url: "https://api.crossref.org/works".to_string(),
+                    email: None,
+                    circuit_breaker_service: Arc::new(CircuitBreakerService::new()),
+                }
+            }
+        }
     }
 }
 
@@ -230,22 +247,36 @@ impl SourceProvider for CrossRefProvider {
         let url = self.build_search_url(query)?;
         debug!("CrossRef search URL: {}", url);
 
-        // Make the request
-        let mut request = self.client.get(&url);
+        // Make the request with circuit breaker protection
+        let response = self.circuit_breaker_service.call_http("crossref", || async {
+            let mut request = self.client.get(&url);
 
-        // Add custom headers
-        for (key, value) in &context.headers {
-            request = request.header(key, value);
-        }
+            // Add custom headers
+            for (key, value) in &context.headers {
+                request = request.header(key, value);
+            }
 
-        let response = request.timeout(context.timeout).send().await.map_err(|e| {
+            request.timeout(context.timeout).send().await
+        }).await.map_err(|e| {
             error!("CrossRef request failed: {}", e);
-            if e.is_timeout() {
-                ProviderError::Timeout
-            } else if e.is_connect() {
-                ProviderError::Network(format!("Connection failed: {e}"))
-            } else {
-                ProviderError::Network(format!("Request failed: {e}"))
+            match e {
+                crate::Error::CircuitBreakerOpen { service } => {
+                    ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
+                }
+                crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
+                crate::Error::ConnectionRefused { .. } => {
+                    ProviderError::Network("Connection failed".to_string())
+                }
+                crate::Error::Http(http_err) => {
+                    if http_err.is_timeout() {
+                        ProviderError::Timeout
+                    } else if http_err.is_connect() {
+                        ProviderError::Network(format!("Connection failed: {http_err}"))
+                    } else {
+                        ProviderError::Network(format!("Request failed: {http_err}"))
+                    }
+                }
+                _ => ProviderError::Network(format!("Request failed: {e}"))
             }
         })?;
 

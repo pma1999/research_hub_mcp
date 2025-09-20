@@ -170,8 +170,13 @@ impl DownloadTool {
         let http_client = Client::builder()
             .timeout(Duration::from_secs(config.research_source.timeout_secs * 2)) // Longer timeout for downloads
             .connect_timeout(Duration::from_secs(30))
+            .pool_max_idle_per_host(10) // Enable connection pooling with 10 idle connections per host
+            .pool_idle_timeout(Duration::from_secs(30)) // Keep idle connections for 30 seconds
+            .http2_prior_knowledge() // Enable HTTP/2 prior knowledge for better performance
+            .http2_keep_alive_interval(Some(Duration::from_secs(10))) // HTTP/2 keepalive
+            .tcp_keepalive(Some(Duration::from_secs(60))) // TCP keepalive
             .build()
-            .expect("Failed to create HTTP client for downloads");
+            .map_err(|e| crate::Error::Http(e))?;
 
         // Create categorization service
         let categorization_service = CategorizationService::new(config.categorization.clone())

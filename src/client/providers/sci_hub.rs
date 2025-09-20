@@ -1,11 +1,13 @@
 use super::traits::{
     ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
+use crate::client::circuit_breaker_service::CircuitBreakerService;
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use reqwest::Client;
 use scraper::{Html, Selector};
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
@@ -16,6 +18,7 @@ pub struct SciHubProvider {
     current_mirror_index: std::sync::atomic::AtomicUsize,
     user_agents: Vec<String>,
     current_user_agent_index: std::sync::atomic::AtomicUsize,
+    circuit_breaker_service: Arc<CircuitBreakerService>,
 }
 
 impl SciHubProvider {
@@ -54,33 +57,24 @@ impl SciHubProvider {
             current_mirror_index: std::sync::atomic::AtomicUsize::new(0),
             user_agents,
             current_user_agent_index: std::sync::atomic::AtomicUsize::new(0),
+            circuit_breaker_service: Arc::new(CircuitBreakerService::new()),
         })
     }
 
-    /// Get the next mirror to try
+    /// Get the next mirror to try (optimized with fetch_add for better performance)
     fn get_next_mirror(&self) -> String {
         let index = self
             .current_mirror_index
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let mirror = self.mirrors[index % self.mirrors.len()].clone();
-        self.current_mirror_index.store(
-            (index + 1) % self.mirrors.len(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
-        mirror
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.mirrors[index % self.mirrors.len()].clone()
     }
 
-    /// Get the next user agent to use
+    /// Get the next user agent to use (optimized with fetch_add for better performance)
     fn get_next_user_agent(&self) -> String {
         let index = self
             .current_user_agent_index
-            .load(std::sync::atomic::Ordering::Relaxed);
-        let user_agent = self.user_agents[index % self.user_agents.len()].clone();
-        self.current_user_agent_index.store(
-            (index + 1) % self.user_agents.len(),
-            std::sync::atomic::Ordering::Relaxed,
-        );
-        user_agent
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.user_agents[index % self.user_agents.len()].clone()
     }
 
     /// Clean DOI format for Sci-Hub
@@ -138,22 +132,37 @@ impl SciHubProvider {
             url, user_agent
         );
 
-        let response = self
-            .client
-            .get(&url)
-            .header("User-Agent", user_agent)
-            .header(
-                "Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            )
-            .header("Accept-Language", "en-US,en;q=0.5")
-            .header("Accept-Encoding", "gzip, deflate")
-            .header("DNT", "1")
-            .header("Connection", "keep-alive")
-            .header("Upgrade-Insecure-Requests", "1")
-            .send()
-            .await
-            .map_err(|e| ProviderError::Network(format!("Request failed: {e}")))?;
+        let response = self.circuit_breaker_service.call_http("sci_hub", || async {
+            self
+                .client
+                .get(&url)
+                .header("User-Agent", user_agent)
+                .header(
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                )
+                .header("Accept-Language", "en-US,en;q=0.5")
+                .header("Accept-Encoding", "gzip, deflate")
+                .header("DNT", "1")
+                .header("Connection", "keep-alive")
+                .header("Upgrade-Insecure-Requests", "1")
+                .send()
+                .await
+        }).await.map_err(|e| {
+            match e {
+                crate::Error::CircuitBreakerOpen { service } => {
+                    ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
+                }
+                crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
+                crate::Error::ConnectionRefused { .. } => {
+                    ProviderError::Network("Connection failed".to_string())
+                }
+                crate::Error::Http(http_err) => {
+                    ProviderError::Network(format!("Request failed: {http_err}"))
+                }
+                _ => ProviderError::Network(format!("Request failed: {e}"))
+            }
+        })?;
 
         if !response.status().is_success() {
             // For 403 errors, provide more context about potential solutions
@@ -358,16 +367,24 @@ impl SourceProvider for SciHubProvider {
         // Try to access the main page of the first mirror
         let mirror = &self.mirrors[0];
 
-        match self.client.get(mirror).send().await {
-            Ok(response) if response.status().is_success() => {
+        let response = self.circuit_breaker_service.call_http("sci_hub", || async {
+            self.client.get(mirror).send().await
+        }).await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
                 info!("Sci-Hub health check: OK");
                 Ok(true)
             }
-            Ok(response) => {
+            Ok(resp) => {
                 warn!(
                     "Sci-Hub health check failed with status: {}",
-                    response.status()
+                    resp.status()
                 );
+                Ok(false)
+            }
+            Err(crate::Error::CircuitBreakerOpen { .. }) => {
+                warn!("Sci-Hub health check: Circuit breaker open");
                 Ok(false)
             }
             Err(e) => {

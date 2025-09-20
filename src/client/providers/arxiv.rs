@@ -1,6 +1,7 @@
 use super::traits::{
     ProviderError, ProviderResult, SearchContext, SearchQuery, SearchType, SourceProvider,
 };
+use crate::client::circuit_breaker_service::CircuitBreakerService;
 use crate::client::rate_limiter::ProviderRateLimiter;
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
@@ -17,6 +18,7 @@ pub struct ArxivProvider {
     client: Client,
     base_url: String,
     rate_limiter: Arc<Mutex<Option<ProviderRateLimiter>>>,
+    circuit_breaker_service: Arc<CircuitBreakerService>,
 }
 
 impl ArxivProvider {
@@ -30,8 +32,9 @@ impl ArxivProvider {
 
         Ok(Self {
             client,
-            base_url: "http://export.arxiv.org/api/query".to_string(),
+            base_url: "https://export.arxiv.org/api/query".to_string(),
             rate_limiter: Arc::new(Mutex::new(None)),
+            circuit_breaker_service: Arc::new(CircuitBreakerService::new()),
         })
     }
 
@@ -182,7 +185,20 @@ impl ArxivProvider {
 
 impl Default for ArxivProvider {
     fn default() -> Self {
-        Self::new().expect("Failed to create ArxivProvider")
+        match Self::new() {
+            Ok(provider) => provider,
+            Err(_) => {
+                // Fallback to a minimal client with very basic configuration
+                // This should never fail under normal circumstances
+                let client = Client::new();
+                Self {
+                    client,
+                    base_url: "https://export.arxiv.org/api/query".to_string(),
+                    rate_limiter: Arc::new(Mutex::new(None)),
+                    circuit_breaker_service: Arc::new(CircuitBreakerService::new()),
+                }
+            }
+        }
     }
 }
 
@@ -256,22 +272,36 @@ impl SourceProvider for ArxivProvider {
         let url = self.build_search_url(query)?;
         debug!("arXiv search URL: {}", url);
 
-        // Make the request
-        let mut request = self.client.get(&url);
+        // Make the request with circuit breaker protection
+        let response = self.circuit_breaker_service.call_http("arxiv", || async {
+            let mut request = self.client.get(&url);
 
-        // Add custom headers
-        for (key, value) in &context.headers {
-            request = request.header(key, value);
-        }
+            // Add custom headers
+            for (key, value) in &context.headers {
+                request = request.header(key, value);
+            }
 
-        let response = request.timeout(context.timeout).send().await.map_err(|e| {
+            request.timeout(context.timeout).send().await
+        }).await.map_err(|e| {
             error!("arXiv request failed: {}", e);
-            if e.is_timeout() {
-                ProviderError::Timeout
-            } else if e.is_connect() {
-                ProviderError::Network(format!("Connection failed: {e}"))
-            } else {
-                ProviderError::Network(format!("Request failed: {e}"))
+            match e {
+                crate::Error::CircuitBreakerOpen { service } => {
+                    ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
+                }
+                crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
+                crate::Error::ConnectionRefused { .. } => {
+                    ProviderError::Network("Connection failed".to_string())
+                }
+                crate::Error::Http(http_err) => {
+                    if http_err.is_timeout() {
+                        ProviderError::Timeout
+                    } else if http_err.is_connect() {
+                        ProviderError::Network(format!("Connection failed: {http_err}"))
+                    } else {
+                        ProviderError::Network(format!("Request failed: {http_err}"))
+                    }
+                }
+                _ => ProviderError::Network(format!("Request failed: {e}"))
             }
         })?;
 
@@ -329,29 +359,30 @@ impl SourceProvider for ArxivProvider {
         })
     }
 
-    async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
+    async fn health_check(&self, _context: &SearchContext) -> Result<bool, ProviderError> {
         debug!("Performing arXiv health check");
 
-        let query = SearchQuery {
-            query: "quantum".to_string(),
-            search_type: SearchType::Keywords,
-            max_results: 1,
-            offset: 0,
-            params: HashMap::new(),
-        };
+        // Simplified health check that just tries to connect to the API
+        let response = self.circuit_breaker_service.call_http("arxiv", || async {
+            self.client
+                .get(&self.base_url)
+                .timeout(Duration::from_secs(10))
+                .send()
+                .await
+        }).await;
 
-        match self.search(&query, context).await {
-            Ok(result) => {
-                let healthy = !result.papers.is_empty();
+        match response {
+            Ok(resp) => {
+                let healthy = resp.status().is_success();
                 info!(
                     "arXiv health check: {}",
-                    if healthy { "OK" } else { "No results" }
+                    if healthy { "OK" } else { "Service error" }
                 );
                 Ok(healthy)
             }
-            Err(ProviderError::RateLimit) => {
-                info!("arXiv health check: OK (rate limited but responsive)");
-                Ok(true)
+            Err(crate::Error::CircuitBreakerOpen { .. }) => {
+                warn!("arXiv health check: Circuit breaker open");
+                Ok(false)
             }
             Err(e) => {
                 warn!("arXiv health check failed: {}", e);

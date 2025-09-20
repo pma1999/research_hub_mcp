@@ -424,7 +424,19 @@ impl SourceProvider for SemanticScholarProvider {
 
 impl Default for SemanticScholarProvider {
     fn default() -> Self {
-        Self::new(None).expect("Failed to create SemanticScholarProvider")
+        match Self::new(None) {
+            Ok(provider) => provider,
+            Err(_) => {
+                // Fallback to a minimal client with very basic configuration
+                // This should never fail under normal circumstances
+                let client = Client::new();
+                Self {
+                    client,
+                    base_url: "https://api.semanticscholar.org/graph/v1".to_string(),
+                    api_key: None,
+                }
+            }
+        }
     }
 }
 

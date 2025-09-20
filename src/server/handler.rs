@@ -68,11 +68,11 @@ struct CategoryCacheEntry {
 pub struct ResearchServerHandler {
     #[allow(dead_code)]
     config: Arc<Config>,
-    search_tool: SearchTool,
-    download_tool: DownloadTool,
-    metadata_extractor: MetadataExtractor,
-    code_search_tool: CodeSearchTool,
-    bibliography_tool: BibliographyTool,
+    search_tool: Arc<SearchTool>,
+    download_tool: Arc<DownloadTool>,
+    metadata_extractor: Arc<MetadataExtractor>,
+    code_search_tool: Arc<CodeSearchTool>,
+    bibliography_tool: Arc<BibliographyTool>,
     /// Cache of DOI -> Category mappings from recent searches
     category_cache: Arc<RwLock<HashMap<String, CategoryCacheEntry>>>,
 }
@@ -102,11 +102,11 @@ impl ResearchServerHandler {
 
         Ok(Self {
             config,
-            search_tool,
-            download_tool,
-            metadata_extractor,
-            code_search_tool,
-            bibliography_tool,
+            search_tool: Arc::new(search_tool),
+            download_tool: Arc::new(download_tool),
+            metadata_extractor: Arc::new(metadata_extractor),
+            code_search_tool: Arc::new(code_search_tool),
+            bibliography_tool: Arc::new(bibliography_tool),
             category_cache: Arc::new(RwLock::new(HashMap::new())),
         })
     }
@@ -312,11 +312,11 @@ impl ServerHandler for ResearchServerHandler {
     ) -> impl Future<Output = std::result::Result<CallToolResult, ErrorData>> + Send + '_ {
         info!("Tool called: {}", request.name);
 
-        let search_tool = self.search_tool.clone();
-        let download_tool = self.download_tool.clone();
-        let metadata_extractor = self.metadata_extractor.clone();
-        let code_search_tool = self.code_search_tool.clone();
-        let bibliography_tool = self.bibliography_tool.clone();
+        let search_tool = Arc::clone(&self.search_tool);
+        let download_tool = Arc::clone(&self.download_tool);
+        let metadata_extractor = Arc::clone(&self.metadata_extractor);
+        let code_search_tool = Arc::clone(&self.code_search_tool);
+        let bibliography_tool = Arc::clone(&self.bibliography_tool);
 
         async move {
             match request.name.as_ref() {

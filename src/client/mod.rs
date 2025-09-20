@@ -1,8 +1,60 @@
+//! # Client Module
+//!
+//! This module provides the core client infrastructure for academic research paper discovery and retrieval.
+//! It implements a meta-search architecture that queries multiple academic sources in parallel,
+//! aggregates results, and handles circuit breaking, rate limiting, and fault tolerance.
+//!
+//! ## Architecture
+//!
+//! The client follows a layered architecture:
+//!
+//! - **Meta-Search Layer**: [`MetaSearchClient`] orchestrates searches across multiple providers
+//! - **Provider Layer**: Individual academic source implementations (ArXiv, CrossRef, etc.)
+//! - **Resilience Layer**: Circuit breakers, rate limiting, and retry logic
+//! - **Mirror Management**: Handles mirror discovery and health checking for services like Sci-Hub
+//!
+//! ## Example Usage
+//!
+//! ```no_run
+//! use rust_research_mcp::client::{MetaSearchClient, MetaSearchConfig};
+//! use rust_research_mcp::client::providers::{SearchQuery, SearchType};
+//! use rust_research_mcp::Config;
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let config = Config::default();
+//! let meta_config = MetaSearchConfig::default();
+//! let client = MetaSearchClient::new(config, meta_config)?;
+//!
+//! let query = SearchQuery {
+//!     query: "machine learning".to_string(),
+//!     search_type: SearchType::Keywords,
+//!     max_results: 10,
+//!     offset: 0,
+//!     params: std::collections::HashMap::new(),
+//! };
+//!
+//! let results = client.search(&query).await?;
+//! println!("Found {} papers from {} providers",
+//!          results.papers.len(), results.successful_providers);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Security Considerations
+//!
+//! All HTTP clients are configured with security defaults:
+//! - HTTPS-only connections where possible
+//! - Certificate validation (unless explicitly disabled for development)
+//! - Request timeouts and connection limits
+//! - Rate limiting to respect external services
+
+pub mod circuit_breaker_service;
 pub mod meta_search;
 pub mod mirror;
 pub mod providers;
 pub mod rate_limiter;
 
+pub use circuit_breaker_service::CircuitBreakerService;
 pub use meta_search::{MetaSearchClient, MetaSearchConfig, MetaSearchResult};
 pub use mirror::{Mirror, MirrorHealth, MirrorManager};
 pub use rate_limiter::RateLimiter;
@@ -23,8 +75,6 @@ pub struct HttpClientConfig {
     pub user_agent: String,
     /// Proxy URL (optional)
     pub proxy: Option<String>,
-    /// Whether to verify SSL certificates
-    pub danger_accept_invalid_certs: bool,
 }
 
 impl Default for HttpClientConfig {
@@ -35,8 +85,64 @@ impl Default for HttpClientConfig {
             max_redirects: 10,
             user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
             proxy: None,
-            danger_accept_invalid_certs: false,
         }
+    }
+}
+
+/// Secure HTTP client factory that enforces security best practices
+pub struct SecureHttpClientFactory;
+
+impl SecureHttpClientFactory {
+    /// Create a secure HTTP client with enforced security settings
+    pub fn create_client(config: &HttpClientConfig) -> Result<reqwest::Client> {
+        let mut client_builder = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .connect_timeout(config.connect_timeout)
+            .redirect(reqwest::redirect::Policy::limited(config.max_redirects as usize))
+            .user_agent(&config.user_agent)
+            // Security enforcements
+            .tls_built_in_root_certs(true) // Use built-in root certificates
+            .min_tls_version(reqwest::tls::Version::TLS_1_2) // Enforce TLS 1.2+
+            .max_tls_version(reqwest::tls::Version::TLS_1_3) // Prefer TLS 1.3
+            .https_only(true) // Enforce HTTPS connections only
+            .connection_verbose(false) // Disable verbose connection logging for security
+            .pool_max_idle_per_host(10) // Connection pooling for performance
+            .pool_idle_timeout(Duration::from_secs(30)); // Connection pool timeout
+
+        // Add proxy if configured
+        if let Some(proxy_url) = &config.proxy {
+            let proxy = reqwest::Proxy::all(proxy_url)
+                .map_err(|e| crate::Error::InvalidInput {
+                    field: "proxy".to_string(),
+                    reason: format!("Invalid proxy URL: {e}"),
+                })?;
+            client_builder = client_builder.proxy(proxy);
+        }
+
+        client_builder.build().map_err(|e| crate::Error::Http(e))
+    }
+
+    /// Create a secure HTTP client with default configuration
+    pub fn create_default_client() -> Result<reqwest::Client> {
+        Self::create_client(&HttpClientConfig::default())
+    }
+
+    /// Create a secure HTTP client with custom user agent
+    pub fn create_client_with_user_agent(user_agent: &str) -> Result<reqwest::Client> {
+        let config = HttpClientConfig {
+            user_agent: user_agent.to_string(),
+            ..HttpClientConfig::default()
+        };
+        Self::create_client(&config)
+    }
+
+    /// Create a secure HTTP client with custom timeout
+    pub fn create_client_with_timeout(timeout: Duration) -> Result<reqwest::Client> {
+        let config = HttpClientConfig {
+            timeout,
+            ..HttpClientConfig::default()
+        };
+        Self::create_client(&config)
     }
 }
 
@@ -132,5 +238,57 @@ impl PaperMetadata {
             pdf_url: None,
             file_size: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_secure_http_client_factory_default() {
+        let client = SecureHttpClientFactory::create_default_client();
+        assert!(client.is_ok(), "Should create default secure client");
+    }
+
+    #[test]
+    fn test_secure_http_client_factory_with_custom_user_agent() {
+        let client = SecureHttpClientFactory::create_client_with_user_agent("test-agent/1.0");
+        assert!(client.is_ok(), "Should create client with custom user agent");
+    }
+
+    #[test]
+    fn test_secure_http_client_factory_with_custom_timeout() {
+        let timeout = Duration::from_secs(60);
+        let client = SecureHttpClientFactory::create_client_with_timeout(timeout);
+        assert!(client.is_ok(), "Should create client with custom timeout");
+    }
+
+    #[test]
+    fn test_http_client_config_default() {
+        let config = HttpClientConfig::default();
+        assert_eq!(config.timeout, Duration::from_secs(30));
+        assert_eq!(config.connect_timeout, Duration::from_secs(10));
+        assert_eq!(config.max_redirects, 10);
+        assert!(config.user_agent.contains("rust-research-mcp"));
+        assert!(config.proxy.is_none());
+    }
+
+    #[test]
+    fn test_secure_http_client_factory_with_proxy() {
+        let config = HttpClientConfig {
+            proxy: Some("http://proxy.example.com:8080".to_string()),
+            ..HttpClientConfig::default()
+        };
+        let client = SecureHttpClientFactory::create_client(&config);
+        assert!(client.is_ok(), "Should create client with valid proxy");
+
+        // Test with invalid proxy
+        let config_invalid = HttpClientConfig {
+            proxy: Some("invalid-proxy-url".to_string()),
+            ..HttpClientConfig::default()
+        };
+        let client_invalid = SecureHttpClientFactory::create_client(&config_invalid);
+        assert!(client_invalid.is_err(), "Should fail with invalid proxy");
     }
 }

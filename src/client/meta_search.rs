@@ -60,11 +60,34 @@ pub struct MetaSearchResult {
 }
 
 /// Client that performs meta-search across multiple academic sources
+/// Provider performance statistics for adaptive concurrency
+#[derive(Debug, Clone)]
+struct ProviderStats {
+    /// Average response time in milliseconds
+    avg_response_time: f64,
+    /// Number of requests made
+    request_count: u64,
+    /// Last update timestamp
+    last_updated: Instant,
+}
+
+impl Default for ProviderStats {
+    fn default() -> Self {
+        Self {
+            avg_response_time: 1000.0, // Start with 1 second assumption
+            request_count: 0,
+            last_updated: Instant::now(),
+        }
+    }
+}
+
 pub struct MetaSearchClient {
     providers: Vec<Arc<dyn SourceProvider>>,
     config: MetaSearchConfig,
     #[allow(dead_code)]
     rate_limiters: Arc<RwLock<HashMap<String, Instant>>>,
+    /// Provider performance statistics for adaptive semaphore sizing
+    provider_stats: Arc<RwLock<HashMap<String, ProviderStats>>>,
 }
 
 impl MetaSearchClient {
@@ -106,7 +129,76 @@ impl MetaSearchClient {
             providers,
             config: meta_config,
             rate_limiters: Arc::new(RwLock::new(HashMap::new())),
+            provider_stats: Arc::new(RwLock::new(HashMap::new())),
         })
+    }
+
+    /// Calculate adaptive semaphore size based on provider response times
+    async fn calculate_adaptive_semaphore_size(&self, provider_count: usize) -> usize {
+        let stats = self.provider_stats.read().await;
+
+        if stats.is_empty() {
+            // No stats available, use default
+            return std::cmp::min(self.config.max_parallel_providers, provider_count);
+        }
+
+        // Calculate average response time across all providers
+        let total_response_time: f64 = stats.values().map(|s| s.avg_response_time).sum();
+        let avg_response_time = total_response_time / stats.len() as f64;
+
+        // Adaptive sizing: faster providers = more concurrency
+        let adaptive_size = if avg_response_time < 500.0 {
+            // Fast providers (< 500ms): allow more parallelism
+            std::cmp::min(self.config.max_parallel_providers * 2, provider_count)
+        } else if avg_response_time < 1500.0 {
+            // Medium providers (500-1500ms): normal parallelism
+            std::cmp::min(self.config.max_parallel_providers, provider_count)
+        } else {
+            // Slow providers (> 1500ms): reduce parallelism
+            std::cmp::min(
+                std::cmp::max(1, self.config.max_parallel_providers / 2),
+                provider_count,
+            )
+        };
+
+        debug!(
+            "Adaptive semaphore sizing: avg_response_time={:.1}ms, size={}/{}",
+            avg_response_time, adaptive_size, provider_count
+        );
+
+        adaptive_size
+    }
+
+    /// Update provider statistics with response time
+    async fn update_provider_stats(&self, provider_name: &str, response_time_ms: f64) {
+        Self::update_provider_stats_static(&self.provider_stats, provider_name, response_time_ms).await;
+    }
+
+    /// Static version of update_provider_stats for use in spawned tasks
+    async fn update_provider_stats_static(
+        provider_stats: &Arc<RwLock<HashMap<String, ProviderStats>>>,
+        provider_name: &str,
+        response_time_ms: f64,
+    ) {
+        let mut stats = provider_stats.write().await;
+        let provider_stats = stats.entry(provider_name.to_string()).or_default();
+
+        // Update running average using exponential moving average
+        let alpha = 0.2; // Weighting factor for new measurements
+        if provider_stats.request_count == 0 {
+            provider_stats.avg_response_time = response_time_ms;
+        } else {
+            provider_stats.avg_response_time =
+                alpha * response_time_ms + (1.0 - alpha) * provider_stats.avg_response_time;
+        }
+
+        provider_stats.request_count += 1;
+        provider_stats.last_updated = Instant::now();
+
+        debug!(
+            "Updated provider stats for {}: avg_time={:.1}ms, requests={}",
+            provider_name, provider_stats.avg_response_time, provider_stats.request_count
+        );
     }
 
     /// Get list of available providers
@@ -259,9 +351,10 @@ impl MetaSearchClient {
     ) -> (Vec<(String, ProviderResult)>, HashMap<String, String>) {
         let mut provider_results = Vec::new();
         let mut provider_errors = HashMap::new();
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(
-            self.config.max_parallel_providers,
-        ));
+
+        // Use adaptive semaphore sizing based on provider performance
+        let adaptive_size = self.calculate_adaptive_semaphore_size(providers.len()).await;
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(adaptive_size));
 
         let mut tasks = Vec::new();
         for provider in providers {
@@ -273,38 +366,62 @@ impl MetaSearchClient {
 
             let task = tokio::spawn(async move {
                 let _permit = semaphore.acquire().await.unwrap();
+                let start_time = Instant::now();
 
                 // Apply rate limiting
                 if let Err(e) = Self::apply_rate_limit(&provider).await {
-                    return (provider.name().to_string(), Err(e));
+                    return (provider.name().to_string(), Err(e), start_time.elapsed());
                 }
 
                 // Search with timeout
                 let result = timeout(timeout_duration, provider.search(&query, &context)).await;
+                let elapsed = start_time.elapsed();
 
-                match result {
-                    Ok(Ok(provider_result)) => (provider.name().to_string(), Ok(provider_result)),
-                    Ok(Err(e)) => (provider.name().to_string(), Err(e)),
-                    Err(_) => (provider.name().to_string(), Err(ProviderError::Timeout)),
-                }
+                let provider_name = provider.name().to_string();
+                let result = match result {
+                    Ok(Ok(provider_result)) => Ok(provider_result),
+                    Ok(Err(e)) => Err(e),
+                    Err(_) => Err(ProviderError::Timeout),
+                };
+
+                (provider_name, result, elapsed)
             });
 
             tasks.push(task);
         }
 
-        // Collect results
+        // Collect results and update statistics
         for task in tasks {
             match task.await {
-                Ok((provider_name, Ok(result))) => {
+                Ok((provider_name, Ok(result), elapsed)) => {
+                    let response_time_ms = elapsed.as_millis() as f64;
                     info!(
-                        "Provider {} returned {} results",
+                        "Provider {} returned {} results in {:.1}ms",
                         provider_name,
-                        result.papers.len()
+                        result.papers.len(),
+                        response_time_ms
                     );
+
+                    // Update provider statistics asynchronously
+                    let provider_stats_clone = self.provider_stats.clone();
+                    let provider_name_clone = provider_name.clone();
+                    tokio::spawn(async move {
+                        Self::update_provider_stats_static(&provider_stats_clone, &provider_name_clone, response_time_ms).await;
+                    });
+
                     provider_results.push((provider_name, result));
                 }
-                Ok((provider_name, Err(error))) => {
-                    warn!("Provider {} failed: {}", provider_name, error);
+                Ok((provider_name, Err(error), elapsed)) => {
+                    let response_time_ms = elapsed.as_millis() as f64;
+                    warn!("Provider {} failed after {:.1}ms: {}", provider_name, response_time_ms, error);
+
+                    // Update stats even for failed requests to track response times
+                    let provider_stats_clone = self.provider_stats.clone();
+                    let provider_name_clone = provider_name.clone();
+                    tokio::spawn(async move {
+                        Self::update_provider_stats_static(&provider_stats_clone, &provider_name_clone, response_time_ms).await;
+                    });
+
                     provider_errors.insert(provider_name, error.to_string());
                 }
                 Err(e) => {
