@@ -272,19 +272,39 @@ pub trait SourceProvider: Send + Sync {
     /// - 100-149: Specialized repositories (ArXiv, PubMed)
     /// - 50-99: General search engines
     /// - 0-49: Fallback sources
-    fn priority(&self) -> u8;
+    fn priority(&self) -> u8 {
+        50 // Default medium priority
+    }
 
     /// Returns the base delay between requests to this provider.
     ///
     /// This is used for rate limiting to ensure respectful usage of external APIs.
     /// The actual delay may be adjusted based on recent response times and errors.
-    fn base_delay(&self) -> Duration;
+    fn base_delay(&self) -> Duration {
+        Duration::from_millis(1000) // Default 1 second
+    }
 
     /// Returns the search types supported by this provider.
     ///
     /// The meta-search client uses this information to route queries to appropriate
     /// providers and optimize search strategies.
     fn supported_search_types(&self) -> Vec<SearchType>;
+
+    /// Returns a human-readable description of this provider.
+    ///
+    /// Used for logging, debugging, and user interfaces to explain what this
+    /// provider offers and its capabilities.
+    fn description(&self) -> &'static str {
+        "Academic source provider"
+    }
+
+    /// Returns whether this provider supports full-text PDF access.
+    ///
+    /// Used by the meta-search client to prioritize providers when PDF access
+    /// is specifically requested or needed.
+    fn supports_full_text(&self) -> bool {
+        false
+    }
 
     /// Performs a search using this provider.
     ///
@@ -357,15 +377,6 @@ pub trait SourceProvider: Send + Sync {
         }
     }
 
-    /// Get the base delay between requests for rate limiting
-    fn base_delay(&self) -> Duration {
-        Duration::from_millis(1000) // Default 1 second
-    }
-
-    /// Priority of this provider (higher = more important)
-    fn priority(&self) -> u8 {
-        50 // Default medium priority
-    }
 
     /// Attempt to get a direct PDF download URL for a DOI
     /// This is called when standard search doesn't return a PDF URL

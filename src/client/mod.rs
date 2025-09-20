@@ -9,7 +9,7 @@
 //! The client follows a layered architecture:
 //!
 //! - **Meta-Search Layer**: [`MetaSearchClient`] orchestrates searches across multiple providers
-//! - **Provider Layer**: Individual academic source implementations (ArXiv, CrossRef, etc.)
+//! - **Provider Layer**: Individual academic source implementations (`ArXiv`, `CrossRef`, etc.)
 //! - **Resilience Layer**: Circuit breakers, rate limiting, and retry logic
 //! - **Mirror Management**: Handles mirror discovery and health checking for services like Sci-Hub
 //!

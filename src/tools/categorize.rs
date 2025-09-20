@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_categorize_input_validation() {
-        let tool = create_test_categorize_tool().unwrap();
+        let _tool = create_test_categorize_tool().unwrap();
 
         // Empty query should fail
         let empty_query = CategorizeInput {
@@ -348,7 +348,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_categorize_papers() {
-        let tool = create_test_categorize_tool().unwrap();
+        let _tool = create_test_categorize_tool().unwrap();
 
         let input = CategorizeInput {
             query: "machine learning in healthcare".to_string(),
@@ -367,7 +367,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_heuristic_categorization() {
-        let tool = create_test_categorize_tool().unwrap();
+        let _tool = create_test_categorize_tool().unwrap();
         let papers = create_test_papers();
 
         // Test machine learning categorization

@@ -1102,7 +1102,7 @@ mod tests {
 
     #[test]
     fn test_confidence_calculation() {
-        let extractor = create_test_extractor();
+        let _extractor = create_test_extractor();
 
         // Full metadata
         let full_metadata = ExtractedMetadata {
@@ -1173,7 +1173,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_hash_calculation() {
-        let extractor = create_test_extractor();
+        let _extractor = create_test_extractor();
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
 
@@ -1188,7 +1188,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stats_tracking() {
-        let extractor = create_test_extractor();
+        let _extractor = create_test_extractor();
 
         extractor.update_stats(true, false, 100).await;
         extractor.update_stats(false, false, 50).await;
@@ -1205,7 +1205,7 @@ mod tests {
 
     #[test]
     fn test_reference_extraction() {
-        let extractor = create_test_extractor();
+        let _extractor = create_test_extractor();
         let text = r"
 References
 

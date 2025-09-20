@@ -21,7 +21,7 @@ mod tests {
             ..Default::default()
         };
 
-        let circuit_breaker = CircuitBreaker::new("test_service", config);
+        let _circuit_breaker = CircuitBreaker::new("test_service", config);
         let retry_policy = RetryPolicy::default();
         let call_count = Arc::new(AtomicU32::new(0));
 

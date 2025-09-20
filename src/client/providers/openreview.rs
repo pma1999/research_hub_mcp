@@ -480,7 +480,7 @@ mod tests {
 
     #[test]
     fn test_ml_paper_detection() {
-        let provider = OpenReviewProvider::new().unwrap();
+        let _provider = OpenReviewProvider::new().unwrap();
 
         // Should detect ML papers
         assert!(provider.is_ml_paper(
@@ -505,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_query_building() {
-        let provider = OpenReviewProvider::new().unwrap();
+        let _provider = OpenReviewProvider::new().unwrap();
 
         let title_query = SearchQuery {
             query: "transformer attention mechanism".to_string(),
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let provider = OpenReviewProvider::new().unwrap();
+        let _provider = OpenReviewProvider::new().unwrap();
 
         assert_eq!(provider.name(), "openreview");
         assert_eq!(provider.priority(), 85);
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_paper_conversion() {
-        let provider = OpenReviewProvider::new().unwrap();
+        let _provider = OpenReviewProvider::new().unwrap();
 
         let note = OpenReviewNote {
             id: "test123".to_string(),

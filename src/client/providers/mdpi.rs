@@ -611,7 +611,7 @@ mod tests {
 
     #[test]
     fn test_doi_extraction() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         assert_eq!(
             MdpiProvider::extract_doi("DOI: 10.3390/s21010123"),
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn test_article_id_extraction() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         assert_eq!(
             MdpiProvider::extract_article_id("https://www.mdpi.com/1424-8220/21/1/123"),
@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_journal_extraction() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         let journal = provider.extract_journal_from_url("https://www.mdpi.com/sensors/");
         assert!(journal.is_some());
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn test_query_building() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         let title_query = SearchQuery {
             query: "machine learning sensors".to_string(),
@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         assert_eq!(provider.name(), "mdpi");
         assert_eq!(provider.priority(), 75);
@@ -717,7 +717,7 @@ mod tests {
 
     #[test]
     fn test_paper_conversion() {
-        let provider = MdpiProvider::new().unwrap();
+        let _provider = MdpiProvider::new().unwrap();
 
         let article = MdpiArticle {
             title: Some("Test MDPI Paper".to_string()),
