@@ -1,10 +1,62 @@
+//! # Provider Traits Module
+//!
+//! This module defines the core traits and types for academic source providers.
+//! It provides a unified interface for searching across different academic databases
+//! and repositories such as ArXiv, CrossRef, PubMed, and others.
+//!
+//! ## Key Components
+//!
+//! - [`SourceProvider`]: Main trait that all providers must implement
+//! - [`SearchQuery`]: Represents a search request with parameters
+//! - [`ProviderResult`]: Standardized result format from all providers
+//! - [`ProviderError`]: Comprehensive error handling for provider operations
+//!
+//! ## Provider Implementation Guide
+//!
+//! To implement a new academic source provider:
+//!
+//! ```no_run
+//! use async_trait::async_trait;
+//! use rust_research_mcp::client::providers::{SourceProvider, SearchQuery, SearchContext, ProviderResult, ProviderError, SearchType};
+//! use std::time::Duration;
+//!
+//! struct MyProvider {
+//!     client: reqwest::Client,
+//! }
+//!
+//! #[async_trait]
+//! impl SourceProvider for MyProvider {
+//!     fn name(&self) -> &'static str { "my_provider" }
+//!     fn priority(&self) -> u8 { 50 }
+//!     fn base_delay(&self) -> Duration { Duration::from_millis(500) }
+//!
+//!     fn supported_search_types(&self) -> Vec<SearchType> {
+//!         vec![SearchType::Title, SearchType::Keywords]
+//!     }
+//!
+//!     async fn search(&self, query: &SearchQuery, context: &SearchContext) -> Result<ProviderResult, ProviderError> {
+//!         // Implementation here
+//!         todo!()
+//!     }
+//!
+//!     async fn health_check(&self, context: &SearchContext) -> Result<bool, ProviderError> {
+//!         // Health check implementation
+//!         Ok(true)
+//!     }
+//! }
+//! ```
+
 use crate::client::PaperMetadata;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
 
-/// Search query parameters for different providers
+/// Represents a search query with parameters for academic source providers.
+///
+/// This structure encapsulates all information needed to perform a search across
+/// different academic databases and repositories. Providers should interpret
+/// these parameters according to their capabilities and API requirements.
 #[derive(Debug, Clone)]
 pub struct SearchQuery {
     /// Query string
@@ -19,20 +71,55 @@ pub struct SearchQuery {
     pub params: HashMap<String, String>,
 }
 
-/// Type of search being performed
+/// Specifies the type of search to perform across academic sources.
+///
+/// Different providers may support different search types. The meta-search client
+/// uses this information to route queries to appropriate providers and optimize
+/// search strategies.
+///
+/// # Provider Support
+///
+/// Not all providers support all search types. Common provider capabilities:
+/// - **ArXiv**: Title, Author, Keywords, Subject
+/// - **CrossRef**: DOI, Title, Author
+/// - **PubMed**: Title, Author, Keywords, Subject
+/// - **Semantic Scholar**: Title, Author, Keywords
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SearchType {
-    /// Automatic detection
+    /// Automatic detection based on query characteristics.
+    ///
+    /// The provider or meta-search client will analyze the query string
+    /// to determine the most appropriate search type.
     Auto,
-    /// Search by DOI
+
+    /// Search by Digital Object Identifier (DOI).
+    ///
+    /// Example: "10.1038/nature12373"
+    /// This is the most precise search type for finding specific papers.
     Doi,
-    /// Search by title
+
+    /// Search by paper title.
+    ///
+    /// Example: "Attention Is All You Need"
+    /// Useful for finding papers when you know the exact or partial title.
     Title,
-    /// Search by author
+
+    /// Search by author name(s).
+    ///
+    /// Example: "Geoffrey Hinton" or "Hinton, G."
+    /// May return multiple papers by the same author.
     Author,
-    /// Search by keywords
+
+    /// Search by keywords or free text.
+    ///
+    /// Example: "machine learning transformer neural networks"
+    /// Broad search across paper content, abstracts, and metadata.
     Keywords,
-    /// Search by subject/category
+
+    /// Search by subject classification or category.
+    ///
+    /// Example: "cs.AI" (Computer Science - Artificial Intelligence)
+    /// Uses provider-specific subject taxonomies.
     Subject,
 }
 
@@ -94,22 +181,140 @@ pub enum ProviderError {
     Other(String),
 }
 
-/// Trait for academic source providers
+/// Core trait for academic source providers.
+///
+/// This trait defines the interface that all academic source providers must implement
+/// to participate in the meta-search system. Providers can be academic databases,
+/// repositories, search engines, or any other source of academic papers.
+///
+/// # Implementation Requirements
+///
+/// Implementors must:
+/// - Be thread-safe (`Send + Sync`)
+/// - Handle errors gracefully and return appropriate `ProviderError` variants
+/// - Respect rate limits and implement appropriate delays
+/// - Validate input parameters and return meaningful error messages
+/// - Support health checking for service monitoring
+///
+/// # Performance Considerations
+///
+/// - Use connection pooling for HTTP clients
+/// - Implement proper timeout handling
+/// - Cache responses when appropriate
+/// - Use circuit breakers for external service calls
+/// - Handle partial failures gracefully
+///
+/// # Example Implementation
+///
+/// ```no_run
+/// use async_trait::async_trait;
+/// use rust_research_mcp::client::providers::{SourceProvider, SearchQuery, SearchContext, ProviderResult, ProviderError, SearchType};
+/// use std::time::Duration;
+///
+/// struct ExampleProvider {
+///     client: reqwest::Client,
+///     api_key: Option<String>,
+/// }
+///
+/// #[async_trait]
+/// impl SourceProvider for ExampleProvider {
+///     fn name(&self) -> &'static str { "example" }
+///     fn priority(&self) -> u8 { 50 }
+///     fn base_delay(&self) -> Duration { Duration::from_millis(500) }
+///
+///     fn supported_search_types(&self) -> Vec<SearchType> {
+///         vec![SearchType::Title, SearchType::Keywords, SearchType::Author]
+///     }
+///
+///     async fn search(&self, query: &SearchQuery, context: &SearchContext) -> Result<ProviderResult, ProviderError> {
+///         // Validate query
+///         if query.query.is_empty() {
+///             return Err(ProviderError::InvalidQuery("Empty query".to_string()));
+///         }
+///
+///         // Perform search with timeout
+///         let response = tokio::time::timeout(context.timeout, self.search_api(query)).await
+///             .map_err(|_| ProviderError::Timeout)?
+///             .map_err(|e| ProviderError::Network(e.to_string()))?;
+///
+///         // Parse and return results
+///         self.parse_response(response)
+///     }
+///
+///     async fn health_check(&self, _context: &SearchContext) -> Result<bool, ProviderError> {
+///         // Implement health check logic
+///         Ok(true)
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait SourceProvider: Send + Sync {
-    /// Unique name/identifier for this provider
-    fn name(&self) -> &str;
+    /// Returns the unique identifier for this provider.
+    ///
+    /// This should be a short, lowercase string that uniquely identifies the provider
+    /// across the system. Used for logging, configuration, and result attribution.
+    ///
+    /// # Examples
+    /// - "arxiv" for ArXiv.org
+    /// - "crossref" for CrossRef API
+    /// - "pubmed" for PubMed Central
+    fn name(&self) -> &'static str;
 
-    /// Human-readable description of the provider
-    fn description(&self) -> &str;
+    /// Returns the priority level for this provider (0-255, higher = more priority).
+    ///
+    /// The meta-search client uses this to determine the order in which providers
+    /// are queried. Higher priority providers are queried first and may influence
+    /// result ranking.
+    ///
+    /// # Priority Guidelines
+    /// - 200+: Authoritative sources (CrossRef, official databases)
+    /// - 150-199: High-quality aggregators (Semantic Scholar)
+    /// - 100-149: Specialized repositories (ArXiv, PubMed)
+    /// - 50-99: General search engines
+    /// - 0-49: Fallback sources
+    fn priority(&self) -> u8;
 
-    /// Supported search types
+    /// Returns the base delay between requests to this provider.
+    ///
+    /// This is used for rate limiting to ensure respectful usage of external APIs.
+    /// The actual delay may be adjusted based on recent response times and errors.
+    fn base_delay(&self) -> Duration;
+
+    /// Returns the search types supported by this provider.
+    ///
+    /// The meta-search client uses this information to route queries to appropriate
+    /// providers and optimize search strategies.
     fn supported_search_types(&self) -> Vec<SearchType>;
 
-    /// Whether this provider supports full-text access
-    fn supports_full_text(&self) -> bool;
-
-    /// Search for papers using this provider
+    /// Performs a search using this provider.
+    ///
+    /// This is the core method that executes a search against the provider's API
+    /// or database and returns structured results.
+    ///
+    /// # Arguments
+    ///
+    /// * `query` - The search query with parameters
+    /// * `context` - Additional context like timeouts and headers
+    ///
+    /// # Returns
+    ///
+    /// A `ProviderResult` containing papers and metadata, or a `ProviderError`.
+    ///
+    /// # Error Handling
+    ///
+    /// Implementations should map provider-specific errors to appropriate
+    /// `ProviderError` variants:
+    /// - Network failures → `ProviderError::Network`
+    /// - Parse errors → `ProviderError::Parse`
+    /// - Rate limits → `ProviderError::RateLimit`
+    /// - Invalid queries → `ProviderError::InvalidQuery`
+    ///
+    /// # Performance
+    ///
+    /// - Respect the timeout specified in `context.timeout`
+    /// - Use connection pooling for HTTP requests
+    /// - Implement retries for transient failures
+    /// - Cache responses when appropriate
     async fn search(
         &self,
         query: &SearchQuery,

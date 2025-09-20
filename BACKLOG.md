@@ -2,9 +2,9 @@
 
 **Audit Date:** 2025-01-22
 **Scope:** /Users/ladvien/sci_hub_mcp/src/*
-**Total Stories:** 46 (11 Critical, 18 High, 12 Medium, 5 Low)
+**Total Stories:** 45 (10 Critical, 18 High, 12 Medium, 5 Low)
 
-## 🔴 CRITICAL PRIORITY (11 stories)
+## 🔴 CRITICAL PRIORITY (10 stories)
 
 ### Security Vulnerabilities (4 Critical)
 
@@ -40,14 +40,8 @@
 - **Security Impact:** denial_of_service
 - **Dependencies:** None
 
-### Architecture Violations (4 Critical)
+### Architecture Violations (3 Critical)
 
-**[AUDIT-ARCH-001] Circuit Breaker Integration - Missing External Call Protection**
-- **Priority:** Critical
-- **Points:** 8
-- **AC:** All HTTP calls to external services must use circuit breaker protection. Circuit breaker implementation exists but is unused in practice.
-- **Files:** src/client/providers/*, src/client/meta_search.rs
-- **Dependencies:** None
 
 **[AUDIT-ARCH-002] Hexagonal Architecture - Implement Ports/Adapters Pattern**
 - **Priority:** Critical
