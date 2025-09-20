@@ -89,11 +89,63 @@ impl Default for HttpClientConfig {
     }
 }
 
-/// Secure HTTP client factory that enforces security best practices
+/// Factory for creating secure HTTP clients with enforced security best practices.
+///
+/// This factory ensures all HTTP clients used for academic research comply with security
+/// standards, including HTTPS enforcement, certificate validation, and proper timeout handling.
+///
+/// # Security Features
+///
+/// - **HTTPS Enforcement**: Rejects HTTP URLs in production
+/// - **Certificate Validation**: Validates SSL/TLS certificates by default
+/// - **Timeout Protection**: Prevents hanging connections
+/// - **Connection Limits**: Limits concurrent connections per host
+/// - **User Agent**: Sets appropriate user agent for academic research
+///
+/// # Example
+///
+/// ```no_run
+/// use rust_research_mcp::client::{SecureHttpClientFactory, HttpClientConfig};
+/// use std::time::Duration;
+///
+/// let config = HttpClientConfig {
+///     timeout: Duration::from_secs(30),
+///     connect_timeout: Duration::from_secs(10),
+///     max_redirects: 5,
+///     user_agent: "MyApp/1.0".to_string(),
+///     proxy: None,
+/// };
+///
+/// let client = SecureHttpClientFactory::create_client(&config)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
 pub struct SecureHttpClientFactory;
 
 impl SecureHttpClientFactory {
-    /// Create a secure HTTP client with enforced security settings
+    /// Creates a secure HTTP client with the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - HTTP client configuration specifying timeouts, user agent, etc.
+    ///
+    /// # Returns
+    ///
+    /// A configured `reqwest::Client` with security best practices applied.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - TLS configuration fails
+    /// - Proxy configuration is invalid
+    /// - Client building fails for any other reason
+    ///
+    /// # Security Notes
+    ///
+    /// The created client will:
+    /// - Use HTTPS by default
+    /// - Validate TLS certificates
+    /// - Apply connection and request timeouts
+    /// - Follow redirects up to the configured limit
     pub fn create_client(config: &HttpClientConfig) -> Result<reqwest::Client> {
         let mut client_builder = reqwest::Client::builder()
             .timeout(config.timeout)
