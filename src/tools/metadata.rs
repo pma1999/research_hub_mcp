@@ -262,7 +262,7 @@ impl MetadataExtractor {
         // Check for PDF magic bytes
         let mut file = tokio::fs::File::open(file_path)
             .await
-            .map_err(|e| crate::Error::Io(e))?;
+            .map_err(crate::Error::Io)?;
 
         let mut header = [0u8; 8];
         file.read_exact(&mut header)
@@ -467,7 +467,7 @@ impl MetadataExtractor {
                         // Try to provide more specific error information
                         if let Ok(metadata) = std::fs::metadata(&path) {
                             if metadata.len() == 0 {
-                                return Err(format!("PDF file is empty (0 bytes)"));
+                                return Err("PDF file is empty (0 bytes)".to_string());
                             } else if metadata.len() < 1024 {
                                 return Err(format!(
                                     "PDF file is too small ({} bytes), likely corrupted",
@@ -475,7 +475,7 @@ impl MetadataExtractor {
                                 ));
                             }
                         }
-                        Err(format!("PDF parsing failed: {}", e))
+                        Err(format!("PDF parsing failed: {e}"))
                     }
                 }
             }

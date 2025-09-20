@@ -42,7 +42,7 @@ impl CategorizationService {
     /// Create a new categorization service
     pub fn new(config: CategorizationConfig) -> Result<Self> {
         let snake_case_regex = Regex::new(r"[^a-zA-Z0-9_]")
-            .map_err(|e| crate::Error::Service(format!("Failed to compile regex: {}", e)))?;
+            .map_err(|e| crate::Error::Service(format!("Failed to compile regex: {e}")))?;
 
         Ok(Self {
             config,
@@ -75,18 +75,17 @@ impl CategorizationService {
         // Create the prompt
         let mut prompt = format!(
             "Based on this search query and paper abstracts, suggest a folder name for organizing these research papers.\n\n\
-            Query: \"{}\"\n\n",
-            query
+            Query: \"{query}\"\n\n"
         );
 
         // Add abstracts if available
-        if !abstracts.is_empty() {
+        if abstracts.is_empty() {
+            prompt.push_str("No abstracts available - categorize based on query only.\n\n");
+        } else {
             prompt.push_str("Paper abstracts:\n");
             for (i, abstract_text) in abstracts.iter().enumerate() {
                 prompt.push_str(&format!("{}. {}\n\n", i + 1, abstract_text));
             }
-        } else {
-            prompt.push_str("No abstracts available - categorize based on query only.\n\n");
         }
 
         prompt.push_str(
@@ -198,7 +197,7 @@ impl CategorizationService {
                 return current_category;
             }
             // File exists with same name, need to resolve conflict
-            current_category = format!("{}_{}", original_category, counter);
+            current_category = format!("{original_category}_{counter}");
             counter += 1;
         }
 
@@ -213,17 +212,17 @@ impl CategorizationService {
     }
 
     /// Check if categorization is enabled
-    pub fn is_enabled(&self) -> bool {
+    #[must_use] pub const fn is_enabled(&self) -> bool {
         self.config.enabled
     }
 
     /// Get default category
-    pub fn default_category(&self) -> &str {
+    #[must_use] pub fn default_category(&self) -> &str {
         &self.config.default_category
     }
 
     /// Get max abstracts configuration
-    pub fn max_abstracts(&self) -> usize {
+    #[must_use] pub const fn max_abstracts(&self) -> usize {
         self.config.max_abstracts
     }
 }

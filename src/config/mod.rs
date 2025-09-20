@@ -722,10 +722,9 @@ impl Config {
         for (provider, rate) in &self.rate_limiting.providers {
             if *rate <= 0.0 {
                 return Err(crate::Error::InvalidInput {
-                    field: format!("rate_limiting.providers.{}", provider),
+                    field: format!("rate_limiting.providers.{provider}"),
                     reason: format!(
-                        "Rate limit for provider '{}' must be greater than 0",
-                        provider
+                        "Rate limit for provider '{provider}' must be greater than 0"
                     ),
                 });
             }

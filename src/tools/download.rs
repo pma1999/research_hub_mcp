@@ -491,9 +491,8 @@ impl DownloadTool {
                         💡 Alternative: Create a folder like ~/Documents/Research-Papers and update your config:\n\
                         • In config.toml: directory = \"~/Documents/Research-Papers\"\n\
                         • Or set environment variable: RSH_DOWNLOAD_DIRECTORY\n\n\
-                        📁 Attempted directory: {:?}\n\
-                        🔧 Error details: {}",
-                        base_dir, e
+                        📁 Attempted directory: {base_dir:?}\n\
+                        🔧 Error details: {e}"
                     ),
                 });
             }
@@ -520,11 +519,10 @@ impl DownloadTool {
                             1. Grant Claude Desktop folder permissions in System Settings\n\
                             2. Use a different directory: ~/Documents/Research-Papers\n\
                             3. Check disk space and permissions\n\n\
-                            📁 Configured: {:?}\n\
-                            📁 Fallback tried: {:?}\n\
-                            🔧 Original error: {}\n\
-                            🔧 Fallback error: {}",
-                        base_dir, fallback_dir, e, fallback_err
+                            📁 Configured: {base_dir:?}\n\
+                            📁 Fallback tried: {fallback_dir:?}\n\
+                            🔧 Original error: {e}\n\
+                            🔧 Fallback error: {fallback_err}"
                     ),
                 })?;
 

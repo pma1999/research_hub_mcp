@@ -159,8 +159,7 @@ impl SciHubProvider {
             // For 403 errors, provide more context about potential solutions
             if response.status() == 403 {
                 return Err(ProviderError::Network(format!(
-                    "HTTP 403 Forbidden from mirror {}: Access denied, possibly due to geographic blocking or rate limiting. Will try other mirrors.",
-                    mirror
+                    "HTTP 403 Forbidden from mirror {mirror}: Access denied, possibly due to geographic blocking or rate limiting. Will try other mirrors."
                 )));
             }
             return Err(ProviderError::Network(format!(

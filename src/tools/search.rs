@@ -287,8 +287,8 @@ impl SearchTool {
         if input.query.contains('\0')
             || input.query.contains('\x1b')
             || input.query.contains("$(")
-            || input.query.contains("`")
-            || input.query.contains("|")
+            || input.query.contains('`')
+            || input.query.contains('|')
             || suspicious_patterns
                 .iter()
                 .any(|&pattern| query_lower.contains(pattern))

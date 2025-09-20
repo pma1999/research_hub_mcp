@@ -2,9 +2,10 @@
 /target
 **/*.rs.bk
 *.pdb
+*.dxt
 
 # Cargo
-Cargo.lock
+# Note: Cargo.lock should be committed for applications (removed from ignore)
 
 # IDE files
 .idea/
@@ -35,8 +36,7 @@ cobertura.xml
 *.tmp
 /tmp/
 
-# macOS
-.DS_Store
+# macOS (additional entries removed to avoid duplicates)
 .AppleDouble
 .LSOverride
 
@@ -76,8 +76,7 @@ TODO.md
 # Metadata cache
 .metadata_cache/
 
-# Editor temp files
-*.orig
+# Editor temp files (duplicate *.orig removed)
 *.bak
 *.tmp
 *.temp

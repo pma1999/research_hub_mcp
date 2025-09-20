@@ -28,11 +28,11 @@ pub struct CodeSearchInput {
     pub context_lines: u32,
 }
 
-fn default_limit() -> u32 {
+const fn default_limit() -> u32 {
     20
 }
 
-fn default_context() -> u32 {
+const fn default_context() -> u32 {
     3
 }
 
@@ -79,7 +79,7 @@ pub struct CodeSearchTool {
 
 impl CodeSearchTool {
     /// Create a new code search tool
-    pub fn new(config: Arc<Config>) -> Result<Self> {
+    pub const fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self { config })
     }
 
@@ -91,7 +91,7 @@ impl CodeSearchTool {
         // Compile regex pattern
         let regex = Regex::new(&input.pattern).map_err(|e| crate::Error::InvalidInput {
             field: "pattern".to_string(),
-            reason: format!("Invalid regex pattern: {}", e),
+            reason: format!("Invalid regex pattern: {e}"),
         })?;
 
         // Determine search directory
@@ -107,7 +107,7 @@ impl CodeSearchTool {
         if !search_path.exists() {
             return Err(crate::Error::InvalidInput {
                 field: "search_dir".to_string(),
-                reason: format!("Search directory not found: {}", search_dir),
+                reason: format!("Search directory not found: {search_dir}"),
             });
         }
 
@@ -176,7 +176,7 @@ impl CodeSearchTool {
         } else {
             Err(crate::Error::InvalidInput {
                 field: "file_path".to_string(),
-                reason: format!("Failed to read PDF: {:?}", path),
+                reason: format!("Failed to read PDF: {path:?}"),
             })
         }
     }
@@ -235,8 +235,8 @@ impl CodeSearchTool {
             || trimmed.contains(" = ")
             || trimmed.contains("->")
             || trimmed.contains("=>")
-            || (trimmed.starts_with("{") && trimmed.ends_with("}"))
-            || (trimmed.starts_with("[") && trimmed.ends_with("]"))
+            || (trimmed.starts_with('{') && trimmed.ends_with('}'))
+            || (trimmed.starts_with('[') && trimmed.ends_with(']'))
     }
 
     /// Search for pattern in text
@@ -254,7 +254,7 @@ impl CodeSearchTool {
             if regex.is_match(line) {
                 // Check language filter
                 if let Some(ref lang) = input.language {
-                    if !self.detect_language(line).map_or(false, |l| l == *lang) {
+                    if !self.detect_language(line).is_some_and(|l| l == *lang) {
                         continue;
                     }
                 }
@@ -264,16 +264,16 @@ impl CodeSearchTool {
                 let end = (idx + input.context_lines as usize + 1).min(lines.len());
 
                 let context_before: Vec<String> =
-                    lines[start..idx].iter().map(|s| s.to_string()).collect();
+                    lines[start..idx].iter().map(|s| (*s).to_string()).collect();
 
                 let context_after: Vec<String> = lines[(idx + 1)..end]
                     .iter()
-                    .map(|s| s.to_string())
+                    .map(|s| (*s).to_string())
                     .collect();
 
                 matches.push(CodeMatch {
                     line_number: idx + 1,
-                    line: line.to_string(),
+                    line: (*line).to_string(),
                     context_before,
                     context_after,
                     language: self.detect_language(line),
@@ -325,7 +325,7 @@ impl CodeSearchTool {
                 // Simple heuristic: early lines with reasonable length
                 if !trimmed.starts_with("Abstract")
                     && !trimmed.starts_with("Keywords")
-                    && !trimmed.contains("@")
+                    && !trimmed.contains('@')
                     && !trimmed.contains("http")
                 {
                     return Some(trimmed.to_string());

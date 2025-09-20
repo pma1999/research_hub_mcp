@@ -173,7 +173,7 @@ impl ResearchServerHandler {
 impl ServerHandler for ResearchServerHandler {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
-            instructions: Some(format!("🔬 Research Hub MCP Server v{} - Enhanced academic paper search and retrieval.\n\nProvides tools to:\n• 🔍 Search across 12+ academic sources (arXiv, CrossRef, PubMed, etc.)\n• 📥 Download papers with intelligent fallback protection\n• 📊 Extract metadata from PDFs\n• 🔍 Search code patterns in downloaded papers (NEW)\n• 📚 Generate citations in multiple formats (NEW)\n\nDesigned for personal academic research and Claude Code workflows.", env!("CARGO_PKG_VERSION")).into()),
+            instructions: Some(format!("🔬 Research Hub MCP Server v{} - Enhanced academic paper search and retrieval.\n\nProvides tools to:\n• 🔍 Search across 12+ academic sources (arXiv, CrossRef, PubMed, etc.)\n• 📥 Download papers with intelligent fallback protection\n• 📊 Extract metadata from PDFs\n• 🔍 Search code patterns in downloaded papers (NEW)\n• 📚 Generate citations in multiple formats (NEW)\n\nDesigned for personal academic research and Claude Code workflows.", env!("CARGO_PKG_VERSION"))),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
         }
@@ -549,22 +549,22 @@ impl ServerHandler for ResearchServerHandler {
                                     .iter()
                                     .take(5) // Limit to first 5 matches per file
                                     .map(|m| {
-                                        let context_before = if !m.context_before.is_empty() {
-                                            format!("  {}\n", m.context_before.join("\n  "))
-                                        } else {
+                                        let context_before = if m.context_before.is_empty() {
                                             String::new()
+                                        } else {
+                                            format!("  {}\n", m.context_before.join("\n  "))
                                         };
 
-                                        let context_after = if !m.context_after.is_empty() {
-                                            format!("\n  {}", m.context_after.join("\n  "))
-                                        } else {
+                                        let context_after = if m.context_after.is_empty() {
                                             String::new()
+                                        } else {
+                                            format!("\n  {}", m.context_after.join("\n  "))
                                         };
 
                                         let lang_info = m
                                             .language
                                             .as_ref()
-                                            .map(|l| format!(" [{}]", l))
+                                            .map(|l| format!(" [{l}]"))
                                             .unwrap_or_default();
 
                                         format!(
@@ -582,7 +582,7 @@ impl ServerHandler for ResearchServerHandler {
                                 let title_info = result
                                     .paper_title
                                     .as_ref()
-                                    .map(|t| format!("📄 Paper: {}\n", t))
+                                    .map(|t| format!("📄 Paper: {t}\n"))
                                     .unwrap_or_default();
 
                                 format!(

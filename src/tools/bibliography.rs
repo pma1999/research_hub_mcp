@@ -23,7 +23,7 @@ pub struct BibliographyInput {
     pub include_keywords: bool,
 }
 
-fn default_format() -> CitationFormat {
+const fn default_format() -> CitationFormat {
     CitationFormat::BibTeX
 }
 
@@ -107,7 +107,7 @@ pub struct BibliographyTool {
 
 impl BibliographyTool {
     /// Create a new bibliography tool
-    pub fn new(config: Arc<Config>) -> Result<Self> {
+    pub const fn new(config: Arc<Config>) -> Result<Self> {
         Ok(Self { _config: config })
     }
 
@@ -163,7 +163,7 @@ impl BibliographyTool {
 
         // Mock implementation - replace with actual API calls
         Ok(PaperMetadata {
-            title: format!("Paper Title for {}", identifier),
+            title: format!("Paper Title for {identifier}"),
             authors: vec!["Smith, J.".to_string(), "Doe, A.".to_string()],
             year: Some(2024),
             journal: Some("Journal of Computer Science".to_string()),
@@ -171,7 +171,7 @@ impl BibliographyTool {
             issue: Some("3".to_string()),
             pages: Some("123-145".to_string()),
             doi: Some(identifier.to_string()),
-            url: Some(format!("https://doi.org/{}", identifier)),
+            url: Some(format!("https://doi.org/{identifier}")),
             abstract_text: Some("This paper presents...".to_string()),
             keywords: vec!["machine learning".to_string(), "algorithms".to_string()],
             publication_date: Some("2024-01-15".to_string()),
@@ -226,36 +226,36 @@ impl BibliographyTool {
         ];
 
         if let Some(year) = metadata.year {
-            parts.push(format!("  year = {{{}}},", year));
+            parts.push(format!("  year = {{{year}}},"));
         }
 
         if let Some(ref journal) = metadata.journal {
-            parts.push(format!("  journal = {{{}}},", journal));
+            parts.push(format!("  journal = {{{journal}}},"));
         }
 
         if let Some(ref volume) = metadata.volume {
-            parts.push(format!("  volume = {{{}}},", volume));
+            parts.push(format!("  volume = {{{volume}}},"));
         }
 
         if let Some(ref issue) = metadata.issue {
-            parts.push(format!("  number = {{{}}},", issue));
+            parts.push(format!("  number = {{{issue}}},"));
         }
 
         if let Some(ref pages) = metadata.pages {
-            parts.push(format!("  pages = {{{}}},", pages));
+            parts.push(format!("  pages = {{{pages}}},"));
         }
 
         if let Some(ref doi) = metadata.doi {
-            parts.push(format!("  doi = {{{}}},", doi));
+            parts.push(format!("  doi = {{{doi}}},"));
         }
 
         if let Some(ref url) = metadata.url {
-            parts.push(format!("  url = {{{}}},", url));
+            parts.push(format!("  url = {{{url}}},"));
         }
 
         if include_abstract {
             if let Some(ref abstract_text) = metadata.abstract_text {
-                parts.push(format!("  abstract = {{{}}},", abstract_text));
+                parts.push(format!("  abstract = {{{abstract_text}}},"));
             }
         }
 
@@ -286,9 +286,7 @@ impl BibliographyTool {
             .unwrap_or("Unknown");
 
         let year = metadata
-            .year
-            .map(|y| y.to_string())
-            .unwrap_or_else(|| "0000".to_string());
+            .year.map_or_else(|| "0000".to_string(), |y| y.to_string());
 
         let title_word = metadata.title.split_whitespace().next().unwrap_or("Paper");
 
@@ -304,30 +302,28 @@ impl BibliographyTool {
     fn format_apa(&self, metadata: &PaperMetadata) -> String {
         let authors = self.format_authors_apa(&metadata.authors);
         let year = metadata
-            .year
-            .map(|y| format!("({})", y))
-            .unwrap_or_else(|| "(n.d.)".to_string());
+            .year.map_or_else(|| "(n.d.)".to_string(), |y| format!("({y})"));
 
         let mut citation = format!("{}. {}. {}.", authors, year, metadata.title);
 
         if let Some(ref journal) = metadata.journal {
-            citation.push_str(&format!(" {}", journal));
+            citation.push_str(&format!(" {journal}"));
 
             if let Some(ref volume) = metadata.volume {
-                citation.push_str(&format!(", {}", volume));
+                citation.push_str(&format!(", {volume}"));
 
                 if let Some(ref issue) = metadata.issue {
-                    citation.push_str(&format!("({})", issue));
+                    citation.push_str(&format!("({issue})"));
                 }
             }
 
             if let Some(ref pages) = metadata.pages {
-                citation.push_str(&format!(", {}", pages));
+                citation.push_str(&format!(", {pages}"));
             }
         }
 
         if let Some(ref doi) = metadata.doi {
-            citation.push_str(&format!(". https://doi.org/{}", doi));
+            citation.push_str(&format!(". https://doi.org/{doi}"));
         }
 
         citation
@@ -362,23 +358,23 @@ impl BibliographyTool {
         let mut citation = format!("{}. \"{}\"", authors, metadata.title);
 
         if let Some(ref journal) = metadata.journal {
-            citation.push_str(&format!(". {}", journal));
+            citation.push_str(&format!(". {journal}"));
 
             if let Some(ref volume) = metadata.volume {
-                citation.push_str(&format!(", vol. {}", volume));
+                citation.push_str(&format!(", vol. {volume}"));
             }
 
             if let Some(ref issue) = metadata.issue {
-                citation.push_str(&format!(", no. {}", issue));
+                citation.push_str(&format!(", no. {issue}"));
             }
         }
 
         if let Some(year) = metadata.year {
-            citation.push_str(&format!(", {}", year));
+            citation.push_str(&format!(", {year}"));
         }
 
         if let Some(ref pages) = metadata.pages {
-            citation.push_str(&format!(", pp. {}", pages));
+            citation.push_str(&format!(", pp. {pages}"));
         }
 
         citation.push('.');
@@ -391,23 +387,23 @@ impl BibliographyTool {
         let mut citation = format!("{}. \"{}\"", authors, metadata.title);
 
         if let Some(ref journal) = metadata.journal {
-            citation.push_str(&format!(". {}", journal));
+            citation.push_str(&format!(". {journal}"));
 
             if let Some(ref volume) = metadata.volume {
-                citation.push_str(&format!(" {}", volume));
+                citation.push_str(&format!(" {volume}"));
             }
 
             if let Some(ref issue) = metadata.issue {
-                citation.push_str(&format!(", no. {}", issue));
+                citation.push_str(&format!(", no. {issue}"));
             }
         }
 
         if let Some(year) = metadata.year {
-            citation.push_str(&format!(" ({})", year));
+            citation.push_str(&format!(" ({year})"));
         }
 
         if let Some(ref pages) = metadata.pages {
-            citation.push_str(&format!(": {}", pages));
+            citation.push_str(&format!(": {pages}"));
         }
 
         citation.push('.');
@@ -437,23 +433,23 @@ impl BibliographyTool {
         let mut citation = format!("{}, \"{}\"", authors, metadata.title);
 
         if let Some(ref journal) = metadata.journal {
-            citation.push_str(&format!(", {}", journal));
+            citation.push_str(&format!(", {journal}"));
 
             if let Some(ref volume) = metadata.volume {
-                citation.push_str(&format!(", vol. {}", volume));
+                citation.push_str(&format!(", vol. {volume}"));
             }
 
             if let Some(ref issue) = metadata.issue {
-                citation.push_str(&format!(", no. {}", issue));
+                citation.push_str(&format!(", no. {issue}"));
             }
 
             if let Some(ref pages) = metadata.pages {
-                citation.push_str(&format!(", pp. {}", pages));
+                citation.push_str(&format!(", pp. {pages}"));
             }
         }
 
         if let Some(year) = metadata.year {
-            citation.push_str(&format!(", {}", year));
+            citation.push_str(&format!(", {year}"));
         }
 
         citation.push('.');
@@ -464,25 +460,23 @@ impl BibliographyTool {
     fn format_harvard(&self, metadata: &PaperMetadata) -> String {
         let authors = metadata.authors.join(", ");
         let year = metadata
-            .year
-            .map(|y| y.to_string())
-            .unwrap_or_else(|| "n.d.".to_string());
+            .year.map_or_else(|| "n.d.".to_string(), |y| y.to_string());
 
         let mut citation = format!("{} {}, '{}'", authors, year, metadata.title);
 
         if let Some(ref journal) = metadata.journal {
-            citation.push_str(&format!(", {}", journal));
+            citation.push_str(&format!(", {journal}"));
 
             if let Some(ref volume) = metadata.volume {
-                citation.push_str(&format!(", vol. {}", volume));
+                citation.push_str(&format!(", vol. {volume}"));
             }
 
             if let Some(ref issue) = metadata.issue {
-                citation.push_str(&format!(", no. {}", issue));
+                citation.push_str(&format!(", no. {issue}"));
             }
 
             if let Some(ref pages) = metadata.pages {
-                citation.push_str(&format!(", pp. {}", pages));
+                citation.push_str(&format!(", pp. {pages}"));
             }
         }
 
@@ -492,30 +486,27 @@ impl BibliographyTool {
 
     /// Combine citations into a bibliography
     fn combine_citations(&self, citations: &[Citation], format: &CitationFormat) -> String {
-        match format {
-            CitationFormat::BibTeX => citations
-                .iter()
-                .map(|c| c.text.clone())
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-            _ => {
-                // For other formats, sort alphabetically and number
-                let mut sorted_citations = citations.to_vec();
-                sorted_citations.sort_by(|a, b| {
-                    a.metadata
-                        .authors
-                        .first()
-                        .unwrap_or(&String::new())
-                        .cmp(b.metadata.authors.first().unwrap_or(&String::new()))
-                });
+        if matches!(format, CitationFormat::BibTeX) { citations
+        .iter()
+        .map(|c| c.text.clone())
+        .collect::<Vec<_>>()
+        .join("\n\n") } else {
+            // For other formats, sort alphabetically and number
+            let mut sorted_citations = citations.to_vec();
+            sorted_citations.sort_by(|a, b| {
+                a.metadata
+                    .authors
+                    .first()
+                    .unwrap_or(&String::new())
+                    .cmp(b.metadata.authors.first().unwrap_or(&String::new()))
+            });
 
-                sorted_citations
-                    .iter()
-                    .enumerate()
-                    .map(|(i, c)| format!("[{}] {}", i + 1, c.text))
-                    .collect::<Vec<_>>()
-                    .join("\n\n")
-            }
+            sorted_citations
+                .iter()
+                .enumerate()
+                .map(|(i, c)| format!("[{}] {}", i + 1, c.text))
+                .collect::<Vec<_>>()
+                .join("\n\n")
         }
     }
 }

@@ -50,19 +50,19 @@ impl ArxivProvider {
         }
 
         // If relative, resolve against arXiv base URL
-        if href.starts_with("/") {
-            return Ok(format!("https://arxiv.org{}", href));
+        if href.starts_with('/') {
+            return Ok(format!("https://arxiv.org{href}"));
         }
 
         // If it's a relative path without leading slash, assume it's relative to base
         if !href.contains("://") && href.contains(".pdf") {
-            return Ok(format!("https://arxiv.org/{}", href));
+            return Ok(format!("https://arxiv.org/{href}"));
         }
 
         // If all else fails, validate it's a proper URL
         Url::parse(href)
             .map(|u| u.to_string())
-            .map_err(|e| ProviderError::Parse(format!("Invalid PDF URL '{}': {}", href, e)))
+            .map_err(|e| ProviderError::Parse(format!("Invalid PDF URL '{href}': {e}")))
     }
 
     /// Build arXiv API URL for search
@@ -250,7 +250,7 @@ impl SourceProvider for ArxivProvider {
         };
 
         rate_limit_result
-            .map_err(|e| ProviderError::Other(format!("Rate limiting error: {}", e)))?;
+            .map_err(|e| ProviderError::Other(format!("Rate limiting error: {e}")))?;
 
         // Build the search URL
         let url = self.build_search_url(query)?;

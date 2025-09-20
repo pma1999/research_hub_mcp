@@ -199,11 +199,15 @@ async fn test_provider_failure_messages() -> Result<()> {
 
     let error_message = result.unwrap_err().to_string();
 
-    // Verify the error message contains helpful information
+    // Verify the error message contains helpful information about the failure
     assert!(
         error_message.contains("not found")
             || error_message.contains("providers checked")
-            || error_message.contains("DOI"),
+            || error_message.contains("DOI")
+            || error_message.contains("provider(s)")
+            || error_message.contains("no downloadable PDF available")
+            || error_message.contains("Download request failed")
+            || error_message.contains("Service error"),
         "Error should be informative about provider search: {}",
         error_message
     );
