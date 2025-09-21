@@ -153,7 +153,8 @@ impl SsrnProvider {
                             }
                         }
                     })
-            });
+            })
+            .filter(|url| !url.is_empty());
 
         // Extract publication year
         let date_selector =

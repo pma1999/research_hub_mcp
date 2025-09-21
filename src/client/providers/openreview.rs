@@ -200,7 +200,8 @@ impl OpenReviewProvider {
                 } else {
                     format!("https://openreview.net/pdf?id={}", note.id)
                 }
-            });
+            })
+            .filter(|url| !url.is_empty());
 
         // Extract year from timestamp or venue
         let year = note

@@ -155,7 +155,10 @@ impl SemanticScholarProvider {
 
         let journal = paper.journal.and_then(|j| j.name).or(paper.venue);
 
-        let pdf_url = paper.open_access_pdf.and_then(|pdf| pdf.url);
+        let pdf_url = paper
+            .open_access_pdf
+            .and_then(|pdf| pdf.url)
+            .filter(|url| !url.is_empty());
 
         PaperMetadata {
             doi,

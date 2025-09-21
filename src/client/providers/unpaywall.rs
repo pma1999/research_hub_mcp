@@ -145,7 +145,8 @@ impl UnpaywallProvider {
                     .oa_locations
                     .as_ref()
                     .and_then(|locations| locations.iter().find_map(|loc| loc.url_for_pdf.clone()))
-            });
+            })
+            .filter(|url| !url.is_empty());
 
         PaperMetadata {
             doi: response.doi,
