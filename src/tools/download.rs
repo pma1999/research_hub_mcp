@@ -17,7 +17,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{mpsc, RwLock};
 // use tokio_util::io::ReaderStream; // Not needed currently
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 /// Input parameters for the paper download tool
 /// IMPORTANT: Either 'doi' or 'url' must be provided (not both optional!)
@@ -228,6 +228,15 @@ impl DownloadTool {
         // Get download URL and metadata
         let (download_url, metadata) = self.resolve_download_source(&input).await?;
 
+        // Safety check: ensure we never proceed with an empty URL
+        if download_url.is_empty() {
+            error!("resolve_download_source returned an empty URL - this is a bug!");
+            return Err(crate::Error::InvalidInput {
+                field: "download_url".to_string(),
+                reason: "Internal error: No download URL was found for this paper".to_string(),
+            });
+        }
+
         // Determine target file path
         let file_path = self
             .determine_file_path(&input, metadata.as_ref(), &download_url)
@@ -388,6 +397,7 @@ impl DownloadTool {
                         info!("Found PDF URL directly from provider: {}", pdf_url);
                         return Ok((pdf_url.clone(), Some(paper)));
                     }
+                    warn!("Paper has PDF URL but it's empty - this shouldn't happen!");
                 }
             }
 
@@ -419,6 +429,19 @@ impl DownloadTool {
 
             // If cascade also failed, return detailed error with metadata
             if let Some(paper) = search_result.papers.first() {
+                // Check if any paper has an empty PDF URL (shouldn't happen, but let's be safe)
+                if let Some(empty_url_paper) = search_result.papers.iter().find(|p| {
+                    p.pdf_url
+                        .as_ref()
+                        .map(|url| url.is_empty())
+                        .unwrap_or(false)
+                }) {
+                    warn!(
+                        "Found paper with empty PDF URL - this shouldn't happen! Paper: {:?}",
+                        empty_url_paper
+                    );
+                }
+
                 let error_msg = format!(
                     "Paper found in {} provider(s) but no downloadable PDF available after checking all sources. \
                     Paper: '{}' by {} ({}). \

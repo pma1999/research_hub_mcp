@@ -14,6 +14,7 @@ pub struct CircuitBreakerService {
 
 impl CircuitBreakerService {
     /// Create a new circuit breaker service
+    #[must_use]
     pub fn new() -> Self {
         let default_config = CircuitBreakerConfig {
             failure_threshold: 5,
@@ -30,6 +31,7 @@ impl CircuitBreakerService {
     }
 
     /// Create a new circuit breaker service with custom config
+    #[must_use]
     pub fn with_config(config: CircuitBreakerConfig) -> Self {
         Self {
             circuit_breakers: Arc::new(RwLock::new(HashMap::new())),
@@ -41,9 +43,7 @@ impl CircuitBreakerService {
     pub async fn get_circuit_breaker(&self, service_name: &str) -> Arc<CircuitBreaker> {
         let mut breakers = self.circuit_breakers.write().await;
 
-        if let Some(breaker) = breakers.get(service_name) {
-            breaker.clone()
-        } else {
+        breakers.get(service_name).cloned().unwrap_or_else(|| {
             info!("Creating new circuit breaker for service: {}", service_name);
             let breaker = Arc::new(CircuitBreaker::new(
                 service_name.to_string(),
@@ -51,7 +51,7 @@ impl CircuitBreakerService {
             ));
             breakers.insert(service_name.to_string(), breaker.clone());
             breaker
-        }
+        })
     }
 
     /// Execute an operation with circuit breaker protection
@@ -96,12 +96,14 @@ impl CircuitBreakerService {
 
     /// Get health status of all circuit breakers
     pub async fn get_health_status(&self) -> HashMap<String, bool> {
-        let breakers = self.circuit_breakers.read().await;
         let mut status = HashMap::new();
 
-        for (service_name, breaker) in breakers.iter() {
-            let metrics = breaker.get_metrics().await;
-            status.insert(service_name.clone(), metrics.is_healthy());
+        {
+            let breakers = self.circuit_breakers.read().await;
+            for (service_name, breaker) in breakers.iter() {
+                let metrics = breaker.get_metrics().await;
+                status.insert(service_name.clone(), metrics.is_healthy());
+            }
         }
 
         status
@@ -153,12 +155,14 @@ impl CircuitBreakerService {
     pub async fn get_all_metrics(
         &self,
     ) -> HashMap<String, crate::resilience::circuit_breaker::CircuitBreakerMetrics> {
-        let breakers = self.circuit_breakers.read().await;
         let mut metrics = HashMap::new();
 
-        for (service_name, breaker) in breakers.iter() {
-            let cb_metrics = breaker.get_metrics().await;
-            metrics.insert(service_name.clone(), cb_metrics);
+        {
+            let breakers = self.circuit_breakers.read().await;
+            for (service_name, breaker) in breakers.iter() {
+                let cb_metrics = breaker.get_metrics().await;
+                metrics.insert(service_name.clone(), cb_metrics);
+            }
         }
 
         metrics

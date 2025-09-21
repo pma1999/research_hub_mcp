@@ -144,7 +144,9 @@ impl MetaSearchClient {
 
         // Calculate average response time across all providers
         let total_response_time: f64 = stats.values().map(|s| s.avg_response_time).sum();
+        #[allow(clippy::cast_precision_loss)]
         let avg_response_time = total_response_time / stats.len() as f64;
+        drop(stats);
 
         // Adaptive sizing: faster providers = more concurrency
         let adaptive_size = if avg_response_time < 500.0 {
@@ -169,13 +171,8 @@ impl MetaSearchClient {
         adaptive_size
     }
 
-    /// Update provider statistics with response time
-    async fn update_provider_stats(&self, provider_name: &str, response_time_ms: f64) {
-        Self::update_provider_stats_static(&self.provider_stats, provider_name, response_time_ms)
-            .await;
-    }
 
-    /// Static version of update_provider_stats for use in spawned tasks
+    /// Static version of `update_provider_stats` for use in spawned tasks
     async fn update_provider_stats_static(
         provider_stats: &Arc<RwLock<HashMap<String, ProviderStats>>>,
         provider_name: &str,
@@ -1066,13 +1063,20 @@ impl MetaSearchClient {
 
             // Try to get PDF URL from this provider
             match provider.get_pdf_url(doi, &context).await {
-                Ok(Some(pdf_url)) => {
+                Ok(Some(pdf_url)) if !pdf_url.is_empty() => {
                     info!(
                         "Successfully found PDF URL from {}: {}",
                         provider.name(),
                         pdf_url
                     );
                     return Ok(Some(pdf_url));
+                }
+                Ok(Some(_)) => {
+                    warn!(
+                        "Provider {} returned empty PDF URL for DOI: {}",
+                        provider.name(),
+                        doi
+                    );
                 }
                 Ok(None) => {
                     debug!("Provider {} has no PDF for DOI: {}", provider.name(), doi);

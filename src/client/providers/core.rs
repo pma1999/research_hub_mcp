@@ -137,7 +137,11 @@ impl CoreProvider {
 
         // Use download URL as PDF URL if available and has full text
         let pdf_url = if article.has_full_text.unwrap_or(false) {
-            article.download_url.or(article.full_text_identifier)
+            // Filter out empty URLs
+            article
+                .download_url
+                .filter(|url| !url.is_empty())
+                .or_else(|| article.full_text_identifier.filter(|url| !url.is_empty()))
         } else {
             None
         };

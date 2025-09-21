@@ -292,6 +292,13 @@ impl PaperMetadata {
             file_size: None,
         }
     }
+
+    /// Set the PDF URL, filtering out empty strings
+    #[must_use]
+    pub fn with_pdf_url(mut self, url: Option<String>) -> Self {
+        self.pdf_url = url.filter(|u| !u.is_empty());
+        self
+    }
 }
 
 #[cfg(test)]

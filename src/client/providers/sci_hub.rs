@@ -212,6 +212,11 @@ impl SciHubProvider {
                 .attr("src")
                 .or_else(|| element.value().attr("href"))
             {
+                // Skip empty attributes
+                if src.is_empty() {
+                    continue;
+                }
+
                 if src.contains(".pdf") || src.starts_with("//") {
                     pdf_url = Some(if src.starts_with("//") {
                         format!("https:{src}")
