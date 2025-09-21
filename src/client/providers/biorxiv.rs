@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn test_provider_interface() {
-        let _provider = BiorxivProvider::new().unwrap();
+        let provider = BiorxivProvider::new().unwrap();
 
         assert_eq!(provider.name(), "biorxiv");
         assert!(provider.supports_full_text());
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn test_url_building() {
-        let _provider = BiorxivProvider::new().unwrap();
+        let provider = BiorxivProvider::new().unwrap();
 
         let doi_url = provider.build_doi_url("10.1101/2023.01.01.000001");
         assert!(doi_url.contains("api.biorxiv.org"));

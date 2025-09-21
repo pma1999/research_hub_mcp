@@ -643,7 +643,7 @@ mod tests {
 
     #[test]
     fn test_journal_extraction() {
-        let _provider = MdpiProvider::new().unwrap();
+        let provider = MdpiProvider::new().unwrap();
 
         let journal = provider.extract_journal_from_url("https://www.mdpi.com/sensors/");
         assert!(journal.is_some());
@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let _provider = MdpiProvider::new().unwrap();
+        let provider = MdpiProvider::new().unwrap();
 
         assert_eq!(provider.name(), "mdpi");
         assert_eq!(provider.priority(), 75);
