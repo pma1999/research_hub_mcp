@@ -42,7 +42,8 @@ impl RateLimiter {
     }
 
     /// Create a new rate limiter with the specified rate (legacy u32 support)
-    #[must_use] pub fn new_legacy(requests_per_second: u32) -> Self {
+    #[must_use]
+    pub fn new_legacy(requests_per_second: u32) -> Self {
         Self::new(f64::from(requests_per_second))
     }
 
@@ -354,17 +355,20 @@ impl ProviderRateLimiter {
     }
 
     /// Get current rate
-    #[must_use] pub const fn current_rate(&self) -> f64 {
+    #[must_use]
+    pub const fn current_rate(&self) -> f64 {
         self.inner.current_rate()
     }
 
     /// Get provider name
-    #[must_use] pub fn provider_name(&self) -> &str {
+    #[must_use]
+    pub fn provider_name(&self) -> &str {
         &self.provider_name
     }
 
     /// Get average response time
-    #[must_use] pub fn average_response_time(&self) -> Option<Duration> {
+    #[must_use]
+    pub fn average_response_time(&self) -> Option<Duration> {
         self.inner.average_response_time()
     }
 }

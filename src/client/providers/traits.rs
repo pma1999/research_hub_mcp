@@ -377,7 +377,6 @@ pub trait SourceProvider: Send + Sync {
         }
     }
 
-
     /// Attempt to get a direct PDF download URL for a DOI
     /// This is called when standard search doesn't return a PDF URL
     /// Providers can override this to implement specialized PDF retrieval

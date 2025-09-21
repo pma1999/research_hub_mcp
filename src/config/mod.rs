@@ -3,7 +3,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
@@ -311,6 +314,9 @@ impl Config {
 
     /// Load configuration from a TOML file
     fn load_from_toml_file(path: &std::path::Path) -> crate::Result<Self> {
+        // Security: Validate configuration file security before reading
+        Self::validate_config_file_security(path)?;
+
         let config_str = std::fs::read_to_string(path)?;
         toml::from_str(&config_str)
             .map_err(|e| crate::Error::Config(config::ConfigError::Foreign(Box::new(e))))
@@ -327,7 +333,14 @@ impl Config {
         // Create config directory if it doesn't exist
         if !config_dir.exists() {
             std::fs::create_dir_all(&config_dir)?;
-            debug!("Created config directory: {}", config_dir.display());
+
+            // Security: Set secure permissions on config directory
+            Self::set_secure_directory_permissions(&config_dir)?;
+
+            debug!(
+                "Created config directory with secure permissions: {}",
+                config_dir.display()
+            );
         }
 
         let config_files = [
@@ -723,9 +736,7 @@ impl Config {
             if *rate <= 0.0 {
                 return Err(crate::Error::InvalidInput {
                     field: format!("rate_limiting.providers.{provider}"),
-                    reason: format!(
-                        "Rate limit for provider '{provider}' must be greater than 0"
-                    ),
+                    reason: format!("Rate limit for provider '{provider}' must be greater than 0"),
                 });
             }
         }
@@ -954,6 +965,100 @@ default_rate = 0.8    # Slightly slower for production reliability
         production_config.to_string()
     }
 
+    /// Validate configuration file security
+    fn validate_config_file_security(path: &std::path::Path) -> crate::Result<()> {
+        // Check if file is a symbolic link
+        if path.exists() {
+            let metadata = std::fs::symlink_metadata(path).map_err(|e| {
+                crate::Error::Service(format!("Failed to check config file metadata: {e}"))
+            })?;
+
+            if metadata.file_type().is_symlink() {
+                return Err(crate::Error::Service(format!(
+                    "Security: Refusing to read configuration from symbolic link: {:?}",
+                    path
+                )));
+            }
+
+            #[cfg(unix)]
+            {
+                // Check file permissions - should be readable only by owner (0600 or more restrictive)
+                let permissions = metadata.permissions();
+                let mode = permissions.mode();
+
+                // Check if file is readable by group or others
+                if (mode & 0o077) != 0 {
+                    warn!(
+                        "Security: Configuration file has overly permissive permissions ({:o}): {:?}. \
+                        Consider setting permissions to 0600 for security.",
+                        mode & 0o777,
+                        path
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Set secure permissions on configuration directory
+    fn set_secure_directory_permissions(path: &std::path::Path) -> crate::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::fs::Permissions;
+
+            // Set permissions to 0700 (owner read/write/execute only) for config directory
+            let permissions = Permissions::from_mode(0o700);
+            std::fs::set_permissions(path, permissions).map_err(|e| {
+                crate::Error::Service(format!(
+                    "Failed to set secure permissions on config directory: {e}"
+                ))
+            })?;
+
+            info!(
+                "Set secure permissions (0700) on config directory: {:?}",
+                path
+            );
+        }
+
+        #[cfg(not(unix))]
+        {
+            info!(
+                "Non-Unix system: Cannot set Unix-style permissions on config directory: {:?}",
+                path
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Set secure permissions on configuration file
+    fn set_secure_config_file_permissions(path: &std::path::Path) -> crate::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::fs::Permissions;
+
+            // Set permissions to 0600 (owner read/write only) for config files
+            let permissions = Permissions::from_mode(0o600);
+            std::fs::set_permissions(path, permissions).map_err(|e| {
+                crate::Error::Service(format!(
+                    "Failed to set secure permissions on config file: {e}"
+                ))
+            })?;
+
+            info!("Set secure permissions (0600) on config file: {:?}", path);
+        }
+
+        #[cfg(not(unix))]
+        {
+            info!(
+                "Non-Unix system: Cannot set Unix-style permissions on config file: {:?}",
+                path
+            );
+        }
+
+        Ok(())
+    }
+
     /// Write example configuration to a file
     pub fn write_example_config(path: &std::path::Path, config_type: &str) -> crate::Result<()> {
         let content = match config_type {
@@ -966,8 +1071,29 @@ default_rate = 0.8    # Slightly slower for production reliability
             std::fs::create_dir_all(parent)?;
         }
 
+        // Security: Check for symlink attacks before writing config file
+        if path.exists() {
+            let metadata = std::fs::symlink_metadata(path).map_err(|e| {
+                crate::Error::Service(format!("Failed to check config file metadata: {e}"))
+            })?;
+
+            if metadata.file_type().is_symlink() {
+                return Err(crate::Error::Service(format!(
+                    "Security: Refusing to overwrite symbolic link: {:?}",
+                    path
+                )));
+            }
+        }
+
         std::fs::write(path, content)?;
-        debug!("Generated example configuration file: {}", path.display());
+
+        // Security: Set secure permissions after writing config file
+        Self::set_secure_config_file_permissions(path)?;
+
+        debug!(
+            "Generated example configuration file with secure permissions: {}",
+            path.display()
+        );
         Ok(())
     }
 }

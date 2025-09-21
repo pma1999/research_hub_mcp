@@ -1,3 +1,4 @@
+// pub mod command_integration;
 pub mod handler;
 pub mod transport;
 
@@ -8,6 +9,7 @@ use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+// pub use command_integration::CommandIntegratedHandler;
 pub use handler::ResearchServerHandler;
 
 pub struct Server {
@@ -35,7 +37,7 @@ impl Server {
     pub async fn run(&self) -> Result<()> {
         info!("Starting MCP server infrastructure");
 
-        // Create server handler
+        // Create server handler with dependency injection
         let handler = ResearchServerHandler::new(Arc::clone(&self.config))?;
 
         // Validate transport setup

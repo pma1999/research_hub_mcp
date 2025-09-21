@@ -74,22 +74,24 @@ impl CircuitBreakerService {
     {
         let circuit_breaker = self.get_circuit_breaker(service_name).await;
 
-        circuit_breaker.call(|| async {
-            operation().await.map_err(|e| {
-                if e.is_timeout() {
-                    Error::NetworkTimeout {
-                        timeout: Duration::from_secs(30),
-                        message: format!("HTTP request to {service_name} timed out: {e}"),
+        circuit_breaker
+            .call(|| async {
+                operation().await.map_err(|e| {
+                    if e.is_timeout() {
+                        Error::NetworkTimeout {
+                            timeout: Duration::from_secs(30),
+                            message: format!("HTTP request to {service_name} timed out: {e}"),
+                        }
+                    } else if e.is_connect() {
+                        Error::ConnectionRefused {
+                            endpoint: service_name.to_string(),
+                        }
+                    } else {
+                        Error::Http(e)
                     }
-                } else if e.is_connect() {
-                    Error::ConnectionRefused {
-                        endpoint: service_name.to_string(),
-                    }
-                } else {
-                    Error::Http(e)
-                }
+                })
             })
-        }).await
+            .await
     }
 
     /// Get health status of all circuit breakers
@@ -125,7 +127,9 @@ impl CircuitBreakerService {
             Ok(())
         } else {
             warn!("Circuit breaker not found for service: {}", service_name);
-            Err(Error::Service(format!("Circuit breaker not found for service: {service_name}")))
+            Err(Error::Service(format!(
+                "Circuit breaker not found for service: {service_name}"
+            )))
         }
     }
 
@@ -139,12 +143,16 @@ impl CircuitBreakerService {
             Ok(())
         } else {
             warn!("Circuit breaker not found for service: {}", service_name);
-            Err(Error::Service(format!("Circuit breaker not found for service: {service_name}")))
+            Err(Error::Service(format!(
+                "Circuit breaker not found for service: {service_name}"
+            )))
         }
     }
 
     /// Get detailed metrics for all circuit breakers
-    pub async fn get_all_metrics(&self) -> HashMap<String, crate::resilience::circuit_breaker::CircuitBreakerMetrics> {
+    pub async fn get_all_metrics(
+        &self,
+    ) -> HashMap<String, crate::resilience::circuit_breaker::CircuitBreakerMetrics> {
         let breakers = self.circuit_breakers.read().await;
         let mut metrics = HashMap::new();
 
@@ -179,9 +187,9 @@ mod tests {
     async fn test_successful_operation() {
         let service = CircuitBreakerService::new();
 
-        let result = service.call("test_service", || async {
-            Ok::<i32, Error>(42)
-        }).await;
+        let result = service
+            .call("test_service", || async { Ok::<i32, Error>(42) })
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
@@ -205,41 +213,50 @@ mod tests {
 
         // First failure
         let call_count_clone = call_count.clone();
-        let result = service.call("test_service", move || {
-            call_count_clone.fetch_add(1, Ordering::SeqCst);
-            async {
-                Err::<i32, Error>(Error::ServiceUnavailable {
-                    service: "test".to_string(),
-                    reason: "test failure".to_string(),
-                })
-            }
-        }).await;
+        let result = service
+            .call("test_service", move || {
+                call_count_clone.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Err::<i32, Error>(Error::ServiceUnavailable {
+                        service: "test".to_string(),
+                        reason: "test failure".to_string(),
+                    })
+                }
+            })
+            .await;
         assert!(result.is_err());
 
         // Second failure - should open circuit
         let call_count_clone = call_count.clone();
-        let result = service.call("test_service", move || {
-            call_count_clone.fetch_add(1, Ordering::SeqCst);
-            async {
-                Err::<i32, Error>(Error::ServiceUnavailable {
-                    service: "test".to_string(),
-                    reason: "test failure".to_string(),
-                })
-            }
-        }).await;
+        let result = service
+            .call("test_service", move || {
+                call_count_clone.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Err::<i32, Error>(Error::ServiceUnavailable {
+                        service: "test".to_string(),
+                        reason: "test failure".to_string(),
+                    })
+                }
+            })
+            .await;
         assert!(result.is_err());
 
         // Third call should be rejected by circuit breaker
         let call_count_clone = call_count.clone();
-        let result = service.call("test_service", move || {
-            call_count_clone.fetch_add(1, Ordering::SeqCst);
-            async {
-                Ok::<i32, Error>(42) // This shouldn't be called
-            }
-        }).await;
+        let result = service
+            .call("test_service", move || {
+                call_count_clone.fetch_add(1, Ordering::SeqCst);
+                async {
+                    Ok::<i32, Error>(42) // This shouldn't be called
+                }
+            })
+            .await;
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::CircuitBreakerOpen { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::CircuitBreakerOpen { .. }
+        ));
 
         // Should have only called the operation twice (circuit breaker prevented third call)
         assert_eq!(call_count.load(Ordering::SeqCst), 2);
@@ -253,26 +270,29 @@ mod tests {
         let service = CircuitBreakerService::new();
 
         // Simulate a timeout error by creating a proper reqwest error
-        let result = service.call_http("test_service", || async {
-            // Create a mock timeout error using reqwest's timeout functionality
-            let client = reqwest::Client::new();
-            let timeout_result = tokio::time::timeout(
-                std::time::Duration::from_millis(1),
-                client.get("http://httpbin.org/delay/5").send()
-            ).await;
+        let result = service
+            .call_http("test_service", || async {
+                // Create a mock timeout error using reqwest's timeout functionality
+                let client = reqwest::Client::new();
+                let timeout_result = tokio::time::timeout(
+                    std::time::Duration::from_millis(1),
+                    client.get("http://httpbin.org/delay/5").send(),
+                )
+                .await;
 
-            match timeout_result {
-                Ok(resp) => resp,
-                Err(_) => {
-                    // Create a proper timeout error
-                    let client = reqwest::Client::builder()
-                        .timeout(std::time::Duration::from_millis(1))
-                        .build()
-                        .unwrap();
-                    client.get("http://httpbin.org/delay/5").send().await
+                match timeout_result {
+                    Ok(resp) => resp,
+                    Err(_) => {
+                        // Create a proper timeout error
+                        let client = reqwest::Client::builder()
+                            .timeout(std::time::Duration::from_millis(1))
+                            .build()
+                            .unwrap();
+                        client.get("http://httpbin.org/delay/5").send().await
+                    }
                 }
-            }
-        }).await;
+            })
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::NetworkTimeout { .. }));
@@ -283,9 +303,9 @@ mod tests {
         let service = CircuitBreakerService::new();
 
         // Create a circuit breaker by making a call
-        let _ = service.call("test_service", || async {
-            Ok::<i32, Error>(42)
-        }).await;
+        let _ = service
+            .call("test_service", || async { Ok::<i32, Error>(42) })
+            .await;
 
         // Reset the specific circuit breaker
         let result = service.reset("test_service").await;

@@ -171,7 +171,8 @@ impl MetaSearchClient {
 
     /// Update provider statistics with response time
     async fn update_provider_stats(&self, provider_name: &str, response_time_ms: f64) {
-        Self::update_provider_stats_static(&self.provider_stats, provider_name, response_time_ms).await;
+        Self::update_provider_stats_static(&self.provider_stats, provider_name, response_time_ms)
+            .await;
     }
 
     /// Static version of update_provider_stats for use in spawned tasks
@@ -271,39 +272,111 @@ impl MetaSearchClient {
 
     /// Search for a paper by DOI across providers that support it
     pub async fn get_by_doi(&self, doi: &str) -> Result<Option<PaperMetadata>, ProviderError> {
-        info!("Searching for DOI: {}", doi);
+        let normalized_doi = self.normalize_doi(doi);
+        info!("Searching for DOI: {}", normalized_doi);
 
         let context = self.create_search_context();
+        let doi_providers = self.select_doi_providers();
 
-        // Try providers in priority order
-        let mut providers: Vec<_> = self.providers.iter().collect();
-        providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
-
-        for provider in providers {
-            if provider.supported_search_types().contains(&SearchType::Doi) {
-                // Apply rate limiting
-                if let Err(e) = Self::apply_rate_limit(provider).await {
-                    warn!("Rate limit hit for {}: {}", provider.name(), e);
-                    continue;
-                }
-
-                match provider.get_by_doi(doi, &context).await {
-                    Ok(Some(paper)) => {
-                        info!("Found paper for DOI {} from {}", doi, provider.name());
-                        return Ok(Some(paper));
-                    }
-                    Ok(None) => {
-                        debug!("DOI {} not found in {}", doi, provider.name());
-                    }
-                    Err(e) => {
-                        warn!("Error searching {} for DOI {}: {}", provider.name(), doi, e);
-                    }
-                }
+        for provider in doi_providers {
+            if let Some(paper) = self
+                .try_provider_for_doi(&provider, &normalized_doi, &context)
+                .await?
+            {
+                return Ok(Some(paper));
             }
         }
 
-        info!("DOI {} not found in any provider", doi);
+        info!("DOI {} not found in any provider", normalized_doi);
         Ok(None)
+    }
+
+    /// Normalize DOI format for consistent processing
+    fn normalize_doi(&self, doi: &str) -> String {
+        // Remove common prefixes and normalize format
+        let trimmed = doi.trim();
+
+        // Remove "doi:" prefix if present
+        let without_prefix = if trimmed.to_lowercase().starts_with("doi:") {
+            &trimmed[4..]
+        } else {
+            trimmed
+        };
+
+        // Remove "https://doi.org/" prefix if present
+        let without_url = if without_prefix
+            .to_lowercase()
+            .starts_with("https://doi.org/")
+        {
+            &without_prefix[16..]
+        } else if without_prefix.to_lowercase().starts_with("http://doi.org/") {
+            &without_prefix[15..]
+        } else {
+            without_prefix
+        };
+
+        without_url.trim().to_string()
+    }
+
+    /// Select and prioritize providers that support DOI searches
+    fn select_doi_providers(&self) -> Vec<Arc<dyn SourceProvider>> {
+        let mut providers: Vec<_> = self
+            .providers
+            .iter()
+            .filter(|p| p.supported_search_types().contains(&SearchType::Doi))
+            .collect();
+
+        // Sort by priority (highest first)
+        providers.sort_by_key(|p| std::cmp::Reverse(p.priority()));
+
+        debug!(
+            "Selected {} DOI-capable providers: {:?}",
+            providers.len(),
+            providers.iter().map(|p| p.name()).collect::<Vec<_>>()
+        );
+
+        providers.into_iter().cloned().collect()
+    }
+
+    /// Try a single provider for DOI lookup with retry logic
+    async fn try_provider_for_doi(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
+        // Apply rate limiting
+        if let Err(e) = Self::apply_rate_limit(provider).await {
+            warn!("Rate limit hit for {}: {}", provider.name(), e);
+            return Ok(None);
+        }
+
+        self.execute_doi_query(provider, doi, context).await
+    }
+
+    /// Execute the actual DOI query against a provider
+    async fn execute_doi_query(
+        &self,
+        provider: &Arc<dyn SourceProvider>,
+        doi: &str,
+        context: &SearchContext,
+    ) -> Result<Option<PaperMetadata>, ProviderError> {
+        match provider.get_by_doi(doi, context).await {
+            Ok(Some(paper)) => {
+                info!("Found paper for DOI {} from {}", doi, provider.name());
+                Ok(Some(paper))
+            }
+            Ok(None) => {
+                debug!("DOI {} not found in {}", doi, provider.name());
+                Ok(None)
+            }
+            Err(e) => {
+                warn!("Error searching {} for DOI {}: {}", provider.name(), doi, e);
+                // For DOI searches, we don't want to fail completely on provider errors
+                // Instead, we'll continue to the next provider
+                Ok(None)
+            }
+        }
     }
 
     /// Create search context with common settings
@@ -353,7 +426,9 @@ impl MetaSearchClient {
         let mut provider_errors = HashMap::new();
 
         // Use adaptive semaphore sizing based on provider performance
-        let adaptive_size = self.calculate_adaptive_semaphore_size(providers.len()).await;
+        let adaptive_size = self
+            .calculate_adaptive_semaphore_size(providers.len())
+            .await;
         let semaphore = Arc::new(tokio::sync::Semaphore::new(adaptive_size));
 
         let mut tasks = Vec::new();
@@ -406,20 +481,33 @@ impl MetaSearchClient {
                     let provider_stats_clone = self.provider_stats.clone();
                     let provider_name_clone = provider_name.clone();
                     tokio::spawn(async move {
-                        Self::update_provider_stats_static(&provider_stats_clone, &provider_name_clone, response_time_ms).await;
+                        Self::update_provider_stats_static(
+                            &provider_stats_clone,
+                            &provider_name_clone,
+                            response_time_ms,
+                        )
+                        .await;
                     });
 
                     provider_results.push((provider_name, result));
                 }
                 Ok((provider_name, Err(error), elapsed)) => {
                     let response_time_ms = elapsed.as_millis() as f64;
-                    warn!("Provider {} failed after {:.1}ms: {}", provider_name, response_time_ms, error);
+                    warn!(
+                        "Provider {} failed after {:.1}ms: {}",
+                        provider_name, response_time_ms, error
+                    );
 
                     // Update stats even for failed requests to track response times
                     let provider_stats_clone = self.provider_stats.clone();
                     let provider_name_clone = provider_name.clone();
                     tokio::spawn(async move {
-                        Self::update_provider_stats_static(&provider_stats_clone, &provider_name_clone, response_time_ms).await;
+                        Self::update_provider_stats_static(
+                            &provider_stats_clone,
+                            &provider_name_clone,
+                            response_time_ms,
+                        )
+                        .await;
                     });
 
                     provider_errors.insert(provider_name, error.to_string());

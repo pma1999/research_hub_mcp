@@ -1,11 +1,14 @@
 use crate::client::{Doi, MetaSearchClient, PaperMetadata};
 use crate::services::CategorizationService;
+// use crate::tools::command::{Command, CommandResult, ExecutionContext};
 use crate::{Config, Result};
+// use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+// use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -476,6 +479,9 @@ impl DownloadTool {
             }
         }
 
+        // Security: Validate path security before creating directories
+        Self::validate_directory_security(&base_dir).await?;
+
         // Ensure directory exists with better error handling
         if let Err(e) = tokio::fs::create_dir_all(&base_dir).await {
             // Check if this is a permissions issue (common with Claude Desktop sandbox)
@@ -760,8 +766,16 @@ impl DownloadTool {
                         .await
                         .map_err(crate::Error::Io)?
                 } else {
+                    // Security: Validate file path security before creation
+                    Self::validate_file_security(file_path).await?;
+
                     // Create new file only when we have data to write
-                    File::create(file_path).await.map_err(crate::Error::Io)?
+                    let file = File::create(file_path).await.map_err(crate::Error::Io)?;
+
+                    // Security: Set restrictive permissions on downloaded files
+                    Self::set_secure_file_permissions(file_path).await?;
+
+                    file
                 };
 
                 // Write the first chunk
@@ -973,7 +987,229 @@ impl DownloadTool {
             downloads.len()
         );
     }
+
+    /// Validate directory security to prevent attacks
+    async fn validate_directory_security(path: &Path) -> Result<()> {
+        // Check if any component in the path is a symbolic link
+        let mut current_path = PathBuf::new();
+        for component in path.components() {
+            current_path.push(component);
+            if current_path.exists() {
+                let metadata = tokio::fs::symlink_metadata(&current_path)
+                    .await
+                    .map_err(|e| {
+                        crate::Error::Service(format!("Failed to check path metadata: {e}"))
+                    })?;
+
+                if metadata.file_type().is_symlink() {
+                    return Err(crate::Error::Service(format!(
+                        "Security: Refusing to create directory - path contains symbolic link: {:?}",
+                        current_path
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate file path security before creation
+    async fn validate_file_security(file_path: &Path) -> Result<()> {
+        // Check if file already exists and is a symlink
+        if file_path.exists() {
+            let metadata = tokio::fs::symlink_metadata(file_path).await.map_err(|e| {
+                crate::Error::Service(format!("Failed to check file metadata: {e}"))
+            })?;
+
+            if metadata.file_type().is_symlink() {
+                return Err(crate::Error::Service(format!(
+                    "Security: Refusing to overwrite symbolic link: {:?}",
+                    file_path
+                )));
+            }
+        }
+
+        // Check parent directory for symlinks
+        if let Some(parent) = file_path.parent() {
+            Self::validate_directory_security(parent).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Set secure file permissions on downloaded files
+    async fn set_secure_file_permissions(file_path: &Path) -> Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            // Set permissions to 0600 (owner read/write only) for downloaded files
+            let permissions = std::fs::Permissions::from_mode(0o600);
+            tokio::fs::set_permissions(file_path, permissions)
+                .await
+                .map_err(|e| {
+                    crate::Error::Service(format!(
+                        "Failed to set secure permissions on downloaded file: {e}"
+                    ))
+                })?;
+
+            info!(
+                "Set secure permissions (0600) on downloaded file: {:?}",
+                file_path
+            );
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On non-Unix systems, permissions are handled differently
+            info!(
+                "Non-Unix system: Cannot set Unix-style permissions on file: {:?}",
+                file_path
+            );
+        }
+
+        Ok(())
+    }
 }
+
+// Command trait implementation for DownloadTool (temporarily disabled)
+/*
+#[async_trait]
+impl Command for DownloadTool {
+    fn name(&self) -> &'static str {
+        "download_paper"
+    }
+
+    fn description(&self) -> &'static str {
+        "Download academic papers by DOI or direct URL with integrity verification and progress tracking"
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        use schemars::schema_for;
+        let schema = schema_for!(DownloadInput);
+        serde_json::to_value(schema).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize DownloadInput schema: {}", e);
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "doi": {"type": "string", "description": "DOI of the paper (required if url not provided)"},
+                    "url": {"type": "string", "description": "Direct download URL (required if doi not provided)"},
+                    "filename": {"type": "string", "description": "Target filename (optional)"},
+                    "directory": {"type": "string", "description": "Target directory (optional)"},
+                    "category": {"type": "string", "description": "Category for organizing downloads (optional)"},
+                    "overwrite": {"type": "boolean", "default": false},
+                    "verify_integrity": {"type": "boolean", "default": true}
+                },
+                "anyOf": [
+                    {"required": ["doi"]},
+                    {"required": ["url"]}
+                ]
+            })
+        })
+    }
+
+    fn output_schema(&self) -> serde_json::Value {
+        use schemars::schema_for;
+        let schema = schema_for!(DownloadResult);
+        serde_json::to_value(schema).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize DownloadResult schema: {}", e);
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "download_id": {"type": "string"},
+                    "status": {"type": "string"},
+                    "file_path": {"type": "string"},
+                    "file_size": {"type": "integer"},
+                    "sha256_hash": {"type": "string"},
+                    "duration_seconds": {"type": "number"},
+                    "average_speed": {"type": "integer"},
+                    "metadata": {"type": "object"}
+                }
+            })
+        })
+    }
+
+    async fn execute(
+        &self,
+        input: serde_json::Value,
+        context: ExecutionContext,
+    ) -> Result<CommandResult> {
+        let start_time = SystemTime::now();
+
+        // Deserialize input
+        let download_input: DownloadInput =
+            serde_json::from_value(input).map_err(|e| crate::Error::InvalidInput {
+                field: "input".to_string(),
+                reason: format!("Invalid download input: {e}"),
+            })?;
+
+        // Check for timeout before starting download
+        if context.is_timed_out() {
+            let duration = start_time.elapsed().unwrap_or(Duration::ZERO);
+            return Ok(CommandResult::failure(
+                context.request_id,
+                self.name().to_string(),
+                "Command timed out before download could start".to_string(),
+                duration,
+            ));
+        }
+
+        // Execute the download
+        let download_result = self.download_paper(download_input).await?;
+
+        let duration = start_time.elapsed().unwrap_or(Duration::ZERO);
+
+        // Create successful command result with additional metadata
+        let mut result = CommandResult::success(
+            context.request_id,
+            self.name().to_string(),
+            download_result,
+            duration,
+        )?;
+
+        // Add download-specific metadata
+        result = result
+            .with_metadata("operation_type".to_string(), "file_download".to_string())
+            .with_metadata("has_progress_tracking".to_string(), "true".to_string());
+
+        Ok(result)
+    }
+
+    async fn validate_input(&self, input: &serde_json::Value) -> Result<()> {
+        // Try to deserialize to check basic structure
+        let download_input: DownloadInput =
+            serde_json::from_value(input.clone()).map_err(|e| crate::Error::InvalidInput {
+                field: "input".to_string(),
+                reason: format!("Invalid input structure: {e}"),
+            })?;
+
+        // Use existing validation logic
+        Self::validate_input(&download_input)
+    }
+
+    fn estimated_duration(&self) -> Duration {
+        Duration::from_secs(60) // Downloads can take 1-5 minutes depending on file size
+    }
+
+    fn is_concurrent_safe(&self) -> bool {
+        true // Downloads are safe to run concurrently
+    }
+
+    fn supports_feature(&self, feature: &str) -> bool {
+        match feature {
+            "validation"
+            | "timeout"
+            | "metadata"
+            | "progress_tracking"
+            | "integrity_verification" => true,
+            _ => false,
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+*/
 
 #[cfg(test)]
 mod tests {

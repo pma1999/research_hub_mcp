@@ -132,8 +132,10 @@ impl SciHubProvider {
             url, user_agent
         );
 
-        let response = self.circuit_breaker_service.call_http("sci_hub", || async {
-            self
+        let response = self
+            .circuit_breaker_service
+            .call_http("sci_hub", || async {
+                self
                 .client
                 .get(&url)
                 .header("User-Agent", user_agent)
@@ -148,8 +150,9 @@ impl SciHubProvider {
                 .header("Upgrade-Insecure-Requests", "1")
                 .send()
                 .await
-        }).await.map_err(|e| {
-            match e {
+            })
+            .await
+            .map_err(|e| match e {
                 crate::Error::CircuitBreakerOpen { service } => {
                     ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
                 }
@@ -160,9 +163,8 @@ impl SciHubProvider {
                 crate::Error::Http(http_err) => {
                     ProviderError::Network(format!("Request failed: {http_err}"))
                 }
-                _ => ProviderError::Network(format!("Request failed: {e}"))
-            }
-        })?;
+                _ => ProviderError::Network(format!("Request failed: {e}")),
+            })?;
 
         if !response.status().is_success() {
             // For 403 errors, provide more context about potential solutions
@@ -367,9 +369,10 @@ impl SourceProvider for SciHubProvider {
         // Try to access the main page of the first mirror
         let mirror = &self.mirrors[0];
 
-        let response = self.circuit_breaker_service.call_http("sci_hub", || async {
-            self.client.get(mirror).send().await
-        }).await;
+        let response = self
+            .circuit_breaker_service
+            .call_http("sci_hub", || async { self.client.get(mirror).send().await })
+            .await;
 
         match response {
             Ok(resp) if resp.status().is_success() => {
@@ -377,10 +380,7 @@ impl SourceProvider for SciHubProvider {
                 Ok(true)
             }
             Ok(resp) => {
-                warn!(
-                    "Sci-Hub health check failed with status: {}",
-                    resp.status()
-                );
+                warn!("Sci-Hub health check failed with status: {}", resp.status());
                 Ok(false)
             }
             Err(crate::Error::CircuitBreakerOpen { .. }) => {

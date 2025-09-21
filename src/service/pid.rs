@@ -3,6 +3,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tracing::{error, info, instrument};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 /// PID file manager
 pub struct PidFile {
     path: PathBuf,
@@ -46,7 +49,10 @@ impl PidFile {
             })?;
         }
 
-        // Write PID to file
+        // Security: Check for symlink attacks before creating PID file
+        Self::validate_path_security(&path)?;
+
+        // Write PID to file with restrictive permissions
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -56,6 +62,9 @@ impl PidFile {
 
         writeln!(file, "{pid}")
             .map_err(|e| crate::Error::Service(format!("Failed to write PID: {e}")))?;
+
+        // Security: Set restrictive permissions (0600 - owner read/write only)
+        Self::set_secure_permissions(&path)?;
 
         // Try to lock the file (advisory lock)
         let (locked, lock) = Self::lock_file(file);
@@ -181,6 +190,49 @@ impl PidFile {
     #[must_use]
     pub const fn is_locked(&self) -> bool {
         self.locked
+    }
+
+    /// Validate path security to prevent symlink attacks
+    fn validate_path_security(path: &Path) -> crate::Result<()> {
+        // Check if any component in the path is a symbolic link
+        let mut current_path = PathBuf::new();
+        for component in path.components() {
+            current_path.push(component);
+            if current_path.exists() && current_path.is_symlink() {
+                return Err(crate::Error::Service(format!(
+                    "Security: Refusing to create PID file - path contains symbolic link: {:?}",
+                    current_path
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Set secure file permissions (Unix only)
+    fn set_secure_permissions(path: &Path) -> crate::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::fs::Permissions;
+
+            // Set permissions to 0600 (owner read/write only)
+            let permissions = Permissions::from_mode(0o600);
+            fs::set_permissions(path, permissions).map_err(|e| {
+                crate::Error::Service(format!("Failed to set secure permissions on PID file: {e}"))
+            })?;
+
+            info!("Set secure permissions (0600) on PID file: {:?}", path);
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On non-Unix systems, permissions are handled differently
+            info!(
+                "Non-Unix system: Cannot set Unix-style permissions on PID file: {:?}",
+                path
+            );
+        }
+
+        Ok(())
     }
 
     /// Get standard PID file path for the service

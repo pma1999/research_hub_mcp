@@ -263,7 +263,8 @@ impl CategorizeTool {
     }
 
     /// Check if categorization is enabled
-    #[must_use] pub const fn is_enabled(&self) -> bool {
+    #[must_use]
+    pub const fn is_enabled(&self) -> bool {
         self.categorization_service.is_enabled()
     }
 }

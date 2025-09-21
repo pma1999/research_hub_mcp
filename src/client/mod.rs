@@ -150,7 +150,9 @@ impl SecureHttpClientFactory {
         let mut client_builder = reqwest::Client::builder()
             .timeout(config.timeout)
             .connect_timeout(config.connect_timeout)
-            .redirect(reqwest::redirect::Policy::limited(config.max_redirects as usize))
+            .redirect(reqwest::redirect::Policy::limited(
+                config.max_redirects as usize,
+            ))
             .user_agent(&config.user_agent)
             // Security enforcements
             .tls_built_in_root_certs(true) // Use built-in root certificates
@@ -163,11 +165,10 @@ impl SecureHttpClientFactory {
 
         // Add proxy if configured
         if let Some(proxy_url) = &config.proxy {
-            let proxy = reqwest::Proxy::all(proxy_url)
-                .map_err(|e| crate::Error::InvalidInput {
-                    field: "proxy".to_string(),
-                    reason: format!("Invalid proxy URL: {e}"),
-                })?;
+            let proxy = reqwest::Proxy::all(proxy_url).map_err(|e| crate::Error::InvalidInput {
+                field: "proxy".to_string(),
+                reason: format!("Invalid proxy URL: {e}"),
+            })?;
             client_builder = client_builder.proxy(proxy);
         }
 
@@ -306,7 +307,10 @@ mod tests {
     #[test]
     fn test_secure_http_client_factory_with_custom_user_agent() {
         let client = SecureHttpClientFactory::create_client_with_user_agent("test-agent/1.0");
-        assert!(client.is_ok(), "Should create client with custom user agent");
+        assert!(
+            client.is_ok(),
+            "Should create client with custom user agent"
+        );
     }
 
     #[test]

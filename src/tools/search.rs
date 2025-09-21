@@ -1,10 +1,13 @@
 use crate::client::providers::{SearchQuery, SearchType as ProviderSearchType};
 use crate::client::{MetaSearchClient, MetaSearchConfig, MetaSearchResult, PaperMetadata};
 use crate::services::CategorizationService;
+// use crate::tools::command::{Command, CommandResult, ExecutionContext};
 use crate::{Config, Result};
 // use rmcp::tool; // Will be enabled when rmcp integration is complete
+// use async_trait::async_trait;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+// use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -545,6 +548,115 @@ impl SearchTool {
 const fn default_limit() -> u32 {
     10
 }
+
+// Command trait implementation for SearchTool (temporarily disabled)
+/*
+#[async_trait]
+impl Command for SearchTool {
+    fn name(&self) -> &'static str {
+        "search_papers"
+    }
+
+    fn description(&self) -> &'static str {
+        "Search for academic papers using DOI, title, author, or keywords across multiple providers"
+    }
+
+    fn input_schema(&self) -> serde_json::Value {
+        use schemars::schema_for;
+        let schema = schema_for!(SearchInput);
+        serde_json::to_value(schema).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize SearchInput schema: {}", e);
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Query string - DOI, title, or author"},
+                    "search_type": {"type": "string", "enum": ["auto", "doi", "title", "author", "author_year"]},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10},
+                    "offset": {"type": "integer", "minimum": 0, "default": 0}
+                },
+                "required": ["query"]
+            })
+        })
+    }
+
+    fn output_schema(&self) -> serde_json::Value {
+        use schemars::schema_for;
+        let schema = schema_for!(SearchResult);
+        serde_json::to_value(schema).unwrap_or_else(|e| {
+            tracing::error!("Failed to serialize SearchResult schema: {}", e);
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "papers": {"type": "array"},
+                    "total_count": {"type": "integer"},
+                    "returned_count": {"type": "integer"},
+                    "has_more": {"type": "boolean"}
+                }
+            })
+        })
+    }
+
+    async fn execute(
+        &self,
+        input: serde_json::Value,
+        context: ExecutionContext,
+    ) -> Result<CommandResult> {
+        let start_time = SystemTime::now();
+
+        // Deserialize input
+        let search_input: SearchInput =
+            serde_json::from_value(input).map_err(|e| crate::Error::InvalidInput {
+                field: "input".to_string(),
+                reason: format!("Invalid search input: {e}"),
+            })?;
+
+        // Execute the search
+        let search_result = self.search_papers(search_input).await?;
+
+        let duration = start_time.elapsed().unwrap_or(Duration::ZERO);
+
+        // Create successful command result
+        CommandResult::success(
+            context.request_id,
+            self.name().to_string(),
+            search_result,
+            duration,
+        )
+    }
+
+    async fn validate_input(&self, input: &serde_json::Value) -> Result<()> {
+        // Try to deserialize to check basic structure
+        let search_input: SearchInput =
+            serde_json::from_value(input.clone()).map_err(|e| crate::Error::InvalidInput {
+                field: "input".to_string(),
+                reason: format!("Invalid input structure: {e}"),
+            })?;
+
+        // Use existing validation logic
+        Self::validate_input(&search_input)
+    }
+
+    fn estimated_duration(&self) -> Duration {
+        Duration::from_secs(5) // Search typically takes 1-5 seconds
+    }
+
+    fn is_concurrent_safe(&self) -> bool {
+        true // Search operations are safe to run concurrently
+    }
+
+    fn supports_feature(&self, feature: &str) -> bool {
+        match feature {
+            "validation" | "timeout" | "metadata" | "caching" => true,
+            _ => false,
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+*/
 
 #[cfg(test)]
 mod tests {

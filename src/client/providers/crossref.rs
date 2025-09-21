@@ -248,37 +248,43 @@ impl SourceProvider for CrossRefProvider {
         debug!("CrossRef search URL: {}", url);
 
         // Make the request with circuit breaker protection
-        let response = self.circuit_breaker_service.call_http("crossref", || async {
-            let mut request = self.client.get(&url);
+        let response = self
+            .circuit_breaker_service
+            .call_http("crossref", || async {
+                let mut request = self.client.get(&url);
 
-            // Add custom headers
-            for (key, value) in &context.headers {
-                request = request.header(key, value);
-            }
+                // Add custom headers
+                for (key, value) in &context.headers {
+                    request = request.header(key, value);
+                }
 
-            request.timeout(context.timeout).send().await
-        }).await.map_err(|e| {
-            error!("CrossRef request failed: {}", e);
-            match e {
-                crate::Error::CircuitBreakerOpen { service } => {
-                    ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
-                }
-                crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
-                crate::Error::ConnectionRefused { .. } => {
-                    ProviderError::Network("Connection failed".to_string())
-                }
-                crate::Error::Http(http_err) => {
-                    if http_err.is_timeout() {
-                        ProviderError::Timeout
-                    } else if http_err.is_connect() {
-                        ProviderError::Network(format!("Connection failed: {http_err}"))
-                    } else {
-                        ProviderError::Network(format!("Request failed: {http_err}"))
+                request.timeout(context.timeout).send().await
+            })
+            .await
+            .map_err(|e| {
+                error!("CrossRef request failed: {}", e);
+                match e {
+                    crate::Error::CircuitBreakerOpen { service } => {
+                        ProviderError::ServiceUnavailable(format!(
+                            "Circuit breaker open for {service}"
+                        ))
                     }
+                    crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
+                    crate::Error::ConnectionRefused { .. } => {
+                        ProviderError::Network("Connection failed".to_string())
+                    }
+                    crate::Error::Http(http_err) => {
+                        if http_err.is_timeout() {
+                            ProviderError::Timeout
+                        } else if http_err.is_connect() {
+                            ProviderError::Network(format!("Connection failed: {http_err}"))
+                        } else {
+                            ProviderError::Network(format!("Request failed: {http_err}"))
+                        }
+                    }
+                    _ => ProviderError::Network(format!("Request failed: {e}")),
                 }
-                _ => ProviderError::Network(format!("Request failed: {e}"))
-            }
-        })?;
+            })?;
 
         // Check response status
         if !response.status().is_success() {

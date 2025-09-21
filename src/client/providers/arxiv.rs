@@ -265,45 +265,50 @@ impl SourceProvider for ArxivProvider {
             guard.as_mut().unwrap().acquire().await
         };
 
-        rate_limit_result
-            .map_err(|e| ProviderError::Other(format!("Rate limiting error: {e}")))?;
+        rate_limit_result.map_err(|e| ProviderError::Other(format!("Rate limiting error: {e}")))?;
 
         // Build the search URL
         let url = self.build_search_url(query)?;
         debug!("arXiv search URL: {}", url);
 
         // Make the request with circuit breaker protection
-        let response = self.circuit_breaker_service.call_http("arxiv", || async {
-            let mut request = self.client.get(&url);
+        let response = self
+            .circuit_breaker_service
+            .call_http("arxiv", || async {
+                let mut request = self.client.get(&url);
 
-            // Add custom headers
-            for (key, value) in &context.headers {
-                request = request.header(key, value);
-            }
+                // Add custom headers
+                for (key, value) in &context.headers {
+                    request = request.header(key, value);
+                }
 
-            request.timeout(context.timeout).send().await
-        }).await.map_err(|e| {
-            error!("arXiv request failed: {}", e);
-            match e {
-                crate::Error::CircuitBreakerOpen { service } => {
-                    ProviderError::ServiceUnavailable(format!("Circuit breaker open for {service}"))
-                }
-                crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
-                crate::Error::ConnectionRefused { .. } => {
-                    ProviderError::Network("Connection failed".to_string())
-                }
-                crate::Error::Http(http_err) => {
-                    if http_err.is_timeout() {
-                        ProviderError::Timeout
-                    } else if http_err.is_connect() {
-                        ProviderError::Network(format!("Connection failed: {http_err}"))
-                    } else {
-                        ProviderError::Network(format!("Request failed: {http_err}"))
+                request.timeout(context.timeout).send().await
+            })
+            .await
+            .map_err(|e| {
+                error!("arXiv request failed: {}", e);
+                match e {
+                    crate::Error::CircuitBreakerOpen { service } => {
+                        ProviderError::ServiceUnavailable(format!(
+                            "Circuit breaker open for {service}"
+                        ))
                     }
+                    crate::Error::NetworkTimeout { .. } => ProviderError::Timeout,
+                    crate::Error::ConnectionRefused { .. } => {
+                        ProviderError::Network("Connection failed".to_string())
+                    }
+                    crate::Error::Http(http_err) => {
+                        if http_err.is_timeout() {
+                            ProviderError::Timeout
+                        } else if http_err.is_connect() {
+                            ProviderError::Network(format!("Connection failed: {http_err}"))
+                        } else {
+                            ProviderError::Network(format!("Request failed: {http_err}"))
+                        }
+                    }
+                    _ => ProviderError::Network(format!("Request failed: {e}")),
                 }
-                _ => ProviderError::Network(format!("Request failed: {e}"))
-            }
-        })?;
+            })?;
 
         // Check response status
         if !response.status().is_success() {
@@ -363,13 +368,16 @@ impl SourceProvider for ArxivProvider {
         debug!("Performing arXiv health check");
 
         // Simplified health check that just tries to connect to the API
-        let response = self.circuit_breaker_service.call_http("arxiv", || async {
-            self.client
-                .get(&self.base_url)
-                .timeout(Duration::from_secs(10))
-                .send()
-                .await
-        }).await;
+        let response = self
+            .circuit_breaker_service
+            .call_http("arxiv", || async {
+                self.client
+                    .get(&self.base_url)
+                    .timeout(Duration::from_secs(10))
+                    .send()
+                    .await
+            })
+            .await;
 
         match response {
             Ok(resp) => {

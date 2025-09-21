@@ -286,7 +286,8 @@ impl BibliographyTool {
             .unwrap_or("Unknown");
 
         let year = metadata
-            .year.map_or_else(|| "0000".to_string(), |y| y.to_string());
+            .year
+            .map_or_else(|| "0000".to_string(), |y| y.to_string());
 
         let title_word = metadata.title.split_whitespace().next().unwrap_or("Paper");
 
@@ -302,7 +303,8 @@ impl BibliographyTool {
     fn format_apa(&self, metadata: &PaperMetadata) -> String {
         let authors = self.format_authors_apa(&metadata.authors);
         let year = metadata
-            .year.map_or_else(|| "(n.d.)".to_string(), |y| format!("({y})"));
+            .year
+            .map_or_else(|| "(n.d.)".to_string(), |y| format!("({y})"));
 
         let mut citation = format!("{}. {}. {}.", authors, year, metadata.title);
 
@@ -460,7 +462,8 @@ impl BibliographyTool {
     fn format_harvard(&self, metadata: &PaperMetadata) -> String {
         let authors = metadata.authors.join(", ");
         let year = metadata
-            .year.map_or_else(|| "n.d.".to_string(), |y| y.to_string());
+            .year
+            .map_or_else(|| "n.d.".to_string(), |y| y.to_string());
 
         let mut citation = format!("{} {}, '{}'", authors, year, metadata.title);
 
@@ -486,11 +489,13 @@ impl BibliographyTool {
 
     /// Combine citations into a bibliography
     fn combine_citations(&self, citations: &[Citation], format: &CitationFormat) -> String {
-        if matches!(format, CitationFormat::BibTeX) { citations
-        .iter()
-        .map(|c| c.text.clone())
-        .collect::<Vec<_>>()
-        .join("\n\n") } else {
+        if matches!(format, CitationFormat::BibTeX) {
+            citations
+                .iter()
+                .map(|c| c.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        } else {
             // For other formats, sort alphabetically and number
             let mut sorted_citations = citations.to_vec();
             sorted_citations.sort_by(|a, b| {
