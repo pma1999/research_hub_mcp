@@ -212,17 +212,20 @@ impl CategorizationService {
     }
 
     /// Check if categorization is enabled
-    #[must_use] pub const fn is_enabled(&self) -> bool {
+    #[must_use]
+    pub const fn is_enabled(&self) -> bool {
         self.config.enabled
     }
 
     /// Get default category
-    #[must_use] pub fn default_category(&self) -> &str {
+    #[must_use]
+    pub fn default_category(&self) -> &str {
         &self.config.default_category
     }
 
     /// Get max abstracts configuration
-    #[must_use] pub const fn max_abstracts(&self) -> usize {
+    #[must_use]
+    pub const fn max_abstracts(&self) -> usize {
         self.config.max_abstracts
     }
 }

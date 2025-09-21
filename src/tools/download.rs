@@ -369,17 +369,25 @@ impl DownloadTool {
                 search_result.successful_providers
             );
 
-            // First, look for any paper with a PDF URL already available
+            // First, look for any paper with a non-empty PDF URL already available
             let paper_with_pdf = search_result
                 .papers
                 .iter()
-                .find(|paper| paper.pdf_url.is_some())
+                .find(|paper| {
+                    paper
+                        .pdf_url
+                        .as_ref()
+                        .map(|url| !url.is_empty())
+                        .unwrap_or(false)
+                })
                 .cloned();
 
             if let Some(paper) = paper_with_pdf {
                 if let Some(pdf_url) = &paper.pdf_url {
-                    info!("Found PDF URL directly from provider: {}", pdf_url);
-                    return Ok((pdf_url.clone(), Some(paper)));
+                    if !pdf_url.is_empty() {
+                        info!("Found PDF URL directly from provider: {}", pdf_url);
+                        return Ok((pdf_url.clone(), Some(paper)));
+                    }
                 }
             }
 
@@ -616,6 +624,14 @@ impl DownloadTool {
         metadata: Option<PaperMetadata>,
         verify_integrity: bool,
     ) -> Result<DownloadResult> {
+        // Validate that the URL is not empty
+        if download_url.is_empty() {
+            return Err(crate::Error::InvalidInput {
+                field: "download_url".to_string(),
+                reason: "Download URL cannot be empty".to_string(),
+            });
+        }
+
         let start_time = SystemTime::now();
 
         info!("Starting download: {} -> {:?}", download_url, file_path);
