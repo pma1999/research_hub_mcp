@@ -171,7 +171,6 @@ impl MetaSearchClient {
         adaptive_size
     }
 
-
     /// Static version of `update_provider_stats` for use in spawned tasks
     async fn update_provider_stats_static(
         provider_stats: &Arc<RwLock<HashMap<String, ProviderStats>>>,

@@ -175,9 +175,10 @@ impl DownloadTool {
             .connect_timeout(Duration::from_secs(30))
             .pool_max_idle_per_host(10) // Enable connection pooling with 10 idle connections per host
             .pool_idle_timeout(Duration::from_secs(30)) // Keep idle connections for 30 seconds
-            .http2_prior_knowledge() // Enable HTTP/2 prior knowledge for better performance
-            .http2_keep_alive_interval(Some(Duration::from_secs(10))) // HTTP/2 keepalive
+            // Removed http2_prior_knowledge() to fix HTTP/2 frame size errors
+            .http2_keep_alive_interval(Some(Duration::from_secs(30))) // Less aggressive HTTP/2 keepalive
             .tcp_keepalive(Some(Duration::from_secs(60))) // TCP keepalive
+            .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36") // Add realistic user agent
             .build()
             .map_err(|e| crate::Error::Http(e))?;
 
