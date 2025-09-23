@@ -10,7 +10,7 @@ use tokio::fs;
 fn create_test_config() -> Config {
     let mut config = Config::default();
     let temp_dir = TempDir::new().unwrap();
-    config.downloads.directory = temp_dir.into_path();
+    config.downloads.directory = temp_dir.keep();
     config
 }
 

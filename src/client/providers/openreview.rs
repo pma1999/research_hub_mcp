@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn test_ml_paper_detection() {
-        let _provider = OpenReviewProvider::new().unwrap();
+        let provider = OpenReviewProvider::new().unwrap();
 
         // Should detect ML papers
         assert!(provider.is_ml_paper(
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let _provider = OpenReviewProvider::new().unwrap();
+        let provider = OpenReviewProvider::new().unwrap();
 
         assert_eq!(provider.name(), "openreview");
         assert_eq!(provider.priority(), 85);
@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_paper_conversion() {
-        let _provider = OpenReviewProvider::new().unwrap();
+        let provider = OpenReviewProvider::new().unwrap();
 
         let note = OpenReviewNote {
             id: "test123".to_string(),

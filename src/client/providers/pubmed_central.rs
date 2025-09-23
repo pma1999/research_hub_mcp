@@ -450,7 +450,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_biomedical_doi_detection() {
-        let _provider = PubMedCentralProvider::new(None).unwrap();
+        let provider = PubMedCentralProvider::new(None).unwrap();
 
         assert!(provider.is_biomedical_doi("10.1371/journal.pone.0000001"));
         assert!(provider.is_biomedical_doi("10.1038/nature12345"));
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let _provider = PubMedCentralProvider::new(None).unwrap();
+        let provider = PubMedCentralProvider::new(None).unwrap();
 
         assert_eq!(provider.name(), "pubmed_central");
         assert_eq!(provider.priority(), 89);

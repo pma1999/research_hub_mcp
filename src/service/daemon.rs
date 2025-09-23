@@ -500,8 +500,7 @@ mod tests {
     #[test]
     fn test_memory_usage_calculation() {
         // This test might fail on non-macOS systems
-        let usage = DaemonService::get_memory_usage();
-        // Just check it doesn't panic
-        assert!(usage >= 0);
+        let _usage = DaemonService::get_memory_usage();
+        // Just check it doesn't panic - memory usage is always non-negative for usize
     }
 }

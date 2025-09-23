@@ -484,7 +484,17 @@ impl SearchTool {
                 keywords.push(title.to_lowercase());
             }
             if let Some(abstract_text) = &paper.abstract_text {
-                keywords.push(abstract_text[..abstract_text.len().min(200)].to_lowercase());
+                // Safe string truncation respecting character boundaries
+                let truncated = if abstract_text.len() <= 200 {
+                    abstract_text.clone()
+                } else {
+                    let mut end = 200;
+                    while end > 0 && !abstract_text.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    abstract_text[..end].to_string()
+                };
+                keywords.push(truncated.to_lowercase());
             }
         }
 

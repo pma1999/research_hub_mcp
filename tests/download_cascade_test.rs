@@ -10,7 +10,7 @@ use tempfile::TempDir;
 fn create_test_config() -> Config {
     let mut config = Config::default();
     // Use a temporary directory for downloads in tests
-    config.downloads.directory = TempDir::new().unwrap().into_path();
+    config.downloads.directory = TempDir::new().unwrap().keep();
     config
 }
 
@@ -163,7 +163,7 @@ async fn test_search_query_validation() -> Result<()> {
         // These queries should be structurally valid
         assert!(!query.query.is_empty());
         assert!(query.max_results > 0);
-        assert!(query.offset >= 0);
+        // offset is u32, so always >= 0
     }
 
     Ok(())

@@ -194,15 +194,40 @@ impl PidFile {
 
     /// Validate path security to prevent symlink attacks
     fn validate_path_security(path: &Path) -> crate::Result<()> {
+        // Define trusted system symlinks that are safe on macOS
+        #[cfg(target_os = "macos")]
+        const TRUSTED_SYMLINKS: &[&str] = &["/var", "/tmp", "/etc", "/private"];
+
         // Check if any component in the path is a symbolic link
         let mut current_path = PathBuf::new();
         for component in path.components() {
             current_path.push(component);
             if current_path.exists() && current_path.is_symlink() {
-                return Err(crate::Error::Service(format!(
-                    "Security: Refusing to create PID file - path contains symbolic link: {:?}",
-                    current_path
-                )));
+                let path_str = current_path.to_string_lossy();
+
+                // On macOS, allow trusted system symlinks
+                #[cfg(target_os = "macos")]
+                {
+                    let is_trusted = TRUSTED_SYMLINKS.iter().any(|&trusted| {
+                        path_str == trusted || path_str.starts_with(&format!("{}/", trusted))
+                    });
+
+                    if !is_trusted {
+                        return Err(crate::Error::Service(format!(
+                            "Security: Refusing to create PID file - path contains untrusted symbolic link: {:?}",
+                            current_path
+                        )));
+                    }
+                }
+
+                // On other platforms, reject all symlinks
+                #[cfg(not(target_os = "macos"))]
+                {
+                    return Err(crate::Error::Service(format!(
+                        "Security: Refusing to create PID file - path contains symbolic link: {:?}",
+                        current_path
+                    )));
+                }
             }
         }
         Ok(())

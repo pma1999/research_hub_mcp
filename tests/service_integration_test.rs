@@ -160,7 +160,7 @@ async fn test_resource_monitoring() {
     let initial_status = service.get_status().await;
 
     // Memory and CPU usage should be initialized
-    assert!(initial_status.memory_usage_mb >= 0);
+    // memory_usage_mb is unsigned, so always >= 0
     assert!(initial_status.cpu_usage_percent >= 0.0);
 }
 

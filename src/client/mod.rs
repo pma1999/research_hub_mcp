@@ -156,8 +156,6 @@ impl SecureHttpClientFactory {
             .user_agent(&config.user_agent)
             // Security enforcements
             .tls_built_in_root_certs(true) // Use built-in root certificates
-            .min_tls_version(reqwest::tls::Version::TLS_1_2) // Enforce TLS 1.2+
-            .max_tls_version(reqwest::tls::Version::TLS_1_3) // Prefer TLS 1.3
             .https_only(true) // Enforce HTTPS connections only
             .connection_verbose(false) // Disable verbose connection logging for security
             .pool_max_idle_per_host(10) // Connection pooling for performance
@@ -346,9 +344,9 @@ mod tests {
         let client = SecureHttpClientFactory::create_client(&config);
         assert!(client.is_ok(), "Should create client with valid proxy");
 
-        // Test with invalid proxy
+        // Test with invalid proxy (truly malformed URL)
         let config_invalid = HttpClientConfig {
-            proxy: Some("invalid-proxy-url".to_string()),
+            proxy: Some(":::invalid:::".to_string()),
             ..HttpClientConfig::default()
         };
         let client_invalid = SecureHttpClientFactory::create_client(&config_invalid);

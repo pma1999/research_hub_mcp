@@ -58,17 +58,17 @@ async fn test_categorization_feature_integration() {
     assert_eq!(result.abstracts_used, 1);
 
     // Test 4: Search Tool Integration
-    let search_tool = SearchTool::new(config.clone()).unwrap();
+    let _search_tool = SearchTool::new(config.clone()).unwrap();
     // Search tool created successfully with categorization enabled config
 
     // Test 5: Download Tool Integration with Categories
     let meta_config = rust_research_mcp::client::MetaSearchConfig::default();
     let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config).unwrap());
-    let download_tool = DownloadTool::new(client, config.clone()).unwrap();
+    let _download_tool = DownloadTool::new(client, config.clone()).unwrap();
 
     // Test category-based folder creation
     let temp_dir = TempDir::new().unwrap();
-    let download_input = DownloadInput {
+    let _download_input = DownloadInput {
         doi: Some("10.1000/test".to_string()),
         url: None,
         filename: Some("test_paper.pdf".to_string()),

@@ -279,7 +279,7 @@ mod tests {
                 // Create a mock timeout error using reqwest's timeout functionality
                 let client = reqwest::Client::new();
                 let timeout_result = tokio::time::timeout(
-                    std::time::Duration::from_millis(1),
+                    Duration::from_millis(1),
                     client.get("http://httpbin.org/delay/5").send(),
                 )
                 .await;
@@ -289,7 +289,7 @@ mod tests {
                     Err(_) => {
                         // Create a proper timeout error
                         let client = reqwest::Client::builder()
-                            .timeout(std::time::Duration::from_millis(1))
+                            .timeout(Duration::from_millis(1))
                             .build()
                             .unwrap();
                         client.get("http://httpbin.org/delay/5").send().await

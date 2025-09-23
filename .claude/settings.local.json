@@ -22,7 +22,13 @@
       "Bash(git commit:*)",
       "Bash(source .env)",
       "Bash(cargo install:*)",
-      "Bash(./target/release/rust-research-mcp --version)"
+      "Bash(./target/release/rust-research-mcp --version)",
+      "Bash(cargo tree:*)",
+      "Bash(cargo doc:*)",
+      "Read(//private/var/**)",
+      "Read(//private/tmp/**)",
+      "Bash(echo $TMPDIR)",
+      "Bash(timeout 30s cargo test:*)"
     ],
     "deny": [],
     "ask": [],

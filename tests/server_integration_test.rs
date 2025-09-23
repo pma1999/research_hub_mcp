@@ -1,4 +1,3 @@
-use rmcp::handler::server::ServerHandler;
 use rust_research_mcp::{Config, Server};
 use std::sync::Arc;
 use std::time::Duration;

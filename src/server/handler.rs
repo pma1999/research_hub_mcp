@@ -18,6 +18,7 @@ use rmcp::{
     service::{RequestContext, RoleServer},
     ErrorData, ServerHandler,
 };
+use chrono::Utc;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -424,59 +425,113 @@ impl ServerHandler for ResearchServerHandler {
                     debug!("Attempting download with input: {:?}", input);
                     match download_tool.download_paper(input).await {
                         Ok(result) => {
+                            debug!("Download result received: {:?}", result.status);
+                            debug!("File size: {:?}, file path: {:?}", result.file_size, result.file_path);
+
                             // Validate that the file actually has content
                             let file_size = result.file_size.unwrap_or(0);
                             if file_size == 0 {
+                                debug!("Download succeeded but file size is 0 - cleaning up");
                                 // Clean up zero-byte file if it exists
                                 if let Some(file_path) = &result.file_path {
                                     if file_path.exists() {
+                                        debug!("Removing zero-byte file: {:?}", file_path);
                                         let _ = std::fs::remove_file(file_path);
                                     }
                                 }
                                 Ok(CallToolResult {
-                                    content: Some(vec![Content::text(format!("⚠️ Download failed - no content received\n\nDOI: {doi}\n\nThe paper was found but no downloadable content is available. This could be because:\n• The paper is too new or recently published\n• It's behind a paywall not covered by available sources\n• The DOI might be incorrect\n\nTry checking the publisher's website or your institutional access."))]),
+                                    content: Some(vec![Content::text(format!("⚠️ Download failed - no content received\n\nDOI: {doi}\n\n🔍 Debug Info:\n• Download ID: {}\n• Duration: {:.2}s\n• Status: {:?}\n• File created but empty\n\nThe paper was found but no downloadable content is available. This could be because:\n• The paper is too new or recently published\n• It's behind a paywall not covered by available sources\n• The DOI might be incorrect\n• Network issues during download\n\nTry checking the publisher's website or your institutional access.",
+                                        result.download_id, result.duration_seconds, result.status))]),
                                     structured_content: None,
                                     is_error: Some(true),
                                 })
                             } else {
+                                debug!("Download successful - file size: {} bytes", file_size);
+                                let duration_info = if result.duration_seconds > 0.0 {
+                                    format!("\n⏱️ Time: {:.1}s\n🚀 Speed: {:.1} KB/s",
+                                        result.duration_seconds,
+                                        result.average_speed as f64 / 1024.0)
+                                } else {
+                                    String::new()
+                                };
+
+                                let hash_info = result.sha256_hash
+                                    .map(|h| format!("\n🔐 SHA256: {}...", &h[..16]))
+                                    .unwrap_or_default();
+
                                 Ok(CallToolResult {
-                                    content: Some(vec![Content::text(format!("✅ Download successful!\n\n📄 File: {}\n📦 Size: {} KB\n✓ Status: Complete", 
+                                    content: Some(vec![Content::text(format!("✅ Download successful!\n\n📄 File: {}\n📦 Size: {} KB{}{}",
                                         result.file_path.as_ref().map_or("Unknown".to_string(), |p| p.display().to_string()),
-                                        file_size / 1024))]),
+                                        file_size / 1024, duration_info, hash_info))]),
                                     structured_content: None,
                                     is_error: Some(false),
                                 })
                             }
                         }
                         Err(e) => {
-                            // Return a helpful error message instead of failing the tool call
+                            debug!("Download failed with error: {}", e);
+                            debug!("Error type: {:?}", std::any::type_name_of_val(&e));
+
+                            // Generate timestamp for debugging
+                            let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+
+                            // Return a helpful error message with debug information
                             let error_msg = match e.to_string().as_str() {
-                                msg if msg.contains("No PDF available") => {
-                                    format!("⚠️ Paper not available on Sci-Hub\n\n\
+                                msg if msg.contains("No PDF available") || msg.contains("not found in any provider") => {
+                                    format!("⚠️ Paper not available for download\n\n\
                                             DOI: {doi}\n\n\
-                                            This paper is not currently available through Sci-Hub. This could be because:\n\
+                                            🔍 Debug Info:\n\
+                                            • Time: {}\n\
+                                            • Error: {}\n\
+                                            • All available sources checked\n\n\
+                                            This paper is not currently available through any source. This could be because:\n\
                                             • The paper is too new (published recently)\n\
-                                            • It's from a publisher not covered by Sci-Hub\n\
-                                            • The DOI might be incorrect\n\n\
-                                            Alternatives:\n\
+                                            • It's from a publisher not covered by available sources\n\
+                                            • The DOI might be incorrect or malformed\n\
+                                            • Temporary service unavailability\n\n\
+                                            💡 Alternatives:\n\
                                             • Try searching for the paper on Google Scholar\n\
                                             • Check if your institution has access\n\
                                             • Try arXiv or other preprint servers\n\
-                                            • Contact the authors directly")
+                                            • Contact the authors directly\n\
+                                            • Verify the DOI is correct", timestamp, msg)
                                 }
-                                msg if msg.contains("Network") || msg.contains("timeout") => {
+                                msg if msg.contains("Network") || msg.contains("timeout") || msg.contains("Connection") => {
                                     format!(
                                         "⚠️ Network error while downloading\n\n\
+                                            DOI: {doi}\n\n\
+                                            🔍 Debug Info:\n\
+                                            • Time: {}\n\
+                                            • Error: {}\n\
+                                            • Network connectivity issue detected\n\n\
                                             Please check your internet connection and try again.\n\
-                                            Error: {msg}"
+                                            If the problem persists, the source servers may be temporarily unavailable.",
+                                        timestamp, msg
+                                    )
+                                }
+                                msg if msg.contains("Permission") || msg.contains("Claude Desktop") => {
+                                    format!(
+                                        "⚠️ File system permission error\n\n\
+                                            DOI: {doi}\n\n\
+                                            🔍 Debug Info:\n\
+                                            • Time: {}\n\
+                                            • Error: {}\n\n\
+                                            This appears to be a permission issue with accessing the download directory.\n\
+                                            Please check the error message for specific instructions to resolve.",
+                                        timestamp, msg
                                     )
                                 }
                                 _ => {
                                     format!(
                                         "⚠️ Download failed\n\n\
-                                            DOI: {doi}\n\
-                                            Error: {e}\n\n\
-                                            Please try again or use a different DOI."
+                                            DOI: {doi}\n\n\
+                                            🔍 Debug Info:\n\
+                                            • Time: {}\n\
+                                            • Error Type: {}\n\
+                                            • Error: {}\n\n\
+                                            Please try again or use a different DOI. If this error persists,\n\
+                                            it may indicate an issue with the paper source or network connectivity.",
+                                        timestamp, std::any::type_name_of_val(&e), e
                                     )
                                 }
                             };

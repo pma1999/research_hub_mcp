@@ -215,40 +215,83 @@ impl DownloadTool {
     // #[tool] // Will be enabled when rmcp integration is complete
     #[instrument(skip(self), fields(doi = ?input.doi, url = ?input.url))]
     pub async fn download_paper(&self, input: DownloadInput) -> Result<DownloadResult> {
+        debug!("📥 Starting paper download process");
+        debug!("🔍 Input validation - DOI: {:?}, URL: {:?}, filename: {:?}, directory: {:?}, category: {:?}",
+               input.doi, input.url, input.filename, input.directory, input.category);
+        debug!("⚙️ Download settings - overwrite: {}, verify_integrity: {}",
+               input.overwrite, input.verify_integrity);
+
         info!(
             "Starting paper download: doi={:?}, url={:?}",
             input.doi, input.url
         );
 
         // Validate input
+        debug!("🔍 Validating download input parameters");
         Self::validate_input(&input)?;
+        debug!("✅ Input validation passed");
 
         // Generate download ID
         let download_id = uuid::Uuid::new_v4().to_string();
+        debug!("🆔 Generated download ID: {}", download_id);
 
         // Get download URL and metadata
-        let (download_url, metadata) = self.resolve_download_source(&input).await?;
+        debug!("🔎 Resolving download source for input");
+        let (download_url, metadata) = match self.resolve_download_source(&input).await {
+            Ok((url, meta)) => {
+                debug!("✅ Successfully resolved download source");
+                debug!("📄 Metadata found: {}", meta.is_some());
+                debug!("🔗 Download URL length: {} chars", url.len());
+                debug!("🔗 Download URL (truncated): {}...",
+                       if url.len() > 100 { &url[..100] } else { &url });
+                (url, meta)
+            },
+            Err(e) => {
+                debug!("❌ Failed to resolve download source: {}", e);
+                debug!("🔧 Error type: {:?}", std::any::type_name_of_val(&e));
+                return Err(e);
+            }
+        };
 
         // Safety check: ensure we never proceed with an empty URL
         if download_url.is_empty() {
-            error!("resolve_download_source returned an empty URL - this is a bug!");
+            error!("❌ resolve_download_source returned an empty URL - this is a bug!");
+            debug!("🐛 Empty URL bug detected - this should never happen after successful resolution");
             return Err(crate::Error::InvalidInput {
                 field: "download_url".to_string(),
                 reason: "Internal error: No download URL was found for this paper".to_string(),
             });
         }
 
+        debug!("✅ URL safety check passed - proceeding with download");
+
         // Determine target file path
-        let file_path = self
+        debug!("📁 Determining target file path");
+        let file_path = match self
             .determine_file_path(&input, metadata.as_ref(), &download_url)
-            .await?;
+            .await {
+            Ok(path) => {
+                debug!("✅ Target file path determined: {:?}", path);
+                debug!("📁 Directory exists: {}", path.parent().map_or(false, |p| p.exists()));
+                path
+            },
+            Err(e) => {
+                debug!("❌ Failed to determine file path: {}", e);
+                debug!("🔧 Error details: {:?}", e);
+                return Err(e);
+            }
+        };
 
         // Check for existing file
+        debug!("🔍 Checking for existing file at: {:?}", file_path);
         if file_path.exists() && !input.overwrite {
+            debug!("📄 File already exists, checking integrity verification setting");
             if input.verify_integrity {
+                debug!("🔐 Calculating hash for existing file verification");
                 if let Ok(hash) = self.calculate_file_hash(&file_path).await {
-                    info!("File already exists and verified: {:?}", file_path);
                     let file_size = tokio::fs::metadata(&file_path).await?.len();
+                    debug!("✅ Existing file verified - size: {} bytes, hash: {}", file_size, &hash[..16]);
+                    info!("File already exists and verified: {:?}", file_path);
                     return Ok(DownloadResult {
                         download_id,
                         status: DownloadStatus::Completed,
@@ -260,8 +303,11 @@ impl DownloadTool {
                         metadata,
                         error: None,
                     });
+                } else {
+                    debug!("⚠️ Failed to verify existing file hash");
                 }
             } else {
+                debug!("❌ File exists and overwrite not enabled");
                 return Err(crate::Error::InvalidInput {
                     field: "file_path".to_string(),
                     reason: format!(
@@ -270,17 +316,38 @@ impl DownloadTool {
                     ),
                 });
             }
+        } else if file_path.exists() {
+            debug!("📄 File exists but overwrite is enabled - will replace");
+        } else {
+            debug!("✅ No existing file found - proceeding with fresh download");
         }
 
         // Perform the download
-        self.execute_download(
+        debug!("🚀 Starting download execution");
+        debug!("📊 Download parameters - ID: {}, verify: {}, file: {:?}",
+               download_id, input.verify_integrity, file_path);
+
+        match self.execute_download(
             download_id.clone(),
             download_url,
             file_path,
             metadata,
             input.verify_integrity,
         )
-        .await
+        .await {
+            Ok(result) => {
+                debug!("✅ Download execution completed successfully");
+                debug!("📊 Final result - status: {:?}, size: {:?} bytes, duration: {:.2}s",
+                       result.status, result.file_size, result.duration_seconds);
+                Ok(result)
+            },
+            Err(e) => {
+                debug!("❌ Download execution failed: {}", e);
+                debug!("🔧 Error type: {:?}", std::any::type_name_of_val(&e));
+                debug!("📝 Full error context: {:?}", e);
+                Err(e)
+            }
+        }
     }
 
     /// Validate download input
@@ -359,9 +426,11 @@ impl DownloadTool {
         input: &DownloadInput,
     ) -> Result<(String, Option<PaperMetadata>)> {
         if let Some(doi_str) = &input.doi {
+            debug!("🆔 Starting DOI-based resolution for: {}", doi_str);
             info!("Attempting to download paper with DOI: {}", doi_str);
 
             // Create a search query for the DOI
+            debug!("🔍 Creating search query for DOI resolution");
             let search_query = crate::client::providers::SearchQuery {
                 query: doi_str.clone(),
                 search_type: crate::client::providers::SearchType::Doi,
@@ -369,9 +438,23 @@ impl DownloadTool {
                 offset: 0,
                 params: HashMap::new(),
             };
+            debug!("🔍 Search query created - type: DOI, max_results: 1");
 
             // Use the meta search client to find papers across ALL providers
-            let search_result = self.client.search(&search_query).await?;
+            debug!("🔎 Executing meta-search across all providers");
+            let search_result = match self.client.search(&search_query).await {
+                Ok(result) => {
+                    debug!("✅ Meta-search completed successfully");
+                    debug!("📊 Search stats - papers: {}, successful_providers: {}, failed_providers: {}",
+                           result.papers.len(), result.successful_providers, result.failed_providers);
+                    result
+                },
+                Err(e) => {
+                    debug!("❌ Meta-search failed: {}", e);
+                    debug!("🔧 Search error type: {:?}", std::any::type_name_of_val(&e));
+                    return Err(e.into());
+                }
+            };
 
             info!(
                 "Meta-search found {} papers from {} providers",
@@ -379,57 +462,107 @@ impl DownloadTool {
                 search_result.successful_providers
             );
 
+            // Log detailed provider results
+            debug!("📋 Provider breakdown:");
+            for (source, papers) in &search_result.by_source {
+                debug!("• {}: {} papers", source, papers.len());
+                if !papers.is_empty() {
+                    for (i, paper) in papers.iter().enumerate().take(2) { // Log first 2 papers max
+                        debug!("  [{}] Title: {:?}, PDF URL present: {}",
+                               i + 1,
+                               paper.title.as_ref().map(|t| if t.len() > 50 { &t[..50] } else { t }),
+                               paper.pdf_url.as_ref().map_or(false, |url| !url.is_empty()));
+                    }
+                }
+            }
+
             // First, look for any paper with a non-empty PDF URL already available
+            debug!("🔍 Looking for papers with direct PDF URLs");
             let paper_with_pdf = search_result
                 .papers
                 .iter()
-                .find(|paper| {
-                    paper
+                .enumerate()
+                .find_map(|(i, paper)| {
+                    let has_pdf = paper
                         .pdf_url
                         .as_ref()
                         .map(|url| !url.is_empty())
-                        .unwrap_or(false)
-                })
-                .cloned();
+                        .unwrap_or(false);
+                    debug!("  Paper {}: PDF URL available: {}", i + 1, has_pdf);
+                    if has_pdf {
+                        debug!("  ✅ Found paper with direct PDF URL at index {}", i);
+                        Some(paper.clone())
+                    } else {
+                        None
+                    }
+                });
 
             if let Some(paper) = paper_with_pdf {
                 if let Some(pdf_url) = &paper.pdf_url {
                     if !pdf_url.is_empty() {
+                        debug!("✅ Direct PDF URL found - length: {} chars", pdf_url.len());
+                        debug!("🔗 URL source: direct provider response");
                         info!("Found PDF URL directly from provider: {}", pdf_url);
                         return Ok((pdf_url.clone(), Some(paper)));
                     }
+                    debug!("⚠️ Paper has PDF URL field but it's empty - data inconsistency");
                     warn!("Paper has PDF URL but it's empty - this shouldn't happen!");
+                } else {
+                    debug!("⚠️ Paper found but pdf_url field is None");
                 }
+            } else {
+                debug!("🔍 No papers with direct PDF URLs found in search results");
             }
 
             // If no direct PDF URL, try cascade approach through each provider
+            debug!("🔄 Initiating cascade retrieval approach");
             info!("No direct PDF URL found, attempting cascade retrieval through all providers");
 
             // Log what we found from each source
+            debug!("📋 Logging detailed source analysis:");
             for (source, papers) in &search_result.by_source {
                 if !papers.is_empty() {
+                    debug!("• Provider '{}' found {} paper(s) but no PDF URL", source, papers.len());
                     info!("Provider '{}' found paper metadata but no PDF URL", source);
+                    for paper in papers {
+                        debug!("    - Title: {:?}", paper.title.as_ref().map(|t|
+                            if t.len() > 60 { &t[..60] } else { t }));
+                        debug!("    - Authors: {:?}", paper.authors.iter().take(3).collect::<Vec<_>>());
+                        debug!("    - Year: {:?}", paper.year);
+                    }
+                } else {
+                    debug!("• Provider '{}' returned no results", source);
                 }
             }
 
             // Try cascade PDF retrieval through all providers
+            debug!("🔄 Executing cascade retrieval for DOI: {}", doi_str);
             match self.client.get_pdf_url_cascade(doi_str).await {
                 Ok(Some(pdf_url)) => {
+                    debug!("✅ Cascade retrieval SUCCESS! PDF URL obtained");
+                    debug!("🔗 PDF URL length: {} chars", pdf_url.len());
+                    debug!("📄 Using metadata from first search result: {}", search_result.papers.first().is_some());
                     info!("Cascade retrieval successful! Found PDF URL: {}", pdf_url);
                     // Use the first paper's metadata if available
                     let metadata = search_result.papers.first().cloned();
                     return Ok((pdf_url, metadata));
                 }
                 Ok(None) => {
+                    debug!("❌ Cascade retrieval completed but returned None");
+                    debug!("📝 This means all providers were checked but no PDF was found");
                     info!("Cascade retrieval completed but no PDF found in any provider");
                 }
                 Err(e) => {
+                    debug!("❌ Cascade retrieval failed with error: {}", e);
+                    debug!("🔧 Cascade error type: {:?}", std::any::type_name_of_val(&e));
                     warn!("Cascade retrieval failed with error: {}", e);
                 }
             }
 
             // If cascade also failed, return detailed error with metadata
+            debug!("❌ All retrieval methods exhausted - preparing detailed error response");
             if let Some(paper) = search_result.papers.first() {
+                debug!("📄 Paper metadata found, checking for data inconsistencies");
                 // Check if any paper has an empty PDF URL (shouldn't happen, but let's be safe)
                 if let Some(empty_url_paper) = search_result.papers.iter().find(|p| {
                     p.pdf_url
@@ -437,11 +570,16 @@ impl DownloadTool {
                         .map(|url| url.is_empty())
                         .unwrap_or(false)
                 }) {
+                    debug!("⚠️ Data inconsistency detected - paper with empty PDF URL field");
                     warn!(
                         "Found paper with empty PDF URL - this shouldn't happen! Paper: {:?}",
                         empty_url_paper
                     );
                 }
+
+                debug!("📋 Preparing detailed error message with paper metadata");
+                debug!("📄 Paper details - Title: {:?}, Authors: {:?}, Year: {:?}",
+                       paper.title, paper.authors, paper.year);
 
                 let error_msg = format!(
                     "Paper found in {} provider(s) but no downloadable PDF available after checking all sources. \
@@ -457,24 +595,39 @@ impl DownloadTool {
                     paper.year.map_or("year unknown".to_string(), |y| y.to_string())
                 );
 
+                debug!("📝 Generated error message length: {} chars", error_msg.len());
+
+                debug!("❌ Returning ServiceUnavailable error for PDF Download");
                 Err(crate::Error::ServiceUnavailable {
                     service: "PDF Download".to_string(),
                     reason: error_msg,
                 })
             } else {
+                debug!("❌ No paper metadata found in any provider");
+                debug!("📊 Search summary - successful: {}, failed: {}, total checked: {}",
+                       search_result.successful_providers,
+                       search_result.failed_providers,
+                       search_result.successful_providers + search_result.failed_providers);
+
+                let error_msg = format!(
+                    "DOI '{}' not found in any provider ({} providers checked, {} failed)",
+                    doi_str,
+                    search_result.successful_providers + search_result.failed_providers,
+                    search_result.failed_providers
+                );
+
+                debug!("❌ Returning ServiceUnavailable error for MetaSearch: {}", error_msg);
                 Err(crate::Error::ServiceUnavailable {
                     service: "MetaSearch".to_string(),
-                    reason: format!(
-                        "DOI '{}' not found in any provider ({} providers checked, {} failed)",
-                        doi_str,
-                        search_result.successful_providers + search_result.failed_providers,
-                        search_result.failed_providers
-                    ),
+                    reason: error_msg,
                 })
             }
         } else if let Some(url) = &input.url {
+            debug!("🔗 Using direct URL for download: {} chars", url.len());
+            debug!("🔗 URL (truncated): {}...", if url.len() > 100 { &url[..100] } else { url });
             Ok((url.clone(), None))
         } else {
+            debug!("❌ No download source specified in input");
             Err(crate::Error::InvalidInput {
                 field: "input".to_string(),
                 reason: "No download source specified".to_string(),
@@ -648,54 +801,121 @@ impl DownloadTool {
         metadata: Option<PaperMetadata>,
         verify_integrity: bool,
     ) -> Result<DownloadResult> {
+        debug!("🚀 Execute download called with ID: {}", download_id);
+        debug!("🔗 Download URL validation");
+
         // Validate that the URL is not empty
         if download_url.is_empty() {
+            debug!("❌ Download URL is empty - this should not happen");
             return Err(crate::Error::InvalidInput {
                 field: "download_url".to_string(),
                 reason: "Download URL cannot be empty".to_string(),
             });
         }
+        debug!("✅ URL validation passed - length: {} chars", download_url.len());
 
         let start_time = SystemTime::now();
+        debug!("⏱️ Download timer started at: {:?}", start_time);
 
         info!("Starting download: {} -> {:?}", download_url, file_path);
+        debug!("📁 Target file: {:?}", file_path);
+        debug!("🔐 Integrity verification: {}", verify_integrity);
+        debug!("📄 Metadata available: {}", metadata.is_some());
 
         // Create initial progress state
+        debug!("📊 Creating initial progress state");
         let mut progress = Self::create_initial_progress(
             download_id.clone(),
             download_url.clone(),
             file_path.clone(),
         );
+        debug!("📊 Progress state created - status: {:?}", progress.status);
 
         // Send initial progress
+        debug!("📡 Sending initial progress notification");
         self.send_progress(progress.clone());
 
         // Make HEAD request to get file size
-        let total_size = self.get_content_length(&download_url).await.ok();
+        debug!("🔍 Making HEAD request to determine file size");
+        let total_size = match self.get_content_length(&download_url).await {
+            Ok(size) => {
+                debug!("✅ Content-Length determined: {} bytes ({:.2} MB)", size, size as f64 / 1_048_576.0);
+                Some(size)
+            },
+            Err(e) => {
+                debug!("⚠️ Could not determine content length: {}", e);
+                debug!("📝 Will download without progress percentage");
+                None
+            }
+        };
         progress.total_size = total_size;
 
         // Check for partial download (resume capability) but don't create file yet
+        debug!("🔄 Checking for resume capability");
         let start_byte = if file_path.exists() {
-            tokio::fs::metadata(&file_path).await?.len()
+            let existing_size = tokio::fs::metadata(&file_path).await?.len();
+            debug!("📄 Existing file found - size: {} bytes", existing_size);
+            debug!("🔄 Will attempt to resume download from byte {}", existing_size);
+            existing_size
         } else {
+            debug!("🆕 No existing file - starting fresh download");
             0
         };
         progress.downloaded = start_byte;
+        if start_byte > 0 {
+            debug!("📊 Updated progress with existing bytes: {}", start_byte);
+        }
 
         // Make download request first to verify it's valid
-        let response = self
+        debug!("🌐 Making download request with start_byte: {}", start_byte);
+        let response = match self
             .make_download_request(&download_url, start_byte)
-            .await?;
+            .await {
+            Ok(resp) => {
+                debug!("✅ Download request successful");
+                debug!("📊 Response status: {}", resp.status());
+                debug!("📋 Response headers count: {}", resp.headers().len());
+                if let Some(content_type) = resp.headers().get("content-type") {
+                    debug!("📄 Content-Type: {:?}", content_type);
+                }
+                resp
+            },
+            Err(e) => {
+                debug!("❌ Download request failed: {}", e);
+                debug!("🔧 Request error type: {:?}", std::any::type_name_of_val(&e));
+                return Err(e);
+            }
+        };
 
         // Update total size from response if not known
+        debug!("🔄 Updating total size from response headers");
+        let old_total = progress.total_size;
         Self::update_total_size_from_response(&mut progress, &response, start_byte);
+        if progress.total_size != old_total {
+            debug!("📊 Total size updated from {} to {:?}",
+                   old_total.map_or("None".to_string(), |s| s.to_string()),
+                   progress.total_size);
+        } else {
+            debug!("📊 Total size unchanged: {:?}", progress.total_size);
+        }
 
         // Download with progress tracking - this will create the file only if download succeeds
-        self.download_with_progress(response, &file_path, start_byte, &mut progress)
-            .await?;
+        debug!("📥 Starting progress-tracked download");
+        match self.download_with_progress(response, &file_path, start_byte, &mut progress)
+            .await {
+            Ok(()) => {
+                debug!("✅ Progress-tracked download completed successfully");
+            },
+            Err(e) => {
+                debug!("❌ Progress-tracked download failed: {}", e);
+                debug!("🔧 Download error type: {:?}", std::any::type_name_of_val(&e));
+                return Err(e);
+            }
+        };
 
         // Finalize download
-        self.finalize_download(
+        debug!("🏁 Finalizing download process");
+        match self.finalize_download(
             &file_path,
             start_time,
             verify_integrity,
@@ -703,7 +923,19 @@ impl DownloadTool {
             download_id,
             metadata,
         )
-        .await
+        .await {
+            Ok(result) => {
+                debug!("✅ Download finalization completed successfully");
+                debug!("📊 Final download stats - size: {:?} bytes, duration: {:.2}s, speed: {} bytes/s",
+                       result.file_size, result.duration_seconds, result.average_speed);
+                Ok(result)
+            },
+            Err(e) => {
+                debug!("❌ Download finalization failed: {}", e);
+                debug!("🔧 Finalization error type: {:?}", std::any::type_name_of_val(&e));
+                Err(e)
+            }
+        }
     }
 
     /// Create initial progress state
@@ -778,26 +1010,59 @@ impl DownloadTool {
         start_byte: u64,
         progress: &mut DownloadProgress,
     ) -> Result<()> {
+        debug!("📥 Starting progressive download");
+        debug!("📁 Target file: {:?}", file_path);
+        debug!("🔄 Resume from byte: {}", start_byte);
+        debug!("📊 Expected total size: {:?}", progress.total_size);
+
         let mut stream = response.bytes_stream();
         let mut last_progress_time = SystemTime::now();
         let mut bytes_at_last_time = progress.downloaded;
+        let mut chunk_count = 0u64;
+        let mut total_bytes_received = 0u64;
 
         // Only create/open file when we start receiving data
         let mut file_created = false;
         let mut file: Option<File> = None;
+        debug!("🔍 File will be created on first successful chunk");
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result
-                .map_err(|e| crate::Error::Service(format!("Download stream error: {e}")))?;
+            let chunk = match chunk_result {
+                Ok(chunk) => {
+                    chunk_count += 1;
+                    total_bytes_received += chunk.len() as u64;
+                    if chunk_count <= 5 || chunk_count % 100 == 0 {
+                        debug!("📦 Chunk #{}: {} bytes (total: {} bytes)", chunk_count, chunk.len(), total_bytes_received);
+                    }
+                    chunk
+                },
+                Err(e) => {
+                    debug!("❌ Stream error at chunk #{}: {}", chunk_count, e);
+                    debug!("📊 Bytes received before error: {}", total_bytes_received);
+                    return Err(crate::Error::Service(format!("Download stream error: {e}")));
+                }
+            };
 
             // Create file on first successful chunk
             if file_created {
                 // File already created, write subsequent chunks
                 if let Some(ref mut f) = file {
-                    f.write_all(&chunk).await.map_err(crate::Error::Io)?;
+                    match f.write_all(&chunk).await {
+                        Ok(()) => {
+                            if chunk_count <= 3 {
+                                debug!("✅ Chunk #{} written successfully", chunk_count);
+                            }
+                        },
+                        Err(e) => {
+                            debug!("❌ Failed to write chunk #{}: {}", chunk_count, e);
+                            return Err(crate::Error::Io(e));
+                        }
+                    }
                 }
             } else {
+                debug!("📁 Creating/opening file for first chunk");
                 let mut file_handle = if file_path.exists() && start_byte > 0 {
+                    debug!("🔄 Resuming download - opening existing file for append");
                     // File exists, open for append
                     OpenOptions::new()
                         .write(true)
@@ -806,25 +1071,35 @@ impl DownloadTool {
                         .await
                         .map_err(crate::Error::Io)?
                 } else {
+                    debug!("🆕 Creating new file for download");
                     // Security: Validate file path security before creation
                     Self::validate_file_security(file_path).await?;
+                    debug!("✅ File security validation passed");
 
                     // Create new file only when we have data to write
                     let file = File::create(file_path).await.map_err(crate::Error::Io)?;
+                    debug!("✅ File created successfully: {:?}", file_path);
 
                     // Security: Set restrictive permissions on downloaded files
                     Self::set_secure_file_permissions(file_path).await?;
+                    debug!("✅ Secure file permissions set");
 
                     file
                 };
 
                 // Write the first chunk
-                file_handle
-                    .write_all(&chunk)
-                    .await
-                    .map_err(crate::Error::Io)?;
-                file = Some(file_handle);
-                file_created = true;
+                debug!("✏️ Writing first chunk ({} bytes)", chunk.len());
+                match file_handle.write_all(&chunk).await {
+                    Ok(()) => {
+                        debug!("✅ First chunk written successfully");
+                        file = Some(file_handle);
+                        file_created = true;
+                    },
+                    Err(e) => {
+                        debug!("❌ Failed to write first chunk: {}", e);
+                        return Err(crate::Error::Io(e));
+                    }
+                }
             }
 
             progress.downloaded += chunk.len() as u64;
@@ -837,6 +1112,8 @@ impl DownloadTool {
                 >= Duration::from_millis(500)
             {
                 Self::update_progress_stats(progress, now, last_progress_time, bytes_at_last_time);
+                debug!("📊 Progress update - downloaded: {} bytes, speed: {} bytes/s, percentage: {:.1}%",
+                       progress.downloaded, progress.speed_bps, progress.percentage);
                 self.send_progress(progress.clone());
 
                 last_progress_time = now;
@@ -846,10 +1123,21 @@ impl DownloadTool {
 
         // Ensure we actually received some data
         if !file_created {
+            debug!("❌ No file was created - no data received from stream");
+            debug!("📊 Final stats - chunks: {}, total bytes: {}", chunk_count, total_bytes_received);
             return Err(crate::Error::Service(
                 "No data received from download".to_string(),
             ));
         }
+
+        debug!("✅ Download stream completed successfully");
+        debug!("📊 Final stats - {} chunks processed, {} bytes total", chunk_count, total_bytes_received);
+        debug!("📁 File created at: {:?}", file_path);
+
+        // Final progress update
+        debug!("📡 Sending final progress update");
+        Self::update_progress_stats(progress, SystemTime::now(), last_progress_time, bytes_at_last_time);
+        self.send_progress(progress.clone());
 
         Ok(())
     }
@@ -1030,6 +1318,10 @@ impl DownloadTool {
 
     /// Validate directory security to prevent attacks
     async fn validate_directory_security(path: &Path) -> Result<()> {
+        // Define trusted system symlinks that are safe on macOS
+        #[cfg(target_os = "macos")]
+        const TRUSTED_SYMLINKS: &[&str] = &["/var", "/tmp", "/etc", "/private"];
+
         // Check if any component in the path is a symbolic link
         let mut current_path = PathBuf::new();
         for component in path.components() {
@@ -1042,10 +1334,31 @@ impl DownloadTool {
                     })?;
 
                 if metadata.file_type().is_symlink() {
-                    return Err(crate::Error::Service(format!(
-                        "Security: Refusing to create directory - path contains symbolic link: {:?}",
-                        current_path
-                    )));
+                    let path_str = current_path.to_string_lossy();
+
+                    // On macOS, allow trusted system symlinks
+                    #[cfg(target_os = "macos")]
+                    {
+                        let is_trusted = TRUSTED_SYMLINKS.iter().any(|&trusted| {
+                            path_str == trusted || path_str.starts_with(&format!("{}/", trusted))
+                        });
+
+                        if !is_trusted {
+                            return Err(crate::Error::Service(format!(
+                                "Security: Refusing to create directory - path contains untrusted symbolic link: {:?}",
+                                current_path
+                            )));
+                        }
+                    }
+
+                    // On other platforms, reject all symlinks
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        return Err(crate::Error::Service(format!(
+                            "Security: Refusing to create directory - path contains symbolic link: {:?}",
+                            current_path
+                        )));
+                    }
                 }
             }
         }

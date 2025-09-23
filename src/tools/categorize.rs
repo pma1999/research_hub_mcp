@@ -349,7 +349,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_categorize_papers() {
-        let _tool = create_test_categorize_tool().unwrap();
+        let tool = create_test_categorize_tool().unwrap();
 
         let input = CategorizeInput {
             query: "machine learning in healthcare".to_string(),
@@ -368,7 +368,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_heuristic_categorization() {
-        let _tool = create_test_categorize_tool().unwrap();
+        let tool = create_test_categorize_tool().unwrap();
         let papers = create_test_papers();
 
         // Test machine learning categorization
