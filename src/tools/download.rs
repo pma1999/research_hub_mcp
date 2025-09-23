@@ -218,8 +218,10 @@ impl DownloadTool {
         debug!("📥 Starting paper download process");
         debug!("🔍 Input validation - DOI: {:?}, URL: {:?}, filename: {:?}, directory: {:?}, category: {:?}",
                input.doi, input.url, input.filename, input.directory, input.category);
-        debug!("⚙️ Download settings - overwrite: {}, verify_integrity: {}",
-               input.overwrite, input.verify_integrity);
+        debug!(
+            "⚙️ Download settings - overwrite: {}, verify_integrity: {}",
+            input.overwrite, input.verify_integrity
+        );
 
         info!(
             "Starting paper download: doi={:?}, url={:?}",
@@ -242,10 +244,12 @@ impl DownloadTool {
                 debug!("✅ Successfully resolved download source");
                 debug!("📄 Metadata found: {}", meta.is_some());
                 debug!("🔗 Download URL length: {} chars", url.len());
-                debug!("🔗 Download URL (truncated): {}...",
-                       if url.len() > 100 { &url[..100] } else { &url });
+                debug!(
+                    "🔗 Download URL (truncated): {}...",
+                    if url.len() > 100 { &url[..100] } else { &url }
+                );
                 (url, meta)
-            },
+            }
             Err(e) => {
                 debug!("❌ Failed to resolve download source: {}", e);
                 debug!("🔧 Error type: {:?}", std::any::type_name_of_val(&e));
@@ -256,7 +260,9 @@ impl DownloadTool {
         // Safety check: ensure we never proceed with an empty URL
         if download_url.is_empty() {
             error!("❌ resolve_download_source returned an empty URL - this is a bug!");
-            debug!("🐛 Empty URL bug detected - this should never happen after successful resolution");
+            debug!(
+                "🐛 Empty URL bug detected - this should never happen after successful resolution"
+            );
             return Err(crate::Error::InvalidInput {
                 field: "download_url".to_string(),
                 reason: "Internal error: No download URL was found for this paper".to_string(),
@@ -269,12 +275,16 @@ impl DownloadTool {
         debug!("📁 Determining target file path");
         let file_path = match self
             .determine_file_path(&input, metadata.as_ref(), &download_url)
-            .await {
+            .await
+        {
             Ok(path) => {
                 debug!("✅ Target file path determined: {:?}", path);
-                debug!("📁 Directory exists: {}", path.parent().map_or(false, |p| p.exists()));
+                debug!(
+                    "📁 Directory exists: {}",
+                    path.parent().map_or(false, |p| p.exists())
+                );
                 path
-            },
+            }
             Err(e) => {
                 debug!("❌ Failed to determine file path: {}", e);
                 debug!("🔧 Error details: {:?}", e);
@@ -290,7 +300,11 @@ impl DownloadTool {
                 debug!("🔐 Calculating hash for existing file verification");
                 if let Ok(hash) = self.calculate_file_hash(&file_path).await {
                     let file_size = tokio::fs::metadata(&file_path).await?.len();
-                    debug!("✅ Existing file verified - size: {} bytes, hash: {}", file_size, &hash[..16]);
+                    debug!(
+                        "✅ Existing file verified - size: {} bytes, hash: {}",
+                        file_size,
+                        &hash[..16]
+                    );
                     info!("File already exists and verified: {:?}", file_path);
                     return Ok(DownloadResult {
                         download_id,
@@ -303,9 +317,8 @@ impl DownloadTool {
                         metadata,
                         error: None,
                     });
-                } else {
-                    debug!("⚠️ Failed to verify existing file hash");
                 }
+                debug!("⚠️ Failed to verify existing file hash");
             } else {
                 debug!("❌ File exists and overwrite not enabled");
                 return Err(crate::Error::InvalidInput {
@@ -324,23 +337,29 @@ impl DownloadTool {
 
         // Perform the download
         debug!("🚀 Starting download execution");
-        debug!("📊 Download parameters - ID: {}, verify: {}, file: {:?}",
-               download_id, input.verify_integrity, file_path);
+        debug!(
+            "📊 Download parameters - ID: {}, verify: {}, file: {:?}",
+            download_id, input.verify_integrity, file_path
+        );
 
-        match self.execute_download(
-            download_id.clone(),
-            download_url,
-            file_path,
-            metadata,
-            input.verify_integrity,
-        )
-        .await {
+        match self
+            .execute_download(
+                download_id.clone(),
+                download_url,
+                file_path,
+                metadata,
+                input.verify_integrity,
+            )
+            .await
+        {
             Ok(result) => {
                 debug!("✅ Download execution completed successfully");
-                debug!("📊 Final result - status: {:?}, size: {:?} bytes, duration: {:.2}s",
-                       result.status, result.file_size, result.duration_seconds);
+                debug!(
+                    "📊 Final result - status: {:?}, size: {:?} bytes, duration: {:.2}s",
+                    result.status, result.file_size, result.duration_seconds
+                );
                 Ok(result)
-            },
+            }
             Err(e) => {
                 debug!("❌ Download execution failed: {}", e);
                 debug!("🔧 Error type: {:?}", std::any::type_name_of_val(&e));
@@ -448,7 +467,7 @@ impl DownloadTool {
                     debug!("📊 Search stats - papers: {}, successful_providers: {}, failed_providers: {}",
                            result.papers.len(), result.successful_providers, result.failed_providers);
                     result
-                },
+                }
                 Err(e) => {
                     debug!("❌ Meta-search failed: {}", e);
                     debug!("🔧 Search error type: {:?}", std::any::type_name_of_val(&e));
@@ -467,11 +486,17 @@ impl DownloadTool {
             for (source, papers) in &search_result.by_source {
                 debug!("• {}: {} papers", source, papers.len());
                 if !papers.is_empty() {
-                    for (i, paper) in papers.iter().enumerate().take(2) { // Log first 2 papers max
-                        debug!("  [{}] Title: {:?}, PDF URL present: {}",
-                               i + 1,
-                               paper.title.as_ref().map(|t| if t.len() > 50 { &t[..50] } else { t }),
-                               paper.pdf_url.as_ref().map_or(false, |url| !url.is_empty()));
+                    for (i, paper) in papers.iter().enumerate().take(2) {
+                        // Log first 2 papers max
+                        debug!(
+                            "  [{}] Title: {:?}, PDF URL present: {}",
+                            i + 1,
+                            paper
+                                .title
+                                .as_ref()
+                                .map(|t| if t.len() > 50 { &t[..50] } else { t }),
+                            paper.pdf_url.as_ref().map_or(false, |url| !url.is_empty())
+                        );
                     }
                 }
             }
@@ -522,12 +547,24 @@ impl DownloadTool {
             debug!("📋 Logging detailed source analysis:");
             for (source, papers) in &search_result.by_source {
                 if !papers.is_empty() {
-                    debug!("• Provider '{}' found {} paper(s) but no PDF URL", source, papers.len());
+                    debug!(
+                        "• Provider '{}' found {} paper(s) but no PDF URL",
+                        source,
+                        papers.len()
+                    );
                     info!("Provider '{}' found paper metadata but no PDF URL", source);
                     for paper in papers {
-                        debug!("    - Title: {:?}", paper.title.as_ref().map(|t|
-                            if t.len() > 60 { &t[..60] } else { t }));
-                        debug!("    - Authors: {:?}", paper.authors.iter().take(3).collect::<Vec<_>>());
+                        debug!(
+                            "    - Title: {:?}",
+                            paper
+                                .title
+                                .as_ref()
+                                .map(|t| if t.len() > 60 { &t[..60] } else { t })
+                        );
+                        debug!(
+                            "    - Authors: {:?}",
+                            paper.authors.iter().take(3).collect::<Vec<_>>()
+                        );
                         debug!("    - Year: {:?}", paper.year);
                     }
                 } else {
@@ -541,7 +578,10 @@ impl DownloadTool {
                 Ok(Some(pdf_url)) => {
                     debug!("✅ Cascade retrieval SUCCESS! PDF URL obtained");
                     debug!("🔗 PDF URL length: {} chars", pdf_url.len());
-                    debug!("📄 Using metadata from first search result: {}", search_result.papers.first().is_some());
+                    debug!(
+                        "📄 Using metadata from first search result: {}",
+                        search_result.papers.first().is_some()
+                    );
                     info!("Cascade retrieval successful! Found PDF URL: {}", pdf_url);
                     // Use the first paper's metadata if available
                     let metadata = search_result.papers.first().cloned();
@@ -554,7 +594,10 @@ impl DownloadTool {
                 }
                 Err(e) => {
                     debug!("❌ Cascade retrieval failed with error: {}", e);
-                    debug!("🔧 Cascade error type: {:?}", std::any::type_name_of_val(&e));
+                    debug!(
+                        "🔧 Cascade error type: {:?}",
+                        std::any::type_name_of_val(&e)
+                    );
                     warn!("Cascade retrieval failed with error: {}", e);
                 }
             }
@@ -578,8 +621,10 @@ impl DownloadTool {
                 }
 
                 debug!("📋 Preparing detailed error message with paper metadata");
-                debug!("📄 Paper details - Title: {:?}, Authors: {:?}, Year: {:?}",
-                       paper.title, paper.authors, paper.year);
+                debug!(
+                    "📄 Paper details - Title: {:?}, Authors: {:?}, Year: {:?}",
+                    paper.title, paper.authors, paper.year
+                );
 
                 let error_msg = format!(
                     "Paper found in {} provider(s) but no downloadable PDF available after checking all sources. \
@@ -595,7 +640,10 @@ impl DownloadTool {
                     paper.year.map_or("year unknown".to_string(), |y| y.to_string())
                 );
 
-                debug!("📝 Generated error message length: {} chars", error_msg.len());
+                debug!(
+                    "📝 Generated error message length: {} chars",
+                    error_msg.len()
+                );
 
                 debug!("❌ Returning ServiceUnavailable error for PDF Download");
                 Err(crate::Error::ServiceUnavailable {
@@ -604,10 +652,12 @@ impl DownloadTool {
                 })
             } else {
                 debug!("❌ No paper metadata found in any provider");
-                debug!("📊 Search summary - successful: {}, failed: {}, total checked: {}",
-                       search_result.successful_providers,
-                       search_result.failed_providers,
-                       search_result.successful_providers + search_result.failed_providers);
+                debug!(
+                    "📊 Search summary - successful: {}, failed: {}, total checked: {}",
+                    search_result.successful_providers,
+                    search_result.failed_providers,
+                    search_result.successful_providers + search_result.failed_providers
+                );
 
                 let error_msg = format!(
                     "DOI '{}' not found in any provider ({} providers checked, {} failed)",
@@ -616,7 +666,10 @@ impl DownloadTool {
                     search_result.failed_providers
                 );
 
-                debug!("❌ Returning ServiceUnavailable error for MetaSearch: {}", error_msg);
+                debug!(
+                    "❌ Returning ServiceUnavailable error for MetaSearch: {}",
+                    error_msg
+                );
                 Err(crate::Error::ServiceUnavailable {
                     service: "MetaSearch".to_string(),
                     reason: error_msg,
@@ -624,7 +677,10 @@ impl DownloadTool {
             }
         } else if let Some(url) = &input.url {
             debug!("🔗 Using direct URL for download: {} chars", url.len());
-            debug!("🔗 URL (truncated): {}...", if url.len() > 100 { &url[..100] } else { url });
+            debug!(
+                "🔗 URL (truncated): {}...",
+                if url.len() > 100 { &url[..100] } else { url }
+            );
             Ok((url.clone(), None))
         } else {
             debug!("❌ No download source specified in input");
@@ -812,7 +868,10 @@ impl DownloadTool {
                 reason: "Download URL cannot be empty".to_string(),
             });
         }
-        debug!("✅ URL validation passed - length: {} chars", download_url.len());
+        debug!(
+            "✅ URL validation passed - length: {} chars",
+            download_url.len()
+        );
 
         let start_time = SystemTime::now();
         debug!("⏱️ Download timer started at: {:?}", start_time);
@@ -839,9 +898,13 @@ impl DownloadTool {
         debug!("🔍 Making HEAD request to determine file size");
         let total_size = match self.get_content_length(&download_url).await {
             Ok(size) => {
-                debug!("✅ Content-Length determined: {} bytes ({:.2} MB)", size, size as f64 / 1_048_576.0);
+                debug!(
+                    "✅ Content-Length determined: {} bytes ({:.2} MB)",
+                    size,
+                    size as f64 / 1_048_576.0
+                );
                 Some(size)
-            },
+            }
             Err(e) => {
                 debug!("⚠️ Could not determine content length: {}", e);
                 debug!("📝 Will download without progress percentage");
@@ -855,7 +918,10 @@ impl DownloadTool {
         let start_byte = if file_path.exists() {
             let existing_size = tokio::fs::metadata(&file_path).await?.len();
             debug!("📄 Existing file found - size: {} bytes", existing_size);
-            debug!("🔄 Will attempt to resume download from byte {}", existing_size);
+            debug!(
+                "🔄 Will attempt to resume download from byte {}",
+                existing_size
+            );
             existing_size
         } else {
             debug!("🆕 No existing file - starting fresh download");
@@ -868,9 +934,7 @@ impl DownloadTool {
 
         // Make download request first to verify it's valid
         debug!("🌐 Making download request with start_byte: {}", start_byte);
-        let response = match self
-            .make_download_request(&download_url, start_byte)
-            .await {
+        let response = match self.make_download_request(&download_url, start_byte).await {
             Ok(resp) => {
                 debug!("✅ Download request successful");
                 debug!("📊 Response status: {}", resp.status());
@@ -879,10 +943,13 @@ impl DownloadTool {
                     debug!("📄 Content-Type: {:?}", content_type);
                 }
                 resp
-            },
+            }
             Err(e) => {
                 debug!("❌ Download request failed: {}", e);
-                debug!("🔧 Request error type: {:?}", std::any::type_name_of_val(&e));
+                debug!(
+                    "🔧 Request error type: {:?}",
+                    std::any::type_name_of_val(&e)
+                );
                 return Err(e);
             }
         };
@@ -892,47 +959,59 @@ impl DownloadTool {
         let old_total = progress.total_size;
         Self::update_total_size_from_response(&mut progress, &response, start_byte);
         if progress.total_size != old_total {
-            debug!("📊 Total size updated from {} to {:?}",
-                   old_total.map_or("None".to_string(), |s| s.to_string()),
-                   progress.total_size);
+            debug!(
+                "📊 Total size updated from {} to {:?}",
+                old_total.map_or("None".to_string(), |s| s.to_string()),
+                progress.total_size
+            );
         } else {
             debug!("📊 Total size unchanged: {:?}", progress.total_size);
         }
 
         // Download with progress tracking - this will create the file only if download succeeds
         debug!("📥 Starting progress-tracked download");
-        match self.download_with_progress(response, &file_path, start_byte, &mut progress)
-            .await {
+        match self
+            .download_with_progress(response, &file_path, start_byte, &mut progress)
+            .await
+        {
             Ok(()) => {
                 debug!("✅ Progress-tracked download completed successfully");
-            },
+            }
             Err(e) => {
                 debug!("❌ Progress-tracked download failed: {}", e);
-                debug!("🔧 Download error type: {:?}", std::any::type_name_of_val(&e));
+                debug!(
+                    "🔧 Download error type: {:?}",
+                    std::any::type_name_of_val(&e)
+                );
                 return Err(e);
             }
         };
 
         // Finalize download
         debug!("🏁 Finalizing download process");
-        match self.finalize_download(
-            &file_path,
-            start_time,
-            verify_integrity,
-            progress,
-            download_id,
-            metadata,
-        )
-        .await {
+        match self
+            .finalize_download(
+                &file_path,
+                start_time,
+                verify_integrity,
+                progress,
+                download_id,
+                metadata,
+            )
+            .await
+        {
             Ok(result) => {
                 debug!("✅ Download finalization completed successfully");
                 debug!("📊 Final download stats - size: {:?} bytes, duration: {:.2}s, speed: {} bytes/s",
                        result.file_size, result.duration_seconds, result.average_speed);
                 Ok(result)
-            },
+            }
             Err(e) => {
                 debug!("❌ Download finalization failed: {}", e);
-                debug!("🔧 Finalization error type: {:?}", std::any::type_name_of_val(&e));
+                debug!(
+                    "🔧 Finalization error type: {:?}",
+                    std::any::type_name_of_val(&e)
+                );
                 Err(e)
             }
         }
@@ -1032,10 +1111,15 @@ impl DownloadTool {
                     chunk_count += 1;
                     total_bytes_received += chunk.len() as u64;
                     if chunk_count <= 5 || chunk_count % 100 == 0 {
-                        debug!("📦 Chunk #{}: {} bytes (total: {} bytes)", chunk_count, chunk.len(), total_bytes_received);
+                        debug!(
+                            "📦 Chunk #{}: {} bytes (total: {} bytes)",
+                            chunk_count,
+                            chunk.len(),
+                            total_bytes_received
+                        );
                     }
                     chunk
-                },
+                }
                 Err(e) => {
                     debug!("❌ Stream error at chunk #{}: {}", chunk_count, e);
                     debug!("📊 Bytes received before error: {}", total_bytes_received);
@@ -1052,7 +1136,7 @@ impl DownloadTool {
                             if chunk_count <= 3 {
                                 debug!("✅ Chunk #{} written successfully", chunk_count);
                             }
-                        },
+                        }
                         Err(e) => {
                             debug!("❌ Failed to write chunk #{}: {}", chunk_count, e);
                             return Err(crate::Error::Io(e));
@@ -1094,7 +1178,7 @@ impl DownloadTool {
                         debug!("✅ First chunk written successfully");
                         file = Some(file_handle);
                         file_created = true;
-                    },
+                    }
                     Err(e) => {
                         debug!("❌ Failed to write first chunk: {}", e);
                         return Err(crate::Error::Io(e));
@@ -1124,19 +1208,30 @@ impl DownloadTool {
         // Ensure we actually received some data
         if !file_created {
             debug!("❌ No file was created - no data received from stream");
-            debug!("📊 Final stats - chunks: {}, total bytes: {}", chunk_count, total_bytes_received);
+            debug!(
+                "📊 Final stats - chunks: {}, total bytes: {}",
+                chunk_count, total_bytes_received
+            );
             return Err(crate::Error::Service(
                 "No data received from download".to_string(),
             ));
         }
 
         debug!("✅ Download stream completed successfully");
-        debug!("📊 Final stats - {} chunks processed, {} bytes total", chunk_count, total_bytes_received);
+        debug!(
+            "📊 Final stats - {} chunks processed, {} bytes total",
+            chunk_count, total_bytes_received
+        );
         debug!("📁 File created at: {:?}", file_path);
 
         // Final progress update
         debug!("📡 Sending final progress update");
-        Self::update_progress_stats(progress, SystemTime::now(), last_progress_time, bytes_at_last_time);
+        Self::update_progress_stats(
+            progress,
+            SystemTime::now(),
+            last_progress_time,
+            bytes_at_last_time,
+        );
         self.send_progress(progress.clone());
 
         Ok(())
@@ -1577,6 +1672,7 @@ mod tests {
             endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
+            provider_timeout_secs: 60,
             max_retries: 2,
         };
         Arc::new(config)
@@ -1584,7 +1680,7 @@ mod tests {
 
     fn create_test_download_tool() -> Result<DownloadTool> {
         let config = create_test_config();
-        let meta_config = crate::client::MetaSearchConfig::default();
+        let meta_config = crate::client::MetaSearchConfig::from_config(&config);
         let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
         DownloadTool::new(client, config)
     }
@@ -1743,7 +1839,7 @@ mod tests {
         // Create config with custom download directory
         let mut config = Config::default();
         config.downloads.directory = PathBuf::from("/tmp/test-downloads");
-        let meta_config = crate::client::MetaSearchConfig::default();
+        let meta_config = crate::client::MetaSearchConfig::from_config(&config);
         let client = Arc::new(MetaSearchClient::new(config.clone(), meta_config).unwrap());
         let tool = DownloadTool::new(client, Arc::new(config)).unwrap();
 

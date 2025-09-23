@@ -258,6 +258,10 @@ Create a configuration file at `~/.config/rust-research-mcp/config.toml`:
 port = 8080
 host = "127.0.0.1"
 
+[research_source]
+# Timeout per provider when searching across multiple sources (default: 30 seconds)
+provider_timeout_secs = 30
+
 [downloads]
 directory = "~/Downloads/Research-Papers"
 max_concurrent = 3

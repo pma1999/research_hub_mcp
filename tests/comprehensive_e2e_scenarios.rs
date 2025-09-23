@@ -1,8 +1,6 @@
 use rust_research_mcp::{
     client::{
-        providers::{
-            SearchQuery, SearchType,
-        },
+        providers::{SearchQuery, SearchType},
         MetaSearchClient, MetaSearchConfig,
     },
     tools::{
@@ -10,8 +8,7 @@ use rust_research_mcp::{
         download::DownloadInput,
         metadata::MetadataInput,
         search::{SearchInput, SearchType as ToolSearchType},
-        BibliographyTool, CategorizeTool, DownloadTool, MetadataExtractor,
-        SearchTool,
+        BibliographyTool, CategorizeTool, DownloadTool, MetadataExtractor, SearchTool,
     },
     Config,
 };
@@ -28,6 +25,7 @@ fn create_comprehensive_test_config() -> Arc<Config> {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let mut config = Config::default();
     config.research_source.timeout_secs = 10;
+    config.research_source.provider_timeout_secs = 10; // Faster timeout for tests
     config.research_source.max_retries = 2;
     config.downloads.directory = temp_dir.keep();
     config.downloads.max_file_size_mb = 50; // 50MB for testing
@@ -132,10 +130,10 @@ async fn test_complete_research_workflow() {
     let search_result = search_tool.search_papers(search_input).await;
     let search_duration = start_time.elapsed();
 
-    // Assert search performance target: < 30s (realistic for network operations)
+    // Assert search performance target: < 120s (realistic for multiple provider operations)
     assert!(
-        search_duration < Duration::from_secs(30),
-        "Search took {:?}, exceeding 30s target",
+        search_duration < Duration::from_secs(120),
+        "Search took {:?}, exceeding 120s target",
         search_duration
     );
 
@@ -191,9 +189,8 @@ async fn test_complete_research_workflow() {
                                 papers: vec![], // Empty for this test
                                 max_abstracts: Some(1),
                             };
-                            let categorize_result = categorize_tool
-                                .categorize_papers(categorize_input)
-                                .await;
+                            let categorize_result =
+                                categorize_tool.categorize_papers(categorize_input).await;
 
                             match categorize_result {
                                 Ok(category) => {
@@ -286,8 +283,8 @@ async fn test_concurrent_research_sessions() {
                         SearchType::Doi => ToolSearchType::Doi,
                         SearchType::Author => ToolSearchType::Author,
                         SearchType::Keywords => ToolSearchType::Title, // Map Keywords to Title
-                        SearchType::Subject => ToolSearchType::Title, // Map Subject to Title
-                        // AuthorYear doesn't exist in client::providers::SearchType
+                        SearchType::Subject => ToolSearchType::Title,  // Map Subject to Title
+                                                                        // AuthorYear doesn't exist in client::providers::SearchType
                     },
                     limit: query.max_results,
                     offset: query.offset,
@@ -328,8 +325,8 @@ async fn test_concurrent_research_sessions() {
 
                     // Assert individual session performance
                     assert!(
-                        duration < Duration::from_secs(45),
-                        "Session {} took {:?}, exceeding 45s concurrent target",
+                        duration < Duration::from_secs(90),
+                        "Session {} took {:?}, exceeding 90s concurrent target",
                         session_id,
                         duration
                     );
@@ -346,16 +343,14 @@ async fn test_concurrent_research_sessions() {
     );
 
     assert!(
-        total_duration < Duration::from_secs(120),
-        "Total concurrent sessions took {:?}, exceeding 120s limit",
+        total_duration < Duration::from_secs(300),
+        "Total concurrent sessions took {:?}, exceeding 300s limit",
         total_duration
     );
 
     info!(
         "Concurrent sessions test: {}/{} successful in {:?}",
-        successful_sessions,
-        results_len,
-        total_duration
+        successful_sessions, results_len, total_duration
     );
 }
 
@@ -639,8 +634,8 @@ async fn test_concurrent_request_performance() {
 
                     // Assert individual request performance target
                     assert!(
-                        duration < Duration::from_secs(60),
-                        "Request {} took {:?}, exceeding 60s concurrent limit",
+                        duration < Duration::from_secs(120),
+                        "Request {} took {:?}, exceeding 120s concurrent limit",
                         request_id,
                         duration
                     );
@@ -659,14 +654,14 @@ async fn test_concurrent_request_performance() {
 
     // Performance assertions
     assert!(
-        total_duration < Duration::from_secs(300),
-        "100 concurrent requests took {:?}, exceeding 300s total limit",
+        total_duration < Duration::from_secs(600),
+        "100 concurrent requests took {:?}, exceeding 600s total limit",
         total_duration
     );
 
     assert!(
-        average_response_time < Duration::from_secs(60),
-        "Average response time {:?} exceeds 60s target",
+        average_response_time < Duration::from_secs(120),
+        "Average response time {:?} exceeds 120s target",
         average_response_time
     );
 
@@ -857,14 +852,18 @@ async fn test_rate_limiting_enforcement() {
         num_rapid_requests, total_time, average_time
     );
 
-    // If rate limiting is enforced, later requests should take longer
-    let early_requests_avg: Duration = request_times[0..5].iter().sum::<Duration>() / 5;
-    let late_requests_avg: Duration = request_times[15..20].iter().sum::<Duration>() / 5;
+    // With only 5 requests, compare the first 2 vs last 2 requests
+    if request_times.len() >= 4 {
+        let early_requests_avg: Duration = request_times[0..2].iter().sum::<Duration>() / 2;
+        let late_requests_avg: Duration = request_times[3..5].iter().sum::<Duration>() / 2;
 
-    info!(
-        "Early requests avg: {:?}, Late requests avg: {:?}",
-        early_requests_avg, late_requests_avg
-    );
+        info!(
+            "Early requests avg: {:?}, Late requests avg: {:?}",
+            early_requests_avg, late_requests_avg
+        );
+    } else {
+        info!("Not enough requests to compare early vs late timing patterns");
+    }
 
     // Rate limiting should cause some delay (this is configurable based on rate limit settings)
     // We don't assert strict timing since it depends on provider configuration

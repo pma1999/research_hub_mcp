@@ -310,7 +310,7 @@ mod tests {
 
     fn create_test_adapter() -> Result<PaperDownloadAdapter> {
         let config = create_test_config();
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
         PaperDownloadAdapter::new(client, config)
     }

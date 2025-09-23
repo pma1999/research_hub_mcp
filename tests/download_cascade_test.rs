@@ -24,7 +24,7 @@ async fn test_download_cascade_with_provider_failures() -> Result<()> {
 
     // Test with a DOI that should trigger cascade behavior
     let download_input = DownloadInput {
-        doi: Some("10.1000/test_cascade_doi".to_string()),
+        doi: Some("10.invalid/test_cascade_should_fail".to_string()),
         url: None,
         filename: Some("test_cascade.pdf".to_string()),
         directory: None,

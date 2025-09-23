@@ -124,7 +124,7 @@ impl BibliographyTool {
         let mut errors = Vec::new();
 
         for identifier in &input.identifiers {
-            match self.fetch_metadata(identifier).await {
+            match self.fetch_metadata(identifier) {
                 Ok(metadata) => {
                     let citation = self.format_citation(
                         &metadata,
@@ -156,7 +156,7 @@ impl BibliographyTool {
     }
 
     /// Fetch metadata for a paper
-    async fn fetch_metadata(&self, identifier: &str) -> Result<PaperMetadata> {
+    fn fetch_metadata(&self, identifier: &str) -> Result<PaperMetadata> {
         // In a real implementation, this would query CrossRef, Semantic Scholar, etc.
         // For now, we'll create mock metadata
         info!("Fetching metadata for: {}", identifier);

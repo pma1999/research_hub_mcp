@@ -230,7 +230,7 @@ async fn test_concurrent_downloads() -> Result<()> {
         let tool_clone = download_tool.clone();
         let handle = tokio::spawn(async move {
             let download_input = DownloadInput {
-                doi: Some(format!("10.test/concurrent.{}", i)),
+                doi: Some(format!("10.invalid/test_should_fail.{}", i)),
                 url: None,
                 filename: Some(format!("concurrent_{}.pdf", i)),
                 directory: None,

@@ -323,7 +323,7 @@ async fn test_unicode_handling() {
     let unicode_payloads = vec![
         "test\u{202E}fdp.test", // Right-to-left override
         "test\u{200D}script",   // Zero-width joiner
-        // Reduced for performance - Unicode handling tested at validation level
+                                // Reduced for performance - Unicode handling tested at validation level
     ];
 
     for payload in unicode_payloads {

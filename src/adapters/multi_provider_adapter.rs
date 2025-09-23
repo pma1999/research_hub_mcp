@@ -441,7 +441,7 @@ mod tests {
 
     fn create_test_adapter() -> Result<MultiProviderAdapter> {
         let config = create_test_config();
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let meta_client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
         MultiProviderAdapter::new(meta_client, config)
     }

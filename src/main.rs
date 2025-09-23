@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default)]
+
 use anyhow::Result;
 use clap::Parser;
 use rust_research_mcp::{Config, ConfigOverrides, DaemonConfig, DaemonService, PidFile, Server};

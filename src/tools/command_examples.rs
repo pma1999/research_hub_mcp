@@ -34,7 +34,7 @@ impl CommandPatternDemo {
         executor.register_instrumented(search_tool);
 
         // Create and register download tool
-        let meta_config = crate::client::MetaSearchConfig::default();
+        let meta_config = crate::client::MetaSearchConfig::from_config(&config);
         let meta_client = Arc::new(crate::client::MetaSearchClient::new(
             (*config).clone(),
             meta_config,

@@ -53,6 +53,42 @@ fn send_request_sync(
     }
 }
 
+/// Helper to perform complete MCP initialization handshake
+fn initialize_mcp_server(
+    stdin: &mut std::process::ChildStdin,
+    stdout: &mut BufReader<std::process::ChildStdout>,
+) -> Result<Value> {
+    // Send initialize request
+    let init_request = json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {}},
+            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
+        }
+    });
+
+    let response = send_request_sync(stdin, stdout, init_request)?;
+
+    // Send initialized notification (required by MCP protocol)
+    let initialized_notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    });
+
+    let notification_str = serde_json::to_string(&initialized_notification)?;
+    writeln!(stdin, "{}", notification_str)?;
+    stdin.flush()?;
+
+    // Give the server a moment to process the notification
+    std::thread::sleep(Duration::from_millis(100));
+
+    Ok(response)
+}
+
 #[tokio::test]
 async fn test_mcp_server_initialization() -> Result<()> {
     // Start MCP server process
@@ -68,23 +104,7 @@ async fn test_mcp_server_initialization() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Test initialization
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {
-                "tools": {}
-            },
-            "clientInfo": {
-                "name": "e2e-test",
-                "version": "1.0.0"
-            }
-        }
-    });
-
-    let response = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let response = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Verify initialization response
     assert_eq!(response["jsonrpc"], "2.0");
@@ -117,18 +137,7 @@ async fn test_tools_list() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize first
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // List tools
     let list_request = json!({
@@ -179,18 +188,7 @@ async fn test_debug_tool() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Call debug tool
     let debug_request = json!({
@@ -239,18 +237,7 @@ async fn test_search_papers_tool() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Search for papers
     let search_request = json!({
@@ -311,18 +298,7 @@ async fn test_download_paper_with_custom_directory() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Try to download a paper (using a known test DOI)
     let download_request = json!({
@@ -378,18 +354,7 @@ async fn test_simplified_schema_compatibility() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // List tools to get schemas
     let list_request = json!({
@@ -450,18 +415,7 @@ async fn test_multiple_sequential_calls() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Make multiple sequential calls
     for i in 2..5 {
@@ -508,18 +462,7 @@ async fn test_error_handling() -> Result<()> {
     let mut stdout_reader = BufReader::new(stdout);
 
     // Initialize
-    let init_request = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {"tools": {}},
-            "clientInfo": {"name": "e2e-test", "version": "1.0.0"}
-        }
-    });
-
-    let _ = send_request_sync(&mut stdin, &mut stdout_reader, init_request)?;
+    let _ = initialize_mcp_server(&mut stdin, &mut stdout_reader)?;
 
     // Test missing required parameter
     let bad_request = json!({

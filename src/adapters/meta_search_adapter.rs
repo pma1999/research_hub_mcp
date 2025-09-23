@@ -99,7 +99,7 @@ impl MetaSearchAdapter {
         info!("Initializing MetaSearchAdapter");
 
         // Create meta-search client
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let meta_client = MetaSearchClient::new((*config).clone(), meta_config).map_err(|e| {
             crate::Error::Service(format!("Failed to create meta-search client: {e}"))
         })?;

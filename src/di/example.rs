@@ -24,7 +24,7 @@ pub async fn basic_container_example() -> Result<()> {
     container.register_singleton(config.clone()).await?;
 
     // Create and register MetaSearch client
-    let meta_config = MetaSearchConfig::default();
+    let meta_config = MetaSearchConfig::from_config(&config);
     let meta_client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
     container.register_singleton(meta_client).await?;
 
@@ -80,7 +80,7 @@ async fn setup_research_container(config: Arc<Config>) -> Result<ServiceContaine
     info!("Setting up research service container");
 
     // Create services directly (simplified approach)
-    let meta_config = MetaSearchConfig::default();
+    let meta_config = MetaSearchConfig::from_config(&config);
     let meta_client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
     let search_tool = Arc::new(SearchTool::new(config.clone())?);
 

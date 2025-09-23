@@ -68,6 +68,17 @@ fn test_mcp_server_full_flow() -> Result<()> {
     );
     println!("✓ Initialization successful");
 
+    // Send initialized notification (required by MCP protocol)
+    let initialized_notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    });
+
+    let notification_str = serde_json::to_string(&initialized_notification)?;
+    writeln!(stdin, "{}", notification_str)?;
+    stdin.flush()?;
+
     // Test 2: List tools
     println!("\nTest 2: List tools");
     let list_request = json!({
@@ -296,6 +307,19 @@ fn test_sequential_operations() -> Result<()> {
     let mut line = String::new();
     stdout_reader.read_line(&mut line)?;
     assert!(line.contains("rust-research-mcp"));
+
+    // Send initialized notification (required by MCP protocol)
+    let initialized_notification = json!({
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+        "params": {}
+    });
+    writeln!(
+        stdin,
+        "{}",
+        serde_json::to_string(&initialized_notification)?
+    )?;
+    stdin.flush()?;
 
     // Make multiple sequential debug calls
     for i in 2..5 {

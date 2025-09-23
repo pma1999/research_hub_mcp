@@ -9,6 +9,7 @@ use crate::{
     BibliographyTool, CodeSearchTool, Config, DownloadTool, MetaSearchClient, MetadataExtractor,
     Result, SearchTool,
 };
+use chrono::Utc;
 use rmcp::{
     model::{
         CallToolRequestParam, CallToolResult, Content, Implementation, InitializeRequestParam,
@@ -18,7 +19,6 @@ use rmcp::{
     service::{RequestContext, RoleServer},
     ErrorData, ServerHandler,
 };
-use chrono::Utc;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -82,8 +82,8 @@ impl ResearchServerHandler {
     pub fn new(config: Arc<Config>) -> Result<Self> {
         info!("Initializing Research MCP server handler");
 
-        // Initialize MetaSearch client with default config
-        let meta_config = crate::client::MetaSearchConfig::default();
+        // Initialize MetaSearch client with config
+        let meta_config = crate::client::MetaSearchConfig::from_config(&config);
         let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config)?);
 
         // Initialize search tool
@@ -426,7 +426,10 @@ impl ServerHandler for ResearchServerHandler {
                     match download_tool.download_paper(input).await {
                         Ok(result) => {
                             debug!("Download result received: {:?}", result.status);
-                            debug!("File size: {:?}, file path: {:?}", result.file_size, result.file_path);
+                            debug!(
+                                "File size: {:?}, file path: {:?}",
+                                result.file_size, result.file_path
+                            );
 
                             // Validate that the file actually has content
                             let file_size = result.file_size.unwrap_or(0);
@@ -448,14 +451,17 @@ impl ServerHandler for ResearchServerHandler {
                             } else {
                                 debug!("Download successful - file size: {} bytes", file_size);
                                 let duration_info = if result.duration_seconds > 0.0 {
-                                    format!("\n⏱️ Time: {:.1}s\n🚀 Speed: {:.1} KB/s",
+                                    format!(
+                                        "\n⏱️ Time: {:.1}s\n🚀 Speed: {:.1} KB/s",
                                         result.duration_seconds,
-                                        result.average_speed as f64 / 1024.0)
+                                        result.average_speed as f64 / 1024.0
+                                    )
                                 } else {
                                     String::new()
                                 };
 
-                                let hash_info = result.sha256_hash
+                                let hash_info = result
+                                    .sha256_hash
                                     .map(|h| format!("\n🔐 SHA256: {}...", &h[..16]))
                                     .unwrap_or_default();
 
@@ -477,7 +483,9 @@ impl ServerHandler for ResearchServerHandler {
 
                             // Return a helpful error message with debug information
                             let error_msg = match e.to_string().as_str() {
-                                msg if msg.contains("No PDF available") || msg.contains("not found in any provider") => {
+                                msg if msg.contains("No PDF available")
+                                    || msg.contains("not found in any provider") =>
+                                {
                                     format!("⚠️ Paper not available for download\n\n\
                                             DOI: {doi}\n\n\
                                             🔍 Debug Info:\n\
@@ -496,7 +504,10 @@ impl ServerHandler for ResearchServerHandler {
                                             • Contact the authors directly\n\
                                             • Verify the DOI is correct", timestamp, msg)
                                 }
-                                msg if msg.contains("Network") || msg.contains("timeout") || msg.contains("Connection") => {
+                                msg if msg.contains("Network")
+                                    || msg.contains("timeout")
+                                    || msg.contains("Connection") =>
+                                {
                                     format!(
                                         "⚠️ Network error while downloading\n\n\
                                             DOI: {doi}\n\n\
@@ -509,7 +520,9 @@ impl ServerHandler for ResearchServerHandler {
                                         timestamp, msg
                                     )
                                 }
-                                msg if msg.contains("Permission") || msg.contains("Claude Desktop") => {
+                                msg if msg.contains("Permission")
+                                    || msg.contains("Claude Desktop") =>
+                                {
                                     format!(
                                         "⚠️ File system permission error\n\n\
                                             DOI: {doi}\n\n\

@@ -55,6 +55,8 @@ pub struct ResearchSourceConfig {
     pub rate_limit_per_sec: u32,
     /// Request timeout in seconds
     pub timeout_secs: u64,
+    /// Provider timeout in seconds (for meta-search across multiple providers)
+    pub provider_timeout_secs: u64,
     /// Maximum retry attempts
     pub max_retries: u32,
 }
@@ -194,6 +196,7 @@ impl Default for ResearchSourceConfig {
             ],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
+            provider_timeout_secs: 30,
             max_retries: 3,
         }
     }
@@ -530,6 +533,17 @@ impl Config {
                 new_config.research_source.timeout_secs
             );
         }
+        if self.research_source.provider_timeout_secs
+            != new_config.research_source.provider_timeout_secs
+        {
+            self.research_source.provider_timeout_secs =
+                new_config.research_source.provider_timeout_secs;
+            changed = true;
+            debug!(
+                "Hot reloaded provider timeout: {}",
+                new_config.research_source.provider_timeout_secs
+            );
+        }
 
         if self.research_source.max_retries != new_config.research_source.max_retries {
             self.research_source.max_retries = new_config.research_source.max_retries;
@@ -828,6 +842,9 @@ rate_limit_per_sec = 1
 
 # Request timeout in seconds (default: 30)
 timeout_secs = 30
+
+# Provider timeout in seconds for meta-search across multiple providers (default: 30)
+provider_timeout_secs = 30
 
 # Maximum retry attempts (default: 3)
 max_retries = 3
@@ -1130,6 +1147,7 @@ mod tests {
             endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
+            provider_timeout_secs: 60,
             max_retries: 3,
         };
         assert!(!config.endpoints.is_empty());

@@ -232,13 +232,29 @@ pub enum ProviderError {
 ///             return Err(ProviderError::InvalidQuery("Empty query".to_string()));
 ///         }
 ///
+///         // Build API URL (example implementation)
+///         let url = format!("https://api.example.com/search?q={}",
+///                          urlencoding::encode(&query.query));
+///
 ///         // Perform search with timeout
-///         let response = tokio::time::timeout(context.timeout, self.search_api(query)).await
+///         let response = tokio::time::timeout(context.timeout,
+///             self.client.get(&url).send()).await
 ///             .map_err(|_| ProviderError::Timeout)?
 ///             .map_err(|e| ProviderError::Network(e.to_string()))?;
 ///
-///         // Parse and return results
-///         self.parse_response(response)
+///         // Parse and return results (simplified example)
+///         if response.status().is_success() {
+///             Ok(ProviderResult {
+///                 papers: vec![], // Would parse actual response
+///                 source: self.name().to_string(),
+///                 total_available: Some(0),
+///                 search_time: Duration::from_millis(100),
+///                 has_more: false,
+///                 metadata: std::collections::HashMap::new(),
+///             })
+///         } else {
+///             Err(ProviderError::ServiceUnavailable(response.status().to_string()))
+///         }
 ///     }
 ///
 ///     async fn health_check(&self, _context: &SearchContext) -> Result<bool, ProviderError> {

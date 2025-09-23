@@ -28,7 +28,8 @@
       "Read(//private/var/**)",
       "Read(//private/tmp/**)",
       "Bash(echo $TMPDIR)",
-      "Bash(timeout 30s cargo test:*)"
+      "Bash(timeout 30s cargo test:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": [],

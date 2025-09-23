@@ -40,6 +40,28 @@ impl Default for MetaSearchConfig {
     }
 }
 
+impl MetaSearchConfig {
+    /// Create a new `MetaSearchConfig` with custom provider timeout
+    #[must_use]
+    pub const fn with_provider_timeout(provider_timeout: Duration) -> Self {
+        Self {
+            max_parallel_providers: 3,
+            provider_timeout,
+            continue_on_failure: true,
+            deduplicate_results: true,
+            min_relevance_score: 0.0,
+        }
+    }
+
+    /// Create `MetaSearchConfig` from app config
+    #[must_use]
+    pub const fn from_config(config: &Config) -> Self {
+        Self::with_provider_timeout(Duration::from_secs(
+            config.research_source.provider_timeout_secs,
+        ))
+    }
+}
+
 /// Result from meta-search across multiple providers
 #[derive(Debug, Clone)]
 pub struct MetaSearchResult {
@@ -177,24 +199,28 @@ impl MetaSearchClient {
         provider_name: &str,
         response_time_ms: f64,
     ) {
-        let mut stats = provider_stats.write().await;
-        let provider_stats = stats.entry(provider_name.to_string()).or_default();
+        let (avg_response_time, request_count) = {
+            let mut stats = provider_stats.write().await;
+            let provider_stats = stats.entry(provider_name.to_string()).or_default();
 
-        // Update running average using exponential moving average
-        let alpha = 0.2; // Weighting factor for new measurements
-        if provider_stats.request_count == 0 {
-            provider_stats.avg_response_time = response_time_ms;
-        } else {
-            provider_stats.avg_response_time =
-                alpha * response_time_ms + (1.0 - alpha) * provider_stats.avg_response_time;
-        }
+            // Update running average using exponential moving average
+            let alpha: f64 = 0.2; // Weighting factor for new measurements
+            if provider_stats.request_count == 0 {
+                provider_stats.avg_response_time = response_time_ms;
+            } else {
+                provider_stats.avg_response_time =
+                    alpha.mul_add(response_time_ms, (1.0 - alpha) * provider_stats.avg_response_time);
+            }
 
-        provider_stats.request_count += 1;
-        provider_stats.last_updated = Instant::now();
+            provider_stats.request_count += 1;
+            provider_stats.last_updated = Instant::now();
+
+            (provider_stats.avg_response_time, provider_stats.request_count)
+        };
 
         debug!(
             "Updated provider stats for {}: avg_time={:.1}ms, requests={}",
-            provider_name, provider_stats.avg_response_time, provider_stats.request_count
+            provider_name, avg_response_time, request_count
         );
     }
 
@@ -238,7 +264,7 @@ impl MetaSearchClient {
         let context = self.create_search_context();
 
         // Filter providers based on query type and supported features
-        let suitable_providers = self.filter_providers_for_query(query).await;
+        let suitable_providers = self.filter_providers_for_query(query);
         info!(
             "Using {} providers for search: {:?}",
             suitable_providers.len(),
@@ -254,7 +280,7 @@ impl MetaSearchClient {
             .await;
 
         // Aggregate results
-        let meta_result = self.aggregate_results(provider_results, provider_errors, start_time);
+        let meta_result = self.aggregate_results(&provider_results, provider_errors, start_time);
 
         info!(
             "Meta-search completed: {} total papers from {} providers in {:?}",
@@ -268,7 +294,7 @@ impl MetaSearchClient {
 
     /// Search for a paper by DOI across providers that support it
     pub async fn get_by_doi(&self, doi: &str) -> Result<Option<PaperMetadata>, ProviderError> {
-        let normalized_doi = self.normalize_doi(doi);
+        let normalized_doi = Self::normalize_doi(doi);
         info!("Searching for DOI: {}", normalized_doi);
 
         let context = self.create_search_context();
@@ -288,7 +314,7 @@ impl MetaSearchClient {
     }
 
     /// Normalize DOI format for consistent processing
-    fn normalize_doi(&self, doi: &str) -> String {
+    fn normalize_doi(doi: &str) -> String {
         // Remove common prefixes and normalize format
         let trimmed = doi.trim();
 
@@ -386,7 +412,7 @@ impl MetaSearchClient {
     }
 
     /// Filter providers based on query characteristics
-    async fn filter_providers_for_query(
+    fn filter_providers_for_query(
         &self,
         query: &SearchQuery,
     ) -> Vec<Arc<dyn SourceProvider>> {
@@ -406,7 +432,7 @@ impl MetaSearchClient {
         }
 
         // Apply intelligent priority ordering based on query characteristics
-        self.apply_intelligent_priority_ordering(&mut suitable, query);
+        Self::apply_intelligent_priority_ordering(&mut suitable, query);
 
         suitable
     }
@@ -465,7 +491,8 @@ impl MetaSearchClient {
         for task in tasks {
             match task.await {
                 Ok((provider_name, Ok(result), elapsed)) => {
-                    let response_time_ms = elapsed.as_millis() as f64;
+                    #[allow(clippy::cast_precision_loss)]
+                    let response_time_ms = elapsed.as_millis().min(u128::from(u64::MAX)) as f64;
                     info!(
                         "Provider {} returned {} results in {:.1}ms",
                         provider_name,
@@ -488,7 +515,8 @@ impl MetaSearchClient {
                     provider_results.push((provider_name, result));
                 }
                 Ok((provider_name, Err(error), elapsed)) => {
-                    let response_time_ms = elapsed.as_millis() as f64;
+                    #[allow(clippy::cast_precision_loss)]
+                    let response_time_ms = elapsed.as_millis().min(u128::from(u64::MAX)) as f64;
                     warn!(
                         "Provider {} failed after {:.1}ms: {}",
                         provider_name, response_time_ms, error
@@ -519,7 +547,6 @@ impl MetaSearchClient {
 
     /// Apply intelligent priority ordering based on query characteristics
     fn apply_intelligent_priority_ordering(
-        &self,
         providers: &mut Vec<Arc<dyn SourceProvider>>,
         query: &SearchQuery,
     ) {
@@ -533,16 +560,16 @@ impl MetaSearchClient {
                 let mut adjusted_priority = base_priority;
 
                 // Domain-specific priority adjustments
-                adjusted_priority += self.calculate_domain_priority_boost(provider, &query_lower);
+                adjusted_priority += Self::calculate_domain_priority_boost(provider, &query_lower);
 
                 // Search type priority adjustments
-                adjusted_priority += self.calculate_search_type_priority_boost(provider, query);
+                adjusted_priority += Self::calculate_search_type_priority_boost(provider, query);
 
                 // Content availability priority adjustments
-                adjusted_priority += self.calculate_content_priority_boost(provider, &query_lower);
+                adjusted_priority += Self::calculate_content_priority_boost(provider, &query_lower);
 
                 // Time-sensitive priority adjustments
-                adjusted_priority += self.calculate_temporal_priority_boost(provider, &query_lower);
+                adjusted_priority += Self::calculate_temporal_priority_boost(provider, &query_lower);
 
                 (provider.clone(), adjusted_priority)
             })
@@ -565,7 +592,6 @@ impl MetaSearchClient {
 
     /// Calculate domain-specific priority boost
     fn calculate_domain_priority_boost(
-        &self,
         provider: &Arc<dyn SourceProvider>,
         query: &str,
     ) -> i32 {
@@ -610,7 +636,7 @@ impl MetaSearchClient {
             }
         }
         // Open Access & General Academic
-        else if self.contains_open_access_keywords(query) {
+        else if Self::contains_open_access_keywords(query) {
             match provider_name {
                 "unpaywall" => 12,        // Specialized in open access
                 "core" => 10,             // Large open access collection
@@ -625,7 +651,6 @@ impl MetaSearchClient {
 
     /// Calculate search type priority boost
     fn calculate_search_type_priority_boost(
-        &self,
         provider: &Arc<dyn SourceProvider>,
         query: &SearchQuery,
     ) -> i32 {
@@ -681,7 +706,6 @@ impl MetaSearchClient {
 
     /// Calculate content availability priority boost
     fn calculate_content_priority_boost(
-        &self,
         provider: &Arc<dyn SourceProvider>,
         query: &str,
     ) -> i32 {
@@ -717,7 +741,6 @@ impl MetaSearchClient {
 
     /// Calculate temporal priority boost for time-sensitive queries
     fn calculate_temporal_priority_boost(
-        &self,
         provider: &Arc<dyn SourceProvider>,
         query: &str,
     ) -> i32 {
@@ -911,7 +934,7 @@ impl MetaSearchClient {
     }
 
     /// Check if query contains open access keywords
-    fn contains_open_access_keywords(&self, query: &str) -> bool {
+    fn contains_open_access_keywords(query: &str) -> bool {
         let oa_keywords = [
             "open access",
             "free",
@@ -949,7 +972,7 @@ impl MetaSearchClient {
     /// Aggregate results from multiple providers
     fn aggregate_results(
         &self,
-        provider_results: Vec<(String, ProviderResult)>,
+        provider_results: &[(String, ProviderResult)],
         provider_errors: HashMap<String, String>,
         start_time: Instant,
     ) -> MetaSearchResult {
@@ -958,7 +981,7 @@ impl MetaSearchClient {
         let mut provider_metadata = HashMap::new();
 
         // Collect all papers and organize by source
-        for (source, result) in &provider_results {
+        for (source, result) in provider_results {
             by_source.insert(source.clone(), result.papers.clone());
             provider_metadata.insert(source.clone(), result.metadata.clone());
             all_papers.extend(result.papers.clone());
@@ -966,7 +989,7 @@ impl MetaSearchClient {
 
         // Deduplicate if requested
         if self.config.deduplicate_results {
-            all_papers = self.deduplicate_papers(all_papers);
+            all_papers = Self::deduplicate_papers(all_papers);
         }
 
         // Filter by relevance score if needed
@@ -990,7 +1013,7 @@ impl MetaSearchClient {
     }
 
     /// Deduplicate papers based on DOI and title similarity
-    fn deduplicate_papers(&self, papers: Vec<PaperMetadata>) -> Vec<PaperMetadata> {
+    fn deduplicate_papers(papers: Vec<PaperMetadata>) -> Vec<PaperMetadata> {
         let original_count = papers.len();
         let mut unique_papers = Vec::new();
         let mut seen_dois = HashSet::new();
@@ -1035,6 +1058,7 @@ impl MetaSearchClient {
     }
 
     /// Try to get a PDF URL from any provider, cascading through them by priority
+    #[allow(clippy::cognitive_complexity)]
     pub async fn get_pdf_url_cascade(&self, doi: &str) -> Result<Option<String>, ProviderError> {
         info!("Attempting cascade PDF retrieval for DOI: {}", doi);
 
@@ -1088,12 +1112,10 @@ impl MetaSearchClient {
         }
 
         // If we get here, no provider could provide a PDF
-        if let Some(error) = last_error {
-            Err(error)
-        } else {
+        last_error.map_or_else(|| {
             info!("No provider could find a PDF for DOI: {}", doi);
             Ok(None)
-        }
+        }, |error| Err(error))
     }
 }
 
@@ -1104,7 +1126,7 @@ mod tests {
     #[tokio::test]
     async fn test_meta_search_client_creation() {
         let config = Config::default();
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let client = MetaSearchClient::new(config, meta_config);
         assert!(client.is_ok());
     }
@@ -1112,7 +1134,7 @@ mod tests {
     #[tokio::test]
     async fn test_provider_listing() {
         let config = Config::default();
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let client = MetaSearchClient::new(config, meta_config).unwrap();
 
         let providers = client.providers();
@@ -1129,7 +1151,7 @@ mod tests {
     #[tokio::test]
     async fn test_deduplication() {
         let config = Config::default();
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let client = MetaSearchClient::new(config, meta_config).unwrap();
 
         let papers = vec![
@@ -1155,7 +1177,7 @@ mod tests {
             },
         ];
 
-        let deduplicated = client.deduplicate_papers(papers);
+        let deduplicated = MetaSearchClient::deduplicate_papers(papers);
         assert_eq!(deduplicated.len(), 1);
     }
 }

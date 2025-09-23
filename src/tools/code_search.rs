@@ -122,7 +122,7 @@ impl CodeSearchTool {
 
             // Process PDF files and text files
             if path.extension().and_then(|s| s.to_str()) == Some("pdf") {
-                if let Ok(text) = self.extract_text_from_pdf(&path).await {
+                if let Ok(text) = self.extract_text_from_pdf(&path) {
                     if let Some(result) = self.search_in_text(
                         &text,
                         path.to_str().unwrap_or("unknown"),
@@ -161,7 +161,7 @@ impl CodeSearchTool {
     }
 
     /// Extract text from PDF (simplified version - would need proper PDF library)
-    async fn extract_text_from_pdf(&self, path: &Path) -> Result<String> {
+    fn extract_text_from_pdf(&self, path: &Path) -> Result<String> {
         debug!("Extracting text from PDF: {:?}", path);
 
         // For now, we'll use a simple approach

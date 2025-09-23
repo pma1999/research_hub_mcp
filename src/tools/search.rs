@@ -136,7 +136,7 @@ impl SearchTool {
         info!("Initializing paper search tool with meta-search");
 
         // Create meta-search client
-        let meta_config = MetaSearchConfig::default();
+        let meta_config = MetaSearchConfig::from_config(&config);
         let meta_client = MetaSearchClient::new((*config).clone(), meta_config).map_err(|e| {
             crate::Error::Service(format!("Failed to create meta-search client: {e}"))
         })?;
@@ -203,7 +203,7 @@ impl SearchTool {
 
         // Add categorization if enabled and papers were found
         if self.categorization_service.is_enabled() && !result.papers.is_empty() {
-            let category = self.categorize_papers(&input.query, &result.papers).await;
+            let category = self.categorize_papers(&input.query, &result.papers);
             result.category = Some(category.clone());
 
             // Set category for each paper result
@@ -398,6 +398,7 @@ impl SearchTool {
 
                 PaperResult {
                     metadata: paper,
+                    #[allow(clippy::cast_precision_loss)]
                     relevance_score: (index as f64).mul_add(-0.01, 1.0), // Simple scoring based on order
                     available: true, // Assume available since providers returned them
                     source,
@@ -406,7 +407,7 @@ impl SearchTool {
             })
             .collect();
 
-        let returned_count = papers.len() as u32;
+        let returned_count = u32::try_from(papers.len()).unwrap_or(u32::MAX);
 
         // Create source summary
         let source_summary = if meta_result.by_source.len() > 1 {
@@ -436,14 +437,14 @@ impl SearchTool {
             returned_count,
             offset: input.offset,
             has_more: returned_count >= input.limit, // Estimate based on limit
-            search_time_ms: meta_result.total_search_time.as_millis() as u64,
+            search_time_ms: u64::try_from(meta_result.total_search_time.as_millis()).unwrap_or(u64::MAX),
             source_mirror: Some(source_summary),
             category: None, // Will be set later by categorization
         }
     }
 
     /// Categorize papers using LLM based on query and abstracts
-    async fn categorize_papers(&self, query: &str, papers: &[PaperResult]) -> String {
+    fn categorize_papers(&self, query: &str, papers: &[PaperResult]) -> String {
         info!("Categorizing papers for query: '{}'", query);
 
         // Extract paper metadata for categorization
@@ -681,6 +682,7 @@ mod tests {
             endpoints: vec!["https://sci-hub.se".to_string()],
             rate_limit_per_sec: 1,
             timeout_secs: 30,
+            provider_timeout_secs: 60,
             max_retries: 2,
         };
         Arc::new(config)
