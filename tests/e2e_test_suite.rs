@@ -1,4 +1,3 @@
-use rmcp::ServerHandler;
 use knowledge_accumulator_mcp::{
     client::{
         providers::{
@@ -15,6 +14,7 @@ use knowledge_accumulator_mcp::{
     },
     Config, DownloadTool, MetadataExtractor, SearchTool,
 };
+use rmcp::ServerHandler;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

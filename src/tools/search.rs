@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::RwLock;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
 /// Input parameters for the paper search tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -70,6 +70,14 @@ pub struct SearchResult {
     pub source_mirror: Option<String>,
     /// Suggested category for organizing downloaded papers
     pub category: Option<String>,
+    /// List of providers that were successfully queried
+    pub successful_providers: Vec<String>,
+    /// List of providers that failed during the search
+    pub failed_providers: Vec<String>,
+    /// Details about provider errors that occurred
+    pub provider_errors: HashMap<String, String>,
+    /// Number of papers found per provider
+    pub papers_per_provider: HashMap<String, u32>,
 }
 
 /// Individual paper result
@@ -215,12 +223,29 @@ impl SearchTool {
         // Cache the result
         self.cache_result(&cache_key, &result).await;
 
+        // Enhanced logging with provider details
         info!(
-            "Meta-search completed in {:?}, found {} results from {} providers",
+            "Meta-search completed in {}ms, found {} results across {} successful providers",
             result.search_time_ms,
             result.returned_count,
-            result.source_mirror.as_deref().unwrap_or("multiple")
+            result.successful_providers.len()
         );
+
+        if !result.successful_providers.is_empty() {
+            info!(
+                "✅ Successful providers: {} | Papers per provider: {:?}",
+                result.successful_providers.join(", "),
+                result.papers_per_provider
+            );
+        }
+
+        if !result.failed_providers.is_empty() {
+            warn!(
+                "❌ Failed providers: {} | Errors: {:?}",
+                result.failed_providers.join(", "),
+                result.provider_errors
+            );
+        }
 
         Ok(result)
     }
@@ -429,6 +454,15 @@ impl SearchTool {
                 .unwrap_or_else(|| "No sources".to_string())
         };
 
+        // Extract provider information
+        let successful_providers: Vec<String> = meta_result.by_source.keys().cloned().collect();
+        let failed_providers: Vec<String> = meta_result.provider_errors.keys().cloned().collect();
+        let papers_per_provider: HashMap<String, u32> = meta_result
+            .by_source
+            .iter()
+            .map(|(provider, papers)| (provider.clone(), u32::try_from(papers.len()).unwrap_or(0)))
+            .collect();
+
         SearchResult {
             query,
             search_type,
@@ -441,6 +475,10 @@ impl SearchTool {
                 .unwrap_or(u64::MAX),
             source_mirror: Some(source_summary),
             category: None, // Will be set later by categorization
+            successful_providers,
+            failed_providers,
+            provider_errors: meta_result.provider_errors,
+            papers_per_provider,
         }
     }
 
@@ -847,6 +885,10 @@ mod tests {
             search_time_ms: 100,
             source_mirror: None,
             category: None,
+            successful_providers: vec![],
+            failed_providers: vec![],
+            provider_errors: HashMap::new(),
+            papers_per_provider: HashMap::new(),
         };
 
         let cache_key = SearchTool::generate_cache_key(&input);

@@ -318,7 +318,7 @@ async fn test_categorization_prompt_generation() {
         "Should contain return instruction"
     );
     assert!(
-        prompt.contains("5-8 words maximum"),
+        prompt.contains("3-5 words maximum"),
         "Should contain length requirement"
     );
     assert!(

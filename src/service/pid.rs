@@ -329,7 +329,9 @@ mod tests {
     #[test]
     fn test_standard_path() {
         let path = PidFile::standard_path();
-        assert!(path.to_string_lossy().contains("knowledge_accumulator_mcp.pid"));
+        assert!(path
+            .to_string_lossy()
+            .contains("knowledge_accumulator_mcp.pid"));
     }
 
     #[test]

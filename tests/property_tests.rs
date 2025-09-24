@@ -1,5 +1,5 @@
-use proptest::prelude::*;
 use knowledge_accumulator_mcp::{Config, Error};
+use proptest::prelude::*;
 
 /// Property-based tests for critical algorithms and data structures
 mod doi_validation_props {
