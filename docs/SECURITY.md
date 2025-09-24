@@ -682,7 +682,7 @@ cargo audit
 cargo update
 
 # Run security tests
-cargo test security_tests
+cargo nextest run security_tests
 
 # Check for outdated dependencies
 cargo outdated

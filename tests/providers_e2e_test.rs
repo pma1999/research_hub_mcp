@@ -1,6 +1,7 @@
 use rust_research_mcp::client::providers::{
-    ArxivProvider, CoreProvider, CrossRefProvider, SciHubProvider, SearchContext, SearchQuery,
-    SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider, UnpaywallProvider,
+    ArxivProvider, CoreProvider, CrossRefProvider, OpenAlexProvider, SciHubProvider, SearchContext,
+    SearchQuery, SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider,
+    UnpaywallProvider,
 };
 use std::collections::HashMap;
 use std::time::Duration;
@@ -163,6 +164,137 @@ async fn test_arxiv_health_check() {
     let result = result.unwrap();
     assert!(result.is_ok(), "Health check failed: {:?}", result.err());
     assert!(result.unwrap(), "ArXiv is not healthy");
+}
+
+// ============================================================================
+// OpenAlex Provider Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_openalex_provider_creation() {
+    let provider = OpenAlexProvider::new();
+    assert!(provider.is_ok());
+
+    let provider = provider.unwrap();
+    assert_eq!(provider.name(), "openalex");
+    assert_eq!(provider.priority(), 180);
+    assert!(provider.supports_full_text());
+}
+
+#[tokio::test]
+async fn test_openalex_search_by_title() {
+    let config = TestConfig::default();
+    if !config.run_live_tests {
+        eprintln!("Skipping live test. Set RUN_LIVE_TESTS=true to run.");
+        return;
+    }
+
+    let provider = OpenAlexProvider::new().expect("Failed to create OpenAlex provider");
+    let context = create_test_context();
+    let query = create_title_query("machine learning", 5);
+
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
+
+    assert!(result.is_ok(), "Search timed out");
+    let search_result = result.unwrap();
+    assert!(
+        search_result.is_ok(),
+        "Search failed: {:?}",
+        search_result.err()
+    );
+
+    let provider_result = search_result.unwrap();
+    assert!(!provider_result.papers.is_empty(), "No papers found");
+    assert_eq!(provider_result.source, "openalex");
+    assert!(provider_result.total_available.unwrap_or(0) > 0);
+
+    // Verify paper structure
+    let paper = &provider_result.papers[0];
+    assert!(!paper.doi.is_empty());
+    // Should have either a title or at least some content
+    assert!(paper.title.is_some() || !paper.authors.is_empty());
+}
+
+#[tokio::test]
+async fn test_openalex_search_by_doi() {
+    let config = TestConfig::default();
+    if !config.run_live_tests {
+        eprintln!("Skipping live test. Set RUN_LIVE_TESTS=true to run.");
+        return;
+    }
+
+    let provider = OpenAlexProvider::new().expect("Failed to create OpenAlex provider");
+    let context = create_test_context();
+    // Use a well-known DOI
+    let query = create_doi_query("10.1038/nature12373");
+
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
+
+    assert!(result.is_ok(), "Search timed out");
+    let search_result = result.unwrap();
+    assert!(
+        search_result.is_ok(),
+        "DOI search failed: {:?}",
+        search_result.err()
+    );
+
+    let provider_result = search_result.unwrap();
+    if !provider_result.papers.is_empty() {
+        let paper = &provider_result.papers[0];
+        // Should find the exact paper
+        assert!(paper.doi.contains("nature12373") || paper.doi.contains("10.1038"));
+    }
+}
+
+#[tokio::test]
+async fn test_openalex_search_by_author() {
+    let config = TestConfig::default();
+    if !config.run_live_tests {
+        eprintln!("Skipping live test. Set RUN_LIVE_TESTS=true to run.");
+        return;
+    }
+
+    let provider = OpenAlexProvider::new().expect("Failed to create OpenAlex provider");
+    let context = create_test_context();
+    let query = SearchQuery {
+        query: "Geoffrey Hinton".to_string(),
+        search_type: SearchType::Author,
+        max_results: 3,
+        offset: 0,
+        params: HashMap::new(),
+    };
+
+    let result = tokio::time::timeout(config.test_timeout, provider.search(&query, &context)).await;
+
+    assert!(result.is_ok(), "Search timed out");
+    let search_result = result.unwrap();
+    assert!(
+        search_result.is_ok(),
+        "Author search failed: {:?}",
+        search_result.err()
+    );
+
+    let provider_result = search_result.unwrap();
+    if !provider_result.papers.is_empty() {
+        // Should find papers with the author
+        let has_author = provider_result.papers.iter().any(|paper| {
+            paper
+                .authors
+                .iter()
+                .any(|author| author.to_lowercase().contains("hinton"))
+        });
+        assert!(has_author, "No papers found with Geoffrey Hinton as author");
+    }
+}
+
+#[tokio::test]
+async fn test_openalex_health_check() {
+    let provider = OpenAlexProvider::new().expect("Failed to create OpenAlex provider");
+    let context = create_test_context();
+
+    let result = provider.health_check(&context).await;
+    assert!(result.is_ok(), "Health check failed: {:?}", result.err());
+    assert!(result.unwrap(), "OpenAlex is not healthy");
 }
 
 // ============================================================================

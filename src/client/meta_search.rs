@@ -1,5 +1,5 @@
 use crate::client::providers::{
-    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, MdpiProvider,
+    ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, MdpiProvider, OpenAlexProvider,
     OpenReviewProvider, ProviderError, ProviderResult, PubMedCentralProvider, ResearchGateProvider,
     SciHubProvider, SearchContext, SearchQuery, SearchType, SemanticScholarProvider,
     SourceProvider, SsrnProvider, UnpaywallProvider,
@@ -120,6 +120,8 @@ impl MetaSearchClient {
             Arc::new(CrossRefProvider::new(None)?), // TODO: Get email from config
             // Semantic Scholar provider (very high priority for PDF access + metadata)
             Arc::new(SemanticScholarProvider::new(None)?), // TODO: Get API key from config
+            // OpenAlex provider (high priority for comprehensive academic coverage)
+            Arc::new(OpenAlexProvider::new()?),
             // Unpaywall provider (high priority for legal free PDF discovery)
             Arc::new(UnpaywallProvider::new_with_default_email()?), // TODO: Get email from config
             // PubMed Central provider (very high priority for biomedical papers)
@@ -208,14 +210,19 @@ impl MetaSearchClient {
             if provider_stats.request_count == 0 {
                 provider_stats.avg_response_time = response_time_ms;
             } else {
-                provider_stats.avg_response_time =
-                    alpha.mul_add(response_time_ms, (1.0 - alpha) * provider_stats.avg_response_time);
+                provider_stats.avg_response_time = alpha.mul_add(
+                    response_time_ms,
+                    (1.0 - alpha) * provider_stats.avg_response_time,
+                );
             }
 
             provider_stats.request_count += 1;
             provider_stats.last_updated = Instant::now();
 
-            (provider_stats.avg_response_time, provider_stats.request_count)
+            (
+                provider_stats.avg_response_time,
+                provider_stats.request_count,
+            )
         };
 
         debug!(
@@ -412,10 +419,7 @@ impl MetaSearchClient {
     }
 
     /// Filter providers based on query characteristics
-    fn filter_providers_for_query(
-        &self,
-        query: &SearchQuery,
-    ) -> Vec<Arc<dyn SourceProvider>> {
+    fn filter_providers_for_query(&self, query: &SearchQuery) -> Vec<Arc<dyn SourceProvider>> {
         let mut suitable = Vec::new();
 
         for provider in &self.providers {
@@ -569,7 +573,8 @@ impl MetaSearchClient {
                 adjusted_priority += Self::calculate_content_priority_boost(provider, &query_lower);
 
                 // Time-sensitive priority adjustments
-                adjusted_priority += Self::calculate_temporal_priority_boost(provider, &query_lower);
+                adjusted_priority +=
+                    Self::calculate_temporal_priority_boost(provider, &query_lower);
 
                 (provider.clone(), adjusted_priority)
             })
@@ -591,10 +596,7 @@ impl MetaSearchClient {
     }
 
     /// Calculate domain-specific priority boost
-    fn calculate_domain_priority_boost(
-        provider: &Arc<dyn SourceProvider>,
-        query: &str,
-    ) -> i32 {
+    fn calculate_domain_priority_boost(provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
         let provider_name = provider.name();
 
         // Computer Science & Machine Learning
@@ -705,10 +707,7 @@ impl MetaSearchClient {
     }
 
     /// Calculate content availability priority boost
-    fn calculate_content_priority_boost(
-        provider: &Arc<dyn SourceProvider>,
-        query: &str,
-    ) -> i32 {
+    fn calculate_content_priority_boost(provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
         let provider_name = provider.name();
 
         // If query suggests need for full-text/PDF access
@@ -740,10 +739,7 @@ impl MetaSearchClient {
     }
 
     /// Calculate temporal priority boost for time-sensitive queries
-    fn calculate_temporal_priority_boost(
-        provider: &Arc<dyn SourceProvider>,
-        query: &str,
-    ) -> i32 {
+    fn calculate_temporal_priority_boost(provider: &Arc<dyn SourceProvider>, query: &str) -> i32 {
         let provider_name = provider.name();
 
         // Boost for recent year mentions
@@ -1112,10 +1108,13 @@ impl MetaSearchClient {
         }
 
         // If we get here, no provider could provide a PDF
-        last_error.map_or_else(|| {
-            info!("No provider could find a PDF for DOI: {}", doi);
-            Ok(None)
-        }, |error| Err(error))
+        last_error.map_or_else(
+            || {
+                info!("No provider could find a PDF for DOI: {}", doi);
+                Ok(None)
+            },
+            |error| Err(error),
+        )
     }
 }
 
@@ -1152,7 +1151,7 @@ mod tests {
     async fn test_deduplication() {
         let config = Config::default();
         let meta_config = MetaSearchConfig::from_config(&config);
-        let client = MetaSearchClient::new(config, meta_config).unwrap();
+        let _client = MetaSearchClient::new(config, meta_config).unwrap();
 
         let papers = vec![
             PaperMetadata {

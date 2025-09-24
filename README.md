@@ -278,7 +278,7 @@ format = "json"
 
 ```bash
 # Run all tests
-cargo test
+cargo nextest run
 
 # Run with coverage
 cargo tarpaulin --out Html

@@ -23,12 +23,12 @@ fi
 
 # Run the provider tests
 echo "🔍 Testing individual providers..."
-cargo test --test providers_e2e_test -- --nocapture
+cargo nextest run --test providers_e2e_test --no-capture
 
 # Run quick unit tests for providers
 echo ""
 echo "🔧 Running provider unit tests..."
-cargo test --lib providers:: -- --nocapture
+cargo nextest run --lib --no-capture -E 'test(providers::)'
 
 echo ""
 echo "✅ Provider tests complete!"

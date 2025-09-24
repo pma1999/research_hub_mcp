@@ -433,6 +433,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    #[allow(dead_code)]
     fn create_test_context() -> SearchContext {
         SearchContext {
             timeout: Duration::from_secs(30),

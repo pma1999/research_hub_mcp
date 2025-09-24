@@ -437,7 +437,8 @@ impl SearchTool {
             returned_count,
             offset: input.offset,
             has_more: returned_count >= input.limit, // Estimate based on limit
-            search_time_ms: u64::try_from(meta_result.total_search_time.as_millis()).unwrap_or(u64::MAX),
+            search_time_ms: u64::try_from(meta_result.total_search_time.as_millis())
+                .unwrap_or(u64::MAX),
             source_mirror: Some(source_summary),
             category: None, // Will be set later by categorization
         }

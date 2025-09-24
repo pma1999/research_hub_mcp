@@ -1,286 +1,419 @@
-# CLAUDE.md - AI Assistant Project Guide
+# rust-research-mcp
 
-## Project Overview
+Academic paper retrieval MCP server. Personal research use only.
 
-**rust-sci-hub-mcp** is a Rust-based Model Context Protocol (MCP) server that provides Claude and other AI assistants with the ability to search, download, and extract metadata from academic papers through Sci-Hub integration. This project is designed for personal research use in computer science architecture and research.
-
-## Project Goals
-
-- **Primary**: Enable AI assistants to autonomously search and retrieve academic papers for research
-- **Secondary**: Provide structured metadata extraction for citation and reference management
-- **Tertiary**: Run as a background service on macOS with minimal user intervention
-
-## Architecture Decisions
-
-### Technology Stack
-- **Language**: Rust (stable, 1.70+ minimum)
-- **MCP Framework**: `rmcp` (official Anthropic SDK) - chosen for production stability and official support
-- **Async Runtime**: Tokio - industry standard for Rust async operations
-- **HTTP Client**: reqwest - robust HTTP client with connection pooling
-- **Configuration**: layered config (file → env → CLI) using serde and clap
-- **Logging**: tracing with structured logging for debugging and monitoring
-
-### Key Design Principles
-1. **Resilience First**: Circuit breakers, retries, and graceful degradation
-2. **Security by Default**: Input validation, secure HTTP, minimal permissions
-3. **Observability**: Comprehensive logging and health checks
-4. **macOS Native**: LaunchAgent integration, Homebrew distribution
-5. **Developer Experience**: Comprehensive tooling (Clippy, rustfmt, tests)
-
-## Directory Structure
-
-```
-rust-sci-hub-mcp/
-├── src/
-│   ├── main.rs              # Entry point and CLI handling
-│   ├── lib.rs               # Library exports
-│   ├── server/              # MCP server implementation
-│   ├── tools/               # MCP tools (search, download, metadata)
-│   ├── client/              # Sci-Hub client with mirror management
-│   ├── config/              # Configuration management
-│   ├── service/             # Background service and daemon logic
-│   └── error.rs             # Error types and handling
-├── tests/                   # Integration tests
-├── benches/                 # Performance benchmarks
-├── docs/                    # Documentation
-├── scripts/                 # Installation and management scripts
-├── homebrew/                # Homebrew formula
-└── launchd/                # macOS LaunchAgent configuration
+## Commands
+```bash
+cargo nextest run                # Run tests (parallel)
+cargo nextest run TEST_NAME      # Run specific test
+cargo clippy -- -D warnings      # Must pass before commit
+cargo fmt                        # Format code
+cargo build --release           # Production build
+cargo run -- serve              # Start MCP server
+cargo tarpaulin --out Html      # Coverage report
+cargo audit                     # Security check
 ```
 
-## Core Components
+## TDD Workflow
+1. Write failing test first
+2. Run `cargo nextest run TEST_NAME` to verify failure
+3. Write minimal code to pass
+4. Verify test passes
+5. Refactor if needed
+6. Run full suite before commit
 
-### 1. MCP Server (`src/server/`)
-- Implements rmcp ServerHandler trait
-- Manages tool registration and lifecycle
-- Handles stdio transport for Claude Desktop integration
-- Provides health checks and graceful shutdown
+## Code Style
+- Use `thiserror` for errors - no raw strings
+- Use `tracing` for logging - never println
+- Use `?` operator - avoid unwrap/expect
+- Prefer `async/await` over manual futures
+- Keep functions under 50 lines
+- Test naming: `test_<function>_<case>_<expected>`
 
-### 2. Tools (`src/tools/`)
-- **Search Tool**: Query papers by DOI, title, author
-- **Download Tool**: Retrieve papers with progress tracking
-- **Metadata Tool**: Extract bibliographic information
+## Project Structure
+```
+src/
+├── main.rs         # CLI entry point
+├── server.rs       # MCP server implementation
+├── tools/          # MCP tool implementations
+├── client.rs       # External API client
+├── config.rs       # Configuration handling
+└── error.rs        # Error types
+tests/              # Integration tests
+```
 
-### 3. Sci-Hub Client (`src/client/`)
-- Mirror discovery and health checking
-- Automatic failover and circuit breaking
-- Rate limiting and respectful scraping
-- HTTP client with retry logic
+## MCP Tool Pattern
+```rust
+use rmcp::prelude::*;
+use schemars::JsonSchema;
 
-### 4. Service Management (`src/service/`)
-- Background daemon functionality
-- Process supervision and restart
-- Signal handling for graceful shutdown
-- Integration with system logging
+#[derive(Debug, Deserialize, JsonSchema)]
+struct InputSchema {
+    #[schemars(description = "Clear description")]
+    field: String,
+}
 
-## Development Guidelines for AI Assistants
+#[tool]
+async fn tool_name(input: InputSchema) -> Result<Value> {
+    // Validate input
+    // Call service with timeout
+    // Return JSON response
+}
+```
 
-### Code Quality Standards
-- **Always run Clippy**: `cargo clippy -- -D warnings`
-- **Format before commit**: `cargo fmt`
-- **Test coverage**: Aim for >90% with `cargo tarpaulin`
-- **Security audit**: Run `cargo audit` regularly
-- **Documentation**: All public APIs must have rustdoc comments
+## Error Handling
+```rust
+#[derive(Error, Debug)]
+enum AppError {
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+    
+    #[error("Invalid input: {0}")]
+    Validation(String),
+}
 
-### Error Handling Philosophy
-- Use `thiserror` for structured error types
-- Chain errors to preserve context
-- Log errors at appropriate levels (ERROR for actionable, WARN for recoverable)
-- Implement retries with exponential backoff for transient failures
-- Use circuit breakers for external service calls
+// Always use timeout
+let result = tokio::time::timeout(
+    Duration::from_secs(30),
+    client.get(url).send()
+).await??;
+```
 
-### Async Programming Guidelines
-- Prefer async/await over manual Future implementations
-- Use `tokio::timeout` for all external calls
-- Handle cancellation gracefully with `tokio::select!`
-- Use channels for inter-task communication
-- Avoid blocking operations in async contexts
+## Testing
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    
+    #[tokio::test]
+    async fn test_function_success() {
+        // Arrange
+        let mock_server = MockServer::start().await;
+        Mock::given(matchers::method("GET"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&mock_server)
+            .await;
+        
+        // Act
+        let result = function_under_test().await;
+        
+        // Assert
+        assert!(result.is_ok());
+    }
+}
+```
 
-### Testing Strategy
-- **Unit Tests**: Fast, isolated, test single functions
-- **Integration Tests**: Test component interactions
-- **Property Tests**: Use `proptest` for algorithm verification
-- **Performance Tests**: Use `criterion` for benchmarking
-- **Security Tests**: Validate input handling and access controls
+## Async Patterns
+- Use `tokio::spawn` for parallel work
+- Use `tokio::select!` for cancellation
+- Bounded channels only: `mpsc::channel(100)`
+- Share state: `Arc<RwLock<T>>`
+- No blocking in async context
 
-## Working with Jira Stories
+## HTTP Client
+```rust
+use once_cell::sync::Lazy;
 
-### Story Dependencies
-Stories must be completed in dependency order:
-1. **RSH-2**: Project setup (foundation for everything)
-2. **RSH-3, RSH-4**: Core server and configuration
-3. **RSH-5**: Sci-Hub client (required for tools)
-4. **RSH-6, RSH-7, RSH-8**: Tools implementation
-5. **RSH-9, RSH-10, RSH-11**: Service and distribution
-6. **RSH-12, RSH-13, RSH-14, RSH-15**: Quality and security
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .timeout(Duration::from_secs(30))
+        .pool_max_idle_per_host(2)
+        .build()
+        .expect("Failed to create client")
+});
+```
 
-### Definition of Done Checklist
-For every story, ensure:
-- [ ] Code compiles without warnings
-- [ ] All tests pass (`cargo test`)
-- [ ] Clippy passes with zero warnings
-- [ ] Documentation is updated
-- [ ] Security considerations are addressed
-- [ ] Performance impact is measured
+## Configuration
+Order of precedence:
+1. CLI arguments
+2. Environment variables (`RUST_RESEARCH_MCP_*`)
+3. config.toml
+4. Defaults
 
-### Code Review Focus Areas
-1. **Error Handling**: Are all error cases properly handled?
-2. **Resource Management**: No memory leaks or resource exhaustion?
-3. **Security**: Input validation, secure defaults, minimal permissions?
-4. **Performance**: Appropriate async usage, efficient algorithms?
-5. **Maintainability**: Clear code, good abstractions, documented decisions?
+## Rate Limiting
+```rust
+use governor::{Quota, RateLimiter};
 
-## Security Considerations
+// 1 request per second
+let limiter = RateLimiter::direct(Quota::per_second(1));
+limiter.until_ready().await;
+```
 
-### Critical Security Requirements
-- **Input Validation**: All user inputs must be validated and sanitized
-- **HTTP Security**: Use HTTPS, verify certificates, secure headers
-- **File Permissions**: Configuration files should be 0600 (owner read/write only)
-- **Credential Management**: Never log sensitive data, use secure storage
-- **Rate Limiting**: Prevent abuse and respect external services
-- **Memory Safety**: Leverage Rust's ownership system, avoid unsafe code
+## Circuit Breaker
+```rust
+use circuit_breaker::CircuitBreaker;
 
-### Sci-Hub Integration Ethics
-- **Personal Use Only**: This tool is designed for personal research
-- **Rate Limiting**: Implement respectful request patterns
-- **Mirror Rotation**: Distribute load across available mirrors
-- **Error Handling**: Graceful degradation when services are unavailable
-- **Documentation**: Clear usage guidelines and limitations
+let breaker = CircuitBreaker::new()
+    .error_threshold(3)
+    .timeout(Duration::from_secs(60));
 
-## Configuration Management
+match breaker.call(async_operation).await {
+    Ok(result) => process(result),
+    Err(_) => fallback_strategy(),
+}
+```
 
-### Configuration Sources (in precedence order)
-1. Command-line arguments (highest priority)
-2. Environment variables
-3. Configuration file
-4. Built-in defaults (lowest priority)
+## Git Workflow
+```bash
+git checkout -b feature/task-name
+# TDD: Write tests first
+cargo nextest run --no-capture
+# Implement feature
+cargo fmt && cargo clippy -- -D warnings
+cargo nextest run
+git add -A && git commit -m "feat: description"
+git push origin feature/task-name
+```
 
-### Key Configuration Categories
-- **Server**: Port, transport, logging level
-- **Sci-Hub**: Mirror URLs, timeouts, rate limits
-- **Downloads**: Directory, concurrent limits, file organization
-- **Service**: Daemon mode, PID file location, restart policy
-
-## Testing Strategy
-
-### Test Categories
-- **Unit Tests**: Fast, isolated component tests
-- **Integration Tests**: Cross-component workflow tests
-- **Performance Tests**: Latency and throughput benchmarks
-- **Security Tests**: Input validation and access control verification
-- **End-to-End Tests**: Complete user scenario validation
-
-### Mock Strategy
-- Use `wiremock` for HTTP service mocking
-- Create test fixtures for common scenarios
-- Implement deterministic test data
-- Use property-based testing for edge cases
-
-## Deployment and Distribution
-
-### macOS Integration
-- **LaunchAgent**: Automatically starts on user login
-- **Homebrew**: Simple installation via `brew install`
-- **Logs**: Accessible via Console.app
-- **Service Management**: Use `brew services` commands
-
-### Installation Flow
-1. User runs `brew install rust-sci-hub-mcp`
-2. Homebrew builds from source and installs binary
-3. Post-install script sets up LaunchAgent
-4. Service starts automatically
-5. Claude Desktop can connect via stdio transport
+## macOS Service
+```bash
+# Install
+cargo install --path .
+# Start
+launchctl load ~/Library/LaunchAgents/rust-research-mcp.plist
+# Logs
+tail -f ~/Library/Logs/rust-research-mcp/service.log
+# Stop
+launchctl unload ~/Library/LaunchAgents/rust-research-mcp.plist
+```
 
 ## Performance Targets
+- Response time: <500ms
+- Memory usage: <100MB idle
+- Startup time: <2s
+- CPU usage: <5% idle
 
-### Response Time Goals
-- **Search**: < 500ms for simple queries
-- **Download**: Stream large files with progress reporting
-- **Metadata**: < 200ms for cached data, < 2s for extraction
-- **Health Check**: < 50ms for service status
+## Security
+- Validate all inputs
+- Use HTTPS only
+- No secrets in logs
+- Config files: mode 0600
+- Sanitize file paths
 
-### Resource Limits
-- **Memory**: < 100MB baseline, < 500MB under load
-- **CPU**: < 5% idle, burst to 50% during operations
-- **Disk**: Configurable download storage limits
-- **Network**: Respectful rate limiting (1 req/sec default)
+## Common Issues
 
-## Monitoring and Observability
+### Async runtime panic
+```rust
+// Wrong: blocking in async
+std::thread::sleep(duration);
 
-### Logging Strategy
-- **Structured Logging**: Use tracing with JSON format
-- **Log Levels**: DEBUG for development, INFO for operations, WARN/ERROR for issues
-- **Context**: Include request IDs, operation types, timing information
-- **Security**: Never log sensitive data (credentials, personal info)
-
-### Health Checks
-- **Service Health**: Basic liveness check
-- **Dependencies**: Sci-Hub mirror availability
-- **Resources**: Memory, disk, network connectivity
-- **Performance**: Response time percentiles
-
-## Common Development Tasks
-
-### Setting Up Development Environment
-```bash
-# Clone and setup
-git clone <repository>
-cd rust-sci-hub-mcp
-cargo build
-
-# Install development tools
-cargo install cargo-tarpaulin cargo-audit
-rustup component add clippy rustfmt
-
-# Run full test suite
-cargo test
-cargo clippy -- -D warnings
-cargo audit
+// Right: async sleep
+tokio::time::sleep(duration).await;
 ```
 
-### Adding a New Tool
-1. Create module in `src/tools/`
-2. Implement tool using `#[tool]` macro
-3. Add input validation with schemars
-4. Register tool in server handler
-5. Add comprehensive tests
-6. Update documentation
+### Test timeout
+```rust
+#[tokio::test(flavor = "multi_thread")]
+async fn long_test() {
+    // Allows parallel execution
+}
+```
 
-### Debugging Common Issues
-- **Connection Issues**: Check LaunchAgent status and logs
-- **Mirror Failures**: Verify circuit breaker status and retry logic
-- **Performance**: Use `cargo flamegraph` for profiling
-- **Memory Leaks**: Use `valgrind` or `heaptrack` for analysis
+### Serialization
+```rust
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Response {
+    field_name: String,
+}
+```
 
-## Resources and References
+## DO NOT
+- Use `println!` - use `tracing`
+- Use `.unwrap()` - use `?` or `.expect()`
+- Create unbounded channels
+- Block in async functions
+- Log sensitive data
+- Skip error handling
 
-### Documentation
-- [MCP Specification](https://spec.modelcontextprotocol.io/)
-- [rmcp SDK Documentation](https://docs.rs/rmcp/)
-- [Tokio Guide](https://tokio.rs/tokio/tutorial)
-- [Rust Async Book](https://rust-lang.github.io/async-book/)
+## ALWAYS
+- Write test first (TDD)
+- Validate inputs
+- Use timeouts for I/O
+- Handle all Results
+- Run clippy before commit
+- Document public APIs
 
-### Tools and Libraries
-- [Clippy Lints](https://rust-lang.github.io/rust-clippy/master/)
-- [tracing Documentation](https://docs.rs/tracing/)
-- [reqwest Guide](https://docs.rs/reqwest/)
-- [serde Tutorial](https://serde.rs/)
+## Deployment
 
-## Contributing Guidelines
+### 1. Build Distribution
+```bash
+# Clean previous builds
+rm -rf build/
+mkdir -p build/dist
 
-### For AI Assistants
-- Follow the Jira story structure and acceptance criteria
-- Implement comprehensive error handling from the start
-- Write tests before implementing features (TDD approach)
-- Use structured logging with appropriate context
-- Ask clarifying questions about requirements before implementation
-- Focus on security and performance from day one
+# Build release binary
+cargo build --release
 
-### Code Style
-- Use `cargo fmt` for consistent formatting
-- Follow Rust naming conventions (snake_case, CamelCase)
-- Prefer explicit error handling over unwrap/expect
-- Use meaningful variable and function names
-- Keep functions small and focused on single responsibilities
+# Copy binary and config
+cp target/release/rust-research-mcp build/dist/
+cp config.example.toml build/dist/config.toml
 
-Remember: This project handles academic research data and interfaces with external services. Security, reliability, and ethical usage are paramount considerations in all development decisions.
+# Create run script
+cat > build/dist/run.sh << 'EOF'
+#!/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/rust-research-mcp" serve --config "$SCRIPT_DIR/config.toml"
+EOF
+chmod +x build/dist/run.sh
+
+# Package
+cd build && tar -czf rust-research-mcp.tar.gz dist/
+echo "Distribution created: build/rust-research-mcp.tar.gz"
+```
+
+### 2. Install in Claude Desktop
+```bash
+# Extract distribution
+cd ~/Documents  # or preferred location
+tar -xzf path/to/rust-research-mcp.tar.gz
+mv dist rust-research-mcp
+
+# Configure Claude Desktop
+cat >> ~/Library/Application\ Support/Claude/claude_desktop_config.json << 'EOF'
+{
+  "mcpServers": {
+    "rust-research-mcp": {
+      "command": "/Users/$USER/Documents/rust-research-mcp/run.sh",
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+EOF
+
+# Restart Claude Desktop
+osascript -e 'quit app "Claude"'
+sleep 2
+open -a "Claude"
+```
+
+### 3. Install in Claude Code
+```bash
+# Global installation
+cargo install --path . --root ~/.local
+
+# Configure MCP for Claude Code
+cat > ~/.claude/mcp.json << 'EOF'
+{
+  "mcpServers": {
+    "rust-research-mcp": {
+      "command": "rust-research-mcp",
+      "args": ["serve"],
+      "env": {
+        "RUST_LOG": "info"
+      }
+    }
+  }
+}
+EOF
+
+# Alternative: Project-specific installation
+cat > .mcp.json << 'EOF'
+{
+  "mcpServers": {
+    "rust-research-mcp": {
+      "command": "./build/dist/rust-research-mcp",
+      "args": ["serve"],
+      "env": {
+        "RUST_LOG": "debug"
+      }
+    }
+  }
+}
+EOF
+```
+
+### 4. Test Installation
+
+#### Claude Desktop Test
+```bash
+# 1. Open Claude Desktop
+# 2. Type: "List available MCP tools"
+# 3. Should see: search_papers, download_paper, extract_metadata
+
+# Check if server is running
+ps aux | grep rust-research-mcp
+
+# Test a tool
+# In Claude: "Search for papers about 'machine learning'"
+```
+
+#### Claude Code Test
+```bash
+# Start Claude Code with debug
+claude --mcp-debug
+
+# In Claude Code session:
+# Type: /mcp
+# Should list rust-research-mcp as available
+
+# Test tool discovery
+# Type: "What MCP tools are available?"
+
+# Test tool execution
+# Type: "Search for recent papers on rust programming"
+```
+
+### 5. Check Logs
+
+#### Claude Desktop Logs
+```bash
+# View server logs
+tail -f ~/Library/Logs/Claude/mcp-rust-research-mcp.log
+
+# Check for startup
+grep "Server started" ~/Library/Logs/Claude/mcp-rust-research-mcp.log
+
+# Check for errors
+grep ERROR ~/Library/Logs/Claude/mcp-rust-research-mcp.log
+
+# Claude Desktop console
+open ~/Library/Logs/Claude/claude.log
+```
+
+#### Claude Code Logs
+```bash
+# Enable verbose logging
+export RUST_LOG=debug
+
+# Run with MCP debug
+claude --mcp-debug --verbose
+
+# Check MCP connection
+grep "MCP server connected" ~/.claude/logs/session.log
+
+# Monitor real-time
+tail -f ~/.claude/logs/session.log | grep rust-research-mcp
+```
+
+### Troubleshooting
+
+#### Server won't start
+```bash
+# Check permissions
+chmod +x build/dist/rust-research-mcp
+chmod +x build/dist/run.sh
+
+# Test manually
+./build/dist/run.sh
+# Should output: "MCP server listening on stdio"
+```
+
+#### Tools not appearing
+```bash
+# Verify config syntax
+python3 -m json.tool < ~/.claude/mcp.json
+
+# Test server directly
+echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | ./build/dist/rust-research-mcp
+```
+
+#### Permission denied
+```bash
+# macOS security
+xattr -d com.apple.quarantine build/dist/rust-research-mcp
+spctl --add --label "MCP" build/dist/rust-research-mcp
+```
