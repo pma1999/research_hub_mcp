@@ -163,6 +163,11 @@ impl CrossRefProvider {
 
         let doi = work.doi.unwrap_or_default();
 
+        // Filter out empty or invalid PDF URLs - CrossRef URLs are typically landing pages, not PDFs
+        let pdf_url = work
+            .url
+            .filter(|url| !url.is_empty() && url.contains(".pdf"));
+
         PaperMetadata {
             doi,
             title,
@@ -170,7 +175,7 @@ impl CrossRefProvider {
             journal,
             year,
             abstract_text: work.abstract_text,
-            pdf_url: work.url, // CrossRef URL is not always a PDF
+            pdf_url,
             file_size: None,
         }
     }

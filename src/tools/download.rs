@@ -627,17 +627,31 @@ impl DownloadTool {
                 );
 
                 let error_msg = format!(
-                    "Paper found in {} provider(s) but no downloadable PDF available after checking all sources. \
-                    Paper: '{}' by {} ({}). \
-                    Checked providers: ArXiv, CrossRef, SSRN, Sci-Hub. \
-                    Try: 1) Checking the publisher's website directly, \
-                    2) Institutional access, \
-                    3) Contacting the authors, \
-                    4) Checking preprint servers",
+                    "📄 Paper Metadata Found but No PDF Available\n\n\
+                    The paper was successfully located in {} academic database(s), but none provided a downloadable PDF link.\n\n\
+                    📚 Paper Details:\n\
+                    • Title: '{}'\n\
+                    • Authors: {}\n\
+                    • Year: {}\n\
+                    • DOI: {}\n\n\
+                    🔍 Sources Searched: ArXiv, CrossRef, SSRN, Sci-Hub, and others\n\n\
+                    💡 This typically means:\n\
+                    • The paper is behind a paywall\n\
+                    • It's a book or conference proceedings requiring institutional access\n\
+                    • The paper may be available only in print\n\
+                    • Publishers haven't made it freely available\n\n\
+                    🚀 Try These Alternatives:\n\
+                    1. Check your institution's library access\n\
+                    2. Visit the publisher's website directly\n\
+                    3. Search Google Scholar for preprint versions\n\
+                    4. Contact the authors for a copy\n\
+                    5. Check ResearchGate or Academia.edu\n\
+                    6. Look for related open-access papers by the same authors",
                     search_result.successful_providers,
                     paper.title.as_ref().unwrap_or(&"Unknown title".to_string()),
-                    paper.authors.join(", "),
-                    paper.year.map_or("year unknown".to_string(), |y| y.to_string())
+                    if paper.authors.is_empty() { "Unknown authors".to_string() } else { paper.authors.join(", ") },
+                    paper.year.map_or("Unknown year".to_string(), |y| y.to_string()),
+                    doi_str
                 );
 
                 debug!(
@@ -660,9 +674,27 @@ impl DownloadTool {
                 );
 
                 let error_msg = format!(
-                    "DOI '{}' not found in any provider ({} providers checked, {} failed)",
+                    "🔍 Paper Not Found in Academic Databases\n\n\
+                    The DOI '{}' was not found in any of the {} academic databases we searched.\n\n\
+                    📊 Search Summary:\n\
+                    • Databases checked: {}\n\
+                    • Databases that responded: {}\n\
+                    • Databases that failed: {}\n\n\
+                    💡 This could mean:\n\
+                    • The DOI is incorrect or mistyped\n\
+                    • The paper is very new and not yet indexed\n\
+                    • The paper is in a specialized database we don't search\n\
+                    • The DOI was registered but the paper was never published\n\n\
+                    🔧 Try These Steps:\n\
+                    1. Double-check the DOI format (should be like '10.1000/example')\n\
+                    2. Search by paper title instead of DOI\n\
+                    3. Check the original source where you found this DOI\n\
+                    4. Try searching Google Scholar directly\n\
+                    5. Contact the publisher or authors for verification",
                     doi_str,
                     search_result.successful_providers + search_result.failed_providers,
+                    search_result.successful_providers + search_result.failed_providers,
+                    search_result.successful_providers,
                     search_result.failed_providers
                 );
 

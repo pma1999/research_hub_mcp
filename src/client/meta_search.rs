@@ -1090,11 +1090,18 @@ impl MetaSearchClient {
                     );
                     return Ok(Some(pdf_url));
                 }
-                Ok(Some(_)) => {
+                Ok(Some(empty_url)) => {
                     warn!(
-                        "Provider {} returned empty PDF URL for DOI: {}",
+                        "⚠️ Data Quality Issue: Provider '{}' returned empty PDF URL for DOI '{}'. \
+                        This suggests the provider found the paper but has no PDF link available. \
+                        Empty URL value: '{}'",
                         provider.name(),
-                        doi
+                        doi,
+                        empty_url
+                    );
+                    debug!(
+                        "📊 Provider '{}' should return None instead of empty string for missing PDFs",
+                        provider.name()
                     );
                 }
                 Ok(None) => {
