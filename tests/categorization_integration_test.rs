@@ -1,4 +1,4 @@
-use rust_research_mcp::{
+use knowledge_accumulator_mcp::{
     client::PaperMetadata, services::CategorizationService, tools::categorize::CategorizeInput,
     tools::download::DownloadInput, CategorizeTool, Config, DownloadTool, MetaSearchClient,
     SearchTool,
@@ -62,7 +62,7 @@ async fn test_categorization_feature_integration() {
     // Search tool created successfully with categorization enabled config
 
     // Test 5: Download Tool Integration with Categories
-    let meta_config = rust_research_mcp::client::MetaSearchConfig::default();
+    let meta_config = knowledge_accumulator_mcp::client::MetaSearchConfig::default();
     let client = Arc::new(MetaSearchClient::new((*config).clone(), meta_config).unwrap());
     let _download_tool = DownloadTool::new(client, config.clone()).unwrap();
 

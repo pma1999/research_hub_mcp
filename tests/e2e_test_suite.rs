@@ -1,5 +1,5 @@
 use rmcp::ServerHandler;
-use rust_research_mcp::{
+use knowledge_accumulator_mcp::{
     client::{
         providers::{
             ArxivProvider, BiorxivProvider, CoreProvider, CrossRefProvider, SearchQuery,
@@ -41,8 +41,8 @@ fn create_search_query(query: &str, search_type: SearchType) -> SearchQuery {
 }
 
 /// Helper to create a search context
-fn create_search_context() -> rust_research_mcp::client::providers::SearchContext {
-    rust_research_mcp::client::providers::SearchContext {
+fn create_search_context() -> knowledge_accumulator_mcp::client::providers::SearchContext {
+    knowledge_accumulator_mcp::client::providers::SearchContext {
         timeout: Duration::from_secs(30),
         user_agent: "test-client".to_string(),
         rate_limit: None,
@@ -519,7 +519,7 @@ async fn test_rate_limiting() {
     let provider = ArxivProvider::new().expect("Failed to create ArXiv provider");
 
     // Initialize rate limiter with test configuration
-    let mut test_config = rust_research_mcp::config::RateLimitingConfig::default();
+    let mut test_config = knowledge_accumulator_mcp::config::RateLimitingConfig::default();
     test_config.allow_burst = false; // Disable burst for predictable testing
     test_config.providers.insert("arxiv".to_string(), 1.0); // 1 req/sec for testing
     provider.init_rate_limiter(&test_config).await;

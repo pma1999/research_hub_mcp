@@ -205,7 +205,7 @@ impl Default for ResearchSourceConfig {
 impl Default for DownloadsConfig {
     fn default() -> Self {
         Self {
-            directory: expand_path("~/Downloads/papers"),
+            directory: expand_path("~/downloads/papers"),
             max_concurrent: 3,
             max_file_size_mb: 100,
         }
@@ -331,7 +331,7 @@ impl Config {
             .ok_or_else(|| {
                 crate::Error::Config(config::ConfigError::NotFound("config directory".into()))
             })?
-            .join("rust-sci-hub-mcp");
+            .join("knowledge_accumulator_mcp");
 
         // Create config directory if it doesn't exist
         if !config_dir.exists() {
@@ -851,7 +851,7 @@ max_retries = 3
 
 [downloads]
 # Download directory path (supports ~ expansion)
-directory = "~/Downloads/papers"
+directory = "~/downloads/papers"
 
 # Maximum concurrent downloads (default: 3)
 max_concurrent = 3
@@ -867,7 +867,7 @@ level = "info"
 format = "json"
 
 # Optional log file path (default: none, logs to stderr)
-# file = "/var/log/rust-sci-hub-mcp.log"
+# file = "/var/log/knowledge_accumulator_mcp.log"
 
 [rate_limiting]
 # Enable adaptive rate limiting based on response times (default: true)
@@ -929,7 +929,7 @@ openreview = 1.0
 port = 8080
 
 [downloads]
-directory = "~/Downloads/papers"
+directory = "~/downloads/papers"
 
 [logging]
 level = "info"
@@ -970,7 +970,7 @@ max_file_size_mb = 200
 [logging]
 level = "info"
 format = "json"
-file = "~/Library/Logs/rust-sci-hub-mcp.log"
+file = "~/library/logs/knowledge_accumulator_mcp.log"
 
 [rate_limiting]
 adaptive = true
@@ -1180,11 +1180,11 @@ mod tests {
     #[test]
     fn test_path_expansion() {
         // Test tilde expansion
-        let expanded = expand_path("~/Downloads/papers");
+        let expanded = expand_path("~/downloads/papers");
         if let Some(home_dir) = dirs::home_dir() {
-            assert_eq!(expanded, home_dir.join("Downloads/papers"));
+            assert_eq!(expanded, home_dir.join("downloads/papers"));
         } else {
-            assert_eq!(expanded, PathBuf::from("~/Downloads/papers"));
+            assert_eq!(expanded, PathBuf::from("~/downloads/papers"));
         }
 
         // Test environment variable expansion

@@ -91,7 +91,7 @@ impl SemanticScholarProvider {
     pub fn new(api_key: Option<String>) -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
+            .user_agent("knowledge_accumulator_mcp/0.2.1 (Academic Research Tool)")
             .build()
             .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 

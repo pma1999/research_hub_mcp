@@ -288,7 +288,7 @@ impl DaemonService {
         let formatter = Formatter3164 {
             facility: Facility::LOG_DAEMON,
             hostname: None,
-            process: "rust-sci-hub-mcp".to_string(),
+            process: "knowledge_accumulator_mcp".to_string(),
             pid: std::process::id(),
         };
 

@@ -1,7 +1,7 @@
 //! Dependency Injection Container Usage Examples
 //!
 //! This module demonstrates how to use the ServiceContainer for managing
-//! dependencies in the rust-research-mcp application.
+//! dependencies in the knowledge_accumulator_mcp application.
 
 use crate::{
     di::{ServiceContainer, ServiceScope},

@@ -85,7 +85,7 @@ impl UnpaywallProvider {
 
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("rust-research-mcp/0.2.1 (Academic Research Tool)")
+            .user_agent("knowledge_accumulator_mcp/0.2.1 (Academic Research Tool)")
             .build()
             .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;
 
@@ -99,7 +99,7 @@ impl UnpaywallProvider {
     /// Create a new Unpaywall provider with default email
     pub fn new_with_default_email() -> Result<Self, ProviderError> {
         // Use a default email for testing - in production this should come from config
-        Self::new("rust-research-mcp@academic-tool.org".to_string())
+        Self::new("knowledge_accumulator_mcp@academic-tool.org".to_string())
     }
 
     /// Build Unpaywall DOI lookup URL

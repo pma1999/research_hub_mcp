@@ -1,7 +1,7 @@
 //! Dependency Injection Container
 //!
 //! This module provides a thread-safe dependency injection container for managing
-//! service lifetimes and dependencies across the rust-research-mcp application.
+//! service lifetimes and dependencies across the knowledge_accumulator_mcp application.
 //!
 //! # Features
 //!
@@ -15,8 +15,8 @@
 //!
 //! ```rust
 //! use std::sync::Arc;
-//! use rust_research_mcp::di::{ServiceContainer, ServiceScope};
-//! use rust_research_mcp::Config;
+//! use knowledge_accumulator_mcp::di::{ServiceContainer, ServiceScope};
+//! use knowledge_accumulator_mcp::Config;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {

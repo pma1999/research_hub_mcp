@@ -1691,6 +1691,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "knowledge_accumulator_mcp"
+version = "0.6.6"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "atty",
+ "axum",
+ "backoff",
+ "bincode",
+ "chrono",
+ "clap",
+ "config",
+ "criterion",
+ "daemonize",
+ "dirs",
+ "envy",
+ "failsafe",
+ "futures",
+ "lopdf",
+ "nix 0.29.0",
+ "proptest",
+ "rand 0.8.5",
+ "regex",
+ "reqwest",
+ "rmcp",
+ "roxmltree",
+ "schemars",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha2",
+ "signal-hook",
+ "signal-hook-tokio",
+ "sled",
+ "syslog",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-metrics",
+ "tokio-retry",
+ "tokio-test",
+ "tokio-util",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
+ "vergen",
+ "wiremock",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2737,61 +2792,6 @@ checksum = "3e0698206bcb8882bf2a9ecb4c1e7785db57ff052297085a6efd4fe42302068a"
 dependencies = [
  "cfg-if",
  "ordered-multimap",
-]
-
-[[package]]
-name = "rust-research-mcp"
-version = "0.6.6"
-dependencies = [
- "anyhow",
- "async-trait",
- "atty",
- "axum",
- "backoff",
- "bincode",
- "chrono",
- "clap",
- "config",
- "criterion",
- "daemonize",
- "dirs",
- "envy",
- "failsafe",
- "futures",
- "lopdf",
- "nix 0.29.0",
- "proptest",
- "rand 0.8.5",
- "regex",
- "reqwest",
- "rmcp",
- "roxmltree",
- "schemars",
- "scraper",
- "serde",
- "serde_json",
- "sha2",
- "signal-hook",
- "signal-hook-tokio",
- "sled",
- "syslog",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-metrics",
- "tokio-retry",
- "tokio-test",
- "tokio-util",
- "toml",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "urlencoding",
- "uuid",
- "vergen",
- "wiremock",
 ]
 
 [[package]]

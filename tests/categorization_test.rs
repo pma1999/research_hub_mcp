@@ -1,4 +1,4 @@
-use rust_research_mcp::{
+use knowledge_accumulator_mcp::{
     client::PaperMetadata, services::CategorizationService, tools::categorize::CategorizeInput,
     CategorizeTool, Config, SearchTool,
 };

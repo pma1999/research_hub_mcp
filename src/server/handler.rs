@@ -198,10 +198,10 @@ impl ServerHandler for ResearchServerHandler {
                 protocol_version: ProtocolVersion::default(),
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info: Implementation {
-                    name: "rust-research-mcp".into(),
+                    name: "knowledge_accumulator_mcp".into(),
                     version: env!("CARGO_PKG_VERSION").into(),
                 },
-                instructions: Some("A Rust-based MCP server for academic research paper access. Provides tools to search, download, and extract metadata from academic papers.".into()),
+                instructions: Some("A MCP server for accumulating and organizing academic knowledge. Provides tools to search, download, and categorize academic papers.".into()),
             })
         }
     }

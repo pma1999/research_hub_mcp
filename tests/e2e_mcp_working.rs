@@ -1,4 +1,4 @@
-use rust_research_mcp::Result;
+use knowledge_accumulator_mcp::Result;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -32,7 +32,7 @@ fn test_mcp_server_full_flow() -> Result<()> {
         stdout.read_line(&mut response_line)?;
 
         if response_line.trim().is_empty() {
-            return Err(rust_research_mcp::Error::Parse {
+            return Err(knowledge_accumulator_mcp::Error::Parse {
                 context: "response".to_string(),
                 message: "Empty response".to_string(),
             });

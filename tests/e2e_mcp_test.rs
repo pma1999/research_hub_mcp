@@ -1,4 +1,4 @@
-use rust_research_mcp::Result;
+use knowledge_accumulator_mcp::Result;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -23,7 +23,7 @@ fn send_request_sync(
     let start = std::time::Instant::now();
     loop {
         if start.elapsed() > Duration::from_secs(5) {
-            return Err(rust_research_mcp::Error::Timeout {
+            return Err(knowledge_accumulator_mcp::Error::Timeout {
                 timeout: Duration::from_secs(5),
             });
         }
@@ -31,7 +31,7 @@ fn send_request_sync(
         match stdout.read_line(&mut response_line) {
             Ok(0) => {
                 // EOF reached
-                return Err(rust_research_mcp::Error::Parse {
+                return Err(knowledge_accumulator_mcp::Error::Parse {
                     context: "response".to_string(),
                     message: "Server closed connection".to_string(),
                 });
@@ -48,7 +48,7 @@ fn send_request_sync(
                 std::thread::sleep(Duration::from_millis(10));
                 continue;
             }
-            Err(e) => return Err(rust_research_mcp::Error::Io(e)),
+            Err(e) => return Err(knowledge_accumulator_mcp::Error::Io(e)),
         }
     }
 }

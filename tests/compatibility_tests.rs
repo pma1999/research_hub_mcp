@@ -1,4 +1,4 @@
-use rust_research_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
+use knowledge_accumulator_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
 use std::env;
 use tempfile::TempDir;
 

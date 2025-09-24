@@ -81,7 +81,7 @@ impl OpenAlexProvider {
     pub fn new() -> Result<Self, ProviderError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
-            .user_agent("rust-research-mcp/0.6.6 (Academic Research Tool; mailto:cthomasbrittain@hotmail.com)")
+            .user_agent("knowledge_accumulator_mcp/0.6.6 (Academic Research Tool; mailto:cthomasbrittain@hotmail.com)")
             .build()
             .map_err(|e| ProviderError::Other(format!("Failed to create HTTP client: {e}")))?;
 
@@ -349,7 +349,7 @@ impl SourceProvider for OpenAlexProvider {
                         headers.insert(
                             reqwest::header::USER_AGENT,
                             reqwest::header::HeaderValue::from_static(
-                                "rust-research-mcp/0.6.6 (Academic Research Tool)",
+                                "knowledge_accumulator_mcp/0.6.6 (Academic Research Tool)",
                             ),
                         );
                         // Add custom headers from context if any

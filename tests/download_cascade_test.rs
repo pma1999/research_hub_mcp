@@ -1,7 +1,7 @@
-use rust_research_mcp::client::meta_search::{MetaSearchClient, MetaSearchConfig};
-use rust_research_mcp::client::providers::{SearchQuery, SearchType};
-use rust_research_mcp::tools::download::{DownloadInput, DownloadTool};
-use rust_research_mcp::{Config, Result};
+use knowledge_accumulator_mcp::client::meta_search::{MetaSearchClient, MetaSearchConfig};
+use knowledge_accumulator_mcp::client::providers::{SearchQuery, SearchType};
+use knowledge_accumulator_mcp::tools::download::{DownloadInput, DownloadTool};
+use knowledge_accumulator_mcp::{Config, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -172,7 +172,7 @@ async fn test_search_query_validation() -> Result<()> {
 /// Test error categorization for different provider failures
 #[tokio::test]
 async fn test_provider_error_categorization() -> Result<()> {
-    use rust_research_mcp::error::{Error, ErrorCategory};
+    use knowledge_accumulator_mcp::error::{Error, ErrorCategory};
 
     // Test different error types and their categorization
     let errors = vec![

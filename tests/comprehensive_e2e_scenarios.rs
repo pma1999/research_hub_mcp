@@ -1,4 +1,4 @@
-use rust_research_mcp::{
+use knowledge_accumulator_mcp::{
     client::{
         providers::{SearchQuery, SearchType},
         MetaSearchClient, MetaSearchConfig,

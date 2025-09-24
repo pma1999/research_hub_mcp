@@ -311,7 +311,7 @@ impl MetadataExtractor {
         // Create HTTP client for CrossRef API if needed
         let crossref_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
-            .user_agent("rust-sci-hub-mcp/0.1.0")
+            .user_agent("knowledge_accumulator_mcp/0.1.0")
             .build()
             .ok();
 

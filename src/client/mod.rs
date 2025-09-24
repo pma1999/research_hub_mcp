@@ -16,9 +16,9 @@
 //! ## Example Usage
 //!
 //! ```no_run
-//! use rust_research_mcp::client::{MetaSearchClient, MetaSearchConfig};
-//! use rust_research_mcp::client::providers::{SearchQuery, SearchType};
-//! use rust_research_mcp::Config;
+//! use knowledge_accumulator_mcp::client::{MetaSearchClient, MetaSearchConfig};
+//! use knowledge_accumulator_mcp::client::providers::{SearchQuery, SearchType};
+//! use knowledge_accumulator_mcp::Config;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let config = Config::default();
@@ -83,7 +83,7 @@ impl Default for HttpClientConfig {
             timeout: Duration::from_secs(30),
             connect_timeout: Duration::from_secs(10),
             max_redirects: 10,
-            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
+            user_agent: "knowledge_accumulator_mcp/0.2.1 (Academic Research Tool)".to_string(),
             proxy: None,
         }
     }
@@ -105,7 +105,7 @@ impl Default for HttpClientConfig {
 /// # Example
 ///
 /// ```no_run
-/// use rust_research_mcp::client::{SecureHttpClientFactory, HttpClientConfig};
+/// use knowledge_accumulator_mcp::client::{SecureHttpClientFactory, HttpClientConfig};
 /// use std::time::Duration;
 ///
 /// let config = HttpClientConfig {
@@ -331,7 +331,7 @@ mod tests {
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert_eq!(config.connect_timeout, Duration::from_secs(10));
         assert_eq!(config.max_redirects, 10);
-        assert!(config.user_agent.contains("rust-research-mcp"));
+        assert!(config.user_agent.contains("knowledge_accumulator_mcp"));
         assert!(config.proxy.is_none());
     }
 

@@ -1,4 +1,4 @@
-use rust_research_mcp::client::providers::{
+use knowledge_accumulator_mcp::client::providers::{
     ArxivProvider, CoreProvider, CrossRefProvider, OpenAlexProvider, SciHubProvider, SearchContext,
     SearchQuery, SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider,
     UnpaywallProvider,

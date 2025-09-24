@@ -90,21 +90,22 @@ impl CategorizationService {
 
         prompt.push_str(
             "Requirements:\n\
-            - 5-8 words maximum\n\
+            - 3-5 words maximum (keep it abstract and broad)\n\
             - Use snake_case format (lowercase with underscores)\n\
             - Filesystem safe (no special characters)\n\
-            - Descriptive of the research domain/topic\n\
-            - Examples: machine_learning_nlp, quantum_computing_theory, biology_genetics\n\n\
+            - Use general research domains, not specific techniques or methods\n\
+            - Examples: machine_learning, quantum_computing, biology, chemistry, physics\n\
+            - Avoid overly specific terms like 'nlp_transformers' or 'crispr_cas9'\n\n\
             Return only the folder name, nothing else.",
         );
 
         // Truncate if too long
         if prompt.len() > self.config.max_prompt_length {
             let requirements_text = "Requirements:\n\
-                - 5-8 words maximum\n\
+                - 3-5 words maximum (keep it abstract and broad)\n\
                 - Use snake_case format (lowercase with underscores)\n\
                 - Filesystem safe (no special characters)\n\
-                - Descriptive of the research domain/topic\n\n\
+                - Use general research domains, not specific techniques\n\n\
                 Return only the folder name, nothing else.";
             let truncation_notice = "\n\n[Content truncated to fit prompt limits]\n\n";
             let available_length =
@@ -152,8 +153,8 @@ impl CategorizationService {
         // Remove leading/trailing underscores
         let sanitized = sanitized.trim_matches('_').to_string();
 
-        // Validate length (5-8 words roughly = 10-50 characters)
-        if sanitized.is_empty() || sanitized.len() < 3 || sanitized.len() > 50 {
+        // Validate length (3-5 words roughly = 6-30 characters)
+        if sanitized.is_empty() || sanitized.len() < 3 || sanitized.len() > 30 {
             warn!(
                 "Category '{}' invalid (length: {}), using default",
                 sanitized,
@@ -164,9 +165,9 @@ impl CategorizationService {
 
         // Validate word count (approximate)
         let word_count = sanitized.split('_').filter(|s| !s.is_empty()).count();
-        if word_count > 8 {
+        if word_count > 5 {
             warn!(
-                "Category '{}' too many words ({}), using default",
+                "Category '{}' too many words ({} > 5), using default",
                 sanitized, word_count
             );
             return self.config.default_category.clone();
@@ -278,8 +279,8 @@ mod tests {
         assert_eq!(service.sanitize_category(""), "research_papers");
         assert_eq!(service.sanitize_category("ai"), "research_papers");
 
-        // Too long
-        let long_category = "very_long_category_name_with_too_many_words_that_exceeds_limit";
+        // Too many words (>5)
+        let long_category = "very_long_category_name_with_too_many_words";
         assert_eq!(service.sanitize_category(long_category), "research_papers");
 
         // Quoted responses

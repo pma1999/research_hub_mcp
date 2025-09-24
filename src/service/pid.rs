@@ -266,13 +266,15 @@ impl PidFile {
         // Try different standard locations
         if let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
             // User runtime directory (systemd style)
-            PathBuf::from(runtime_dir).join("rust-sci-hub-mcp.pid")
+            PathBuf::from(runtime_dir).join("knowledge_accumulator_mcp.pid")
         } else if let Some(home) = dirs::home_dir() {
             // User home directory
-            home.join(".local").join("run").join("rust-sci-hub-mcp.pid")
+            home.join(".local")
+                .join("run")
+                .join("knowledge_accumulator_mcp.pid")
         } else {
             // Fallback to temp directory
-            std::env::temp_dir().join("rust-sci-hub-mcp.pid")
+            std::env::temp_dir().join("knowledge_accumulator_mcp.pid")
         }
     }
 }
@@ -327,7 +329,7 @@ mod tests {
     #[test]
     fn test_standard_path() {
         let path = PidFile::standard_path();
-        assert!(path.to_string_lossy().contains("rust-sci-hub-mcp.pid"));
+        assert!(path.to_string_lossy().contains("knowledge_accumulator_mcp.pid"));
     }
 
     #[test]

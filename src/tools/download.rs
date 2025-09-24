@@ -342,6 +342,9 @@ impl DownloadTool {
             download_id, input.verify_integrity, file_path
         );
 
+        // Save a copy for cleanup in case of failure
+        let cleanup_path = file_path.clone();
+
         match self
             .execute_download(
                 download_id.clone(),
@@ -364,6 +367,12 @@ impl DownloadTool {
                 debug!("❌ Download execution failed: {}", e);
                 debug!("🔧 Error type: {:?}", std::any::type_name_of_val(&e));
                 debug!("📝 Full error context: {:?}", e);
+
+                // Clean up empty directory if download failed
+                if let Err(cleanup_err) = Self::cleanup_empty_directory(&cleanup_path).await {
+                    debug!("⚠️ Cleanup error (non-fatal): {}", cleanup_err);
+                }
+
                 Err(e)
             }
         }
@@ -772,8 +781,8 @@ impl DownloadTool {
                         2. Find 'Claude' in the list\n\
                         3. Enable 'Downloads Folder' permission\n\
                         4. Restart Claude Desktop\n\n\
-                        💡 Alternative: Create a folder like ~/Documents/Research-Papers and update your config:\n\
-                        • In config.toml: directory = \"~/Documents/Research-Papers\"\n\
+                        💡 Alternative: Create a folder like ~/documents/research_papers and update your config:\n\
+                        • In config.toml: directory = \"~/documents/research_papers\"\n\
                         • Or set environment variable: RSH_DOWNLOAD_DIRECTORY\n\n\
                         📁 Attempted directory: {base_dir:?}\n\
                         🔧 Error details: {e}"
@@ -782,7 +791,7 @@ impl DownloadTool {
             }
             // For other errors, still try fallback but with clearer messaging
             let fallback_dir = if let Some(home_dir) = dirs::home_dir() {
-                home_dir.join("Documents").join("Research-Papers")
+                home_dir.join("documents").join("research_papers")
             } else {
                 PathBuf::from("/tmp/papers")
             };
@@ -801,7 +810,7 @@ impl DownloadTool {
                             Neither the configured directory nor fallback location worked.\n\n\
                             💡 Try these solutions:\n\
                             1. Grant Claude Desktop folder permissions in System Settings\n\
-                            2. Use a different directory: ~/Documents/Research-Papers\n\
+                            2. Use a different directory: ~/documents/research_papers\n\
                             3. Check disk space and permissions\n\n\
                             📁 Configured: {base_dir:?}\n\
                             📁 Fallback tried: {fallback_dir:?}\n\
@@ -1513,6 +1522,43 @@ impl DownloadTool {
             Self::validate_directory_security(parent).await?;
         }
 
+        Ok(())
+    }
+
+    /// Clean up empty directory if download failed
+    async fn cleanup_empty_directory(file_path: &Path) -> Result<()> {
+        if let Some(parent_dir) = file_path.parent() {
+            // Only attempt cleanup if the directory exists
+            if parent_dir.exists() {
+                // Check if directory is empty
+                match tokio::fs::read_dir(parent_dir).await {
+                    Ok(mut dir_stream) => {
+                        // Try to read first entry
+                        if dir_stream.next_entry().await?.is_none() {
+                            // Directory is empty, safe to remove
+                            match tokio::fs::remove_dir(parent_dir).await {
+                                Ok(()) => {
+                                    info!("Cleaned up empty directory: {:?}", parent_dir);
+                                }
+                                Err(e) => {
+                                    debug!(
+                                        "Could not remove empty directory {:?}: {}",
+                                        parent_dir, e
+                                    );
+                                    // Don't fail the overall operation for cleanup issues
+                                }
+                            }
+                        } else {
+                            debug!("Directory not empty, keeping: {:?}", parent_dir);
+                        }
+                    }
+                    Err(e) => {
+                        debug!("Could not check directory contents {:?}: {}", parent_dir, e);
+                        // Don't fail the overall operation for cleanup issues
+                    }
+                }
+            }
+        }
         Ok(())
     }
 

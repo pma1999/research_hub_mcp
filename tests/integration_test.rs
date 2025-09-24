@@ -1,4 +1,4 @@
-use rust_research_mcp::{Config, Error};
+use knowledge_accumulator_mcp::{Config, Error};
 
 #[tokio::test]
 async fn test_config_default() {

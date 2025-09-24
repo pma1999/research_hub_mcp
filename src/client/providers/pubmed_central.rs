@@ -101,7 +101,9 @@ impl PubMedCentralProvider {
     /// Create a new `PubMed Central` provider
     pub fn new(api_key: Option<String>) -> Result<Self, ProviderError> {
         let client = Client::builder()
-            .user_agent("rust-research-mcp/0.3.0 (https://github.com/Ladvien/research_hub_mcp)")
+            .user_agent(
+                "knowledge_accumulator_mcp/0.3.0 (https://github.com/Ladvien/research_hub_mcp)",
+            )
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;

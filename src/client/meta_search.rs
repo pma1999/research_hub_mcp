@@ -412,7 +412,7 @@ impl MetaSearchClient {
     fn create_search_context(&self) -> SearchContext {
         SearchContext {
             timeout: self.config.provider_timeout,
-            user_agent: "rust-research-mcp/0.2.1 (Academic Research Tool)".to_string(),
+            user_agent: "knowledge_accumulator_mcp/0.2.1 (Academic Research Tool)".to_string(),
             rate_limit: Some(Duration::from_millis(1000)),
             headers: HashMap::new(),
         }

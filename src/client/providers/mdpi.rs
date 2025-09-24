@@ -98,7 +98,7 @@ impl MdpiProvider {
     /// Create a new MDPI provider
     pub fn new() -> Result<Self, ProviderError> {
         let client = Client::builder()
-            .user_agent("rust-research-mcp/0.3.0 (Academic Research Tool)")
+            .user_agent("knowledge_accumulator_mcp/0.3.0 (Academic Research Tool)")
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| ProviderError::Network(format!("Failed to create HTTP client: {e}")))?;

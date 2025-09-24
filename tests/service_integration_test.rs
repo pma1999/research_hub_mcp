@@ -1,4 +1,4 @@
-use rust_research_mcp::{Config, DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler};
+use knowledge_accumulator_mcp::{Config, DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;

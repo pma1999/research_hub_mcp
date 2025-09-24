@@ -1,8 +1,8 @@
 use futures::future;
-use rust_research_mcp::tools::download::{DownloadInput, DownloadTool};
-use rust_research_mcp::tools::metadata::{MetadataExtractor, MetadataInput};
-use rust_research_mcp::tools::search::{SearchInput, SearchTool, SearchType};
-use rust_research_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
+use knowledge_accumulator_mcp::tools::download::{DownloadInput, DownloadTool};
+use knowledge_accumulator_mcp::tools::metadata::{MetadataExtractor, MetadataInput};
+use knowledge_accumulator_mcp::tools::search::{SearchInput, SearchTool, SearchType};
+use knowledge_accumulator_mcp::{Config, MetaSearchClient, MetaSearchConfig, Server};
 use std::sync::Arc;
 use tempfile::TempDir;
 use wiremock::matchers::{method, path};

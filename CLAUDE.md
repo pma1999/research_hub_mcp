@@ -1,6 +1,6 @@
-# rust-research-mcp
+# knowledge_accumulator_mcp
 
-Academic paper retrieval MCP server. Personal research use only.
+Academic knowledge accumulation MCP server. Personal research use only.
 
 ## Commands
 ```bash

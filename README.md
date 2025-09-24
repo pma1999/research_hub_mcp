@@ -1,14 +1,14 @@
-# rust-research-mcp
+# knowledge_accumulator_mcp
 
-A Model Context Protocol (MCP) server that provides AI assistants with academic paper search and retrieval capabilities through multiple research sources.
+A Model Context Protocol (MCP) server that helps accumulate and organize academic knowledge through intelligent paper search, retrieval, and categorization.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
-[![Crates.io](https://img.shields.io/crates/v/rust-research-mcp.svg)](https://crates.io/crates/rust-research-mcp)
-[![CI](https://github.com/Ladvien/research_hub_mcp/workflows/CI/badge.svg)](https://github.com/Ladvien/research_hub_mcp/actions)
-[![Coverage](https://codecov.io/gh/Ladvien/research_hub_mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/Ladvien/research_hub_mcp)
-[![Security Audit](https://github.com/Ladvien/research_hub_mcp/workflows/Security%20Audit/badge.svg)](https://github.com/Ladvien/research_hub_mcp/actions)
+[![Crates.io](https://img.shields.io/crates/v/knowledge_accumulator_mcp.svg)](https://crates.io/crates/knowledge_accumulator_mcp)
+[![CI](https://github.com/Ladvien/knowledge_accumulator_mcp/workflows/CI/badge.svg)](https://github.com/Ladvien/knowledge_accumulator_mcp/actions)
+[![Coverage](https://codecov.io/gh/Ladvien/knowledge_accumulator_mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/Ladvien/knowledge_accumulator_mcp)
+[![Security Audit](https://github.com/Ladvien/knowledge_accumulator_mcp/workflows/Security%20Audit/badge.svg)](https://github.com/Ladvien/knowledge_accumulator_mcp/actions)
 [![MSRV](https://img.shields.io/badge/MSRV-1.70.0-blue)](https://github.com/rust-lang/rust/releases/tag/1.70.0)
 
 ## ⚠️ Legal Disclaimer
@@ -67,11 +67,11 @@ The developers of this tool do not condone or support any illegal activities. Us
 
 ```bash
 # macOS (Apple Silicon)
-curl -L -o rust-research-mcp https://github.com/Ladvien/research_hub_mcp/releases/latest/download/rust-research-mcp
-chmod +x rust-research-mcp
+curl -L -o knowledge_accumulator_mcp https://github.com/Ladvien/knowledge_accumulator_mcp/releases/latest/download/knowledge_accumulator_mcp
+chmod +x knowledge_accumulator_mcp
 
 # Move to a permanent location
-sudo mv rust-research-mcp /usr/local/bin/
+sudo mv knowledge_accumulator_mcp /usr/local/bin/
 ```
 
 ### Building from Source
@@ -82,13 +82,13 @@ If you prefer to build from source:
 # Prerequisites: Rust 1.70+ (install from https://rustup.rs/)
 
 # Clone the repository
-git clone https://github.com/Ladvien/research_hub_mcp.git
-cd research_hub_mcp
+git clone https://github.com/Ladvien/knowledge_accumulator_mcp.git
+cd knowledge_accumulator_mcp
 
 # Build the release binary
 cargo build --release
 
-# The binary will be at ./target/release/rust-research-mcp
+# The binary will be at ./target/release/knowledge_accumulator_mcp
 ```
 
 ### Configuration for Claude Desktop
@@ -102,10 +102,10 @@ Add the following to your Claude Desktop configuration file:
 ```json
 {
   "mcpServers": {
-    "rust-research-mcp": {
-      "command": "/opt/homebrew/bin/rust-research-mcp",
+    "knowledge_accumulator_mcp": {
+      "command": "/opt/homebrew/bin/knowledge_accumulator_mcp",
       "args": [
-        "--download-dir", "~/Downloads/Research-Papers",
+        "--download-dir", "~/downloads/research_papers",
         "--log-level", "info"
       ],
       "env": {
@@ -127,10 +127,10 @@ Once configured, you can ask Claude to:
 ### Command Line Options
 
 ```bash
-rust-research-mcp [OPTIONS]
+knowledge_accumulator_mcp [OPTIONS]
 
 Options:
-  --download-dir <PATH>    Directory for downloaded papers [default: ~/Downloads/papers]
+  --download-dir <PATH>    Directory for downloaded papers [default: ~/downloads/papers]
   --log-level <LEVEL>      Log level (error, warn, info, debug, trace) [default: info]
   --config <PATH>          Path to configuration file
   --help                   Print help information
@@ -251,7 +251,7 @@ This MCP server is specifically enhanced for **Claude Code** workflows:
 
 ## Configuration File
 
-Create a configuration file at `~/.config/rust-research-mcp/config.toml`:
+Create a configuration file at `~/.config/knowledge_accumulator_mcp/config.toml`:
 
 ```toml
 [server]
@@ -263,7 +263,7 @@ host = "127.0.0.1"
 provider_timeout_secs = 30
 
 [downloads]
-directory = "~/Downloads/Research-Papers"
+directory = "~/downloads/research_papers"
 max_concurrent = 3
 max_file_size_mb = 100
 
@@ -361,7 +361,7 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 ### Logs
 
 Logs are available at:
-- **macOS**: `~/Library/Logs/Claude/mcp-server-rust-research-mcp.log`
+- **macOS**: `~/Library/Logs/Claude/mcp-server-knowledge_accumulator_mcp.log`
 - **Linux**: `~/.local/share/Claude/logs/`
 - **Windows**: `%APPDATA%\Claude\logs\`
 
@@ -383,7 +383,7 @@ This tool is provided "as is" without warranty of any kind. The authors and cont
 
 ## Support
 
-For issues, questions, or suggestions, please [open an issue](https://github.com/yourusername/rust-research-mcp/issues) on GitHub.
+For issues, questions, or suggestions, please [open an issue](https://github.com/yourusername/knowledge_accumulator_mcp/issues) on GitHub.
 
 ---
 
