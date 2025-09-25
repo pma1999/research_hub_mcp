@@ -133,6 +133,103 @@ struct DownloadState {
 /// Progress callback type
 pub type ProgressCallback = Arc<dyn Fn(DownloadProgress) + Send + Sync>;
 
+/// Input parameters for batch paper download
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDownloadInput {
+    /// List of papers to download
+    pub papers: Vec<BatchDownloadRequest>,
+    /// Maximum number of concurrent downloads (default: 9)
+    #[serde(default = "default_batch_concurrency")]
+    pub max_concurrent: usize,
+    /// Whether to continue downloading remaining papers if some fail
+    #[serde(default = "default_true")]
+    pub continue_on_error: bool,
+    /// Shared settings applied to all downloads
+    #[serde(default)]
+    pub shared_settings: BatchDownloadSettings,
+}
+
+/// Individual paper request for batch download
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDownloadRequest {
+    /// DOI of the paper (preferred)
+    #[schemars(description = "DOI of the paper to download")]
+    pub doi: Option<String>,
+    /// Direct URL to download (alternative to DOI)
+    #[schemars(description = "Direct download URL")]
+    pub url: Option<String>,
+    /// Custom filename for this specific paper
+    pub filename: Option<String>,
+    /// Custom category for this specific paper (overrides shared setting)
+    pub category: Option<String>,
+}
+
+/// Shared settings for batch downloads
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Default)]
+pub struct BatchDownloadSettings {
+    /// Target directory for all downloads (optional, uses default if not provided)
+    pub directory: Option<String>,
+    /// Default category for organizing downloads (can be overridden per paper)
+    pub category: Option<String>,
+    /// Whether to overwrite existing files
+    #[serde(default)]
+    pub overwrite: bool,
+    /// Whether to verify file integrity after download
+    #[serde(default = "default_verify")]
+    pub verify_integrity: bool,
+}
+
+/// Result of a batch download operation
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDownloadResult {
+    /// Individual download results
+    pub results: Vec<BatchDownloadItemResult>,
+    /// Overall batch statistics
+    pub summary: BatchDownloadSummary,
+    /// Total time taken for the entire batch
+    pub total_duration_seconds: f64,
+}
+
+/// Result for an individual item in a batch download
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDownloadItemResult {
+    /// Original request that generated this result
+    pub request: BatchDownloadRequest,
+    /// Download result (None if skipped due to error handling)
+    pub result: Option<DownloadResult>,
+    /// Error if the download failed
+    pub error: Option<String>,
+}
+
+/// Summary statistics for a batch download
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct BatchDownloadSummary {
+    /// Total number of papers requested
+    pub total_requested: usize,
+    /// Number of downloads that completed successfully
+    pub successful: usize,
+    /// Number of downloads that failed
+    pub failed: usize,
+    /// Number of downloads that were skipped
+    pub skipped: usize,
+    /// Total bytes downloaded across all papers
+    pub total_bytes: u64,
+    /// Average download speed across all papers (bytes/second)
+    pub average_speed: u64,
+    /// List of DOIs/URLs that failed
+    pub failed_items: Vec<String>,
+}
+
+/// Default batch concurrency limit
+const fn default_batch_concurrency() -> usize {
+    9 // Tripled from original 3
+}
+
+/// Default true value
+const fn default_true() -> bool {
+    true
+}
+
 /// Default for integrity verification
 const fn default_verify() -> bool {
     true
@@ -376,6 +473,244 @@ impl DownloadTool {
                 Err(e)
             }
         }
+    }
+
+    /// Download multiple papers concurrently
+    #[instrument(skip(self), fields(num_papers = input.papers.len(), max_concurrent = input.max_concurrent))]
+    pub async fn download_papers_batch(
+        &self,
+        input: BatchDownloadInput,
+    ) -> Result<BatchDownloadResult> {
+        let start_time = SystemTime::now();
+        info!(
+            "Starting batch download of {} papers with {} concurrent connections",
+            input.papers.len(),
+            input.max_concurrent
+        );
+
+        // Validate input
+        Self::validate_batch_input(&input)?;
+
+        // Create semaphore for concurrency control
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(input.max_concurrent));
+
+        // Prepare individual download tasks
+        let mut tasks = Vec::new();
+        let mut failed_items = Vec::new();
+
+        for (index, paper_request) in input.papers.into_iter().enumerate() {
+            // Convert batch request to individual download input
+            let download_input = match Self::convert_batch_request_to_download_input(
+                &paper_request,
+                &input.shared_settings,
+            ) {
+                Ok(input) => input,
+                Err(e) => {
+                    // Track validation errors
+                    let identifier = Self::get_request_identifier(&paper_request);
+                    warn!("Invalid batch request for {}: {}", identifier, e);
+                    failed_items.push(identifier);
+
+                    if !input.continue_on_error {
+                        return Err(e);
+                    }
+                    continue; // Skip this request but continue with others
+                }
+            };
+
+            let semaphore = semaphore.clone();
+            let download_tool = self.clone(); // Clone the tool for the async task
+
+            let task = tokio::spawn(async move {
+                let _permit = semaphore.acquire().await.map_err(|e| {
+                    crate::Error::Service(format!("Failed to acquire download semaphore: {e}"))
+                })?;
+
+                debug!("Starting download {} of batch", index + 1);
+                let result = download_tool.download_paper(download_input).await;
+                debug!(
+                    "Completed download {} of batch: {:?}",
+                    index + 1,
+                    result.as_ref().map(|r| &r.status)
+                );
+
+                Ok::<(BatchDownloadRequest, Result<DownloadResult>), crate::Error>((
+                    paper_request,
+                    result,
+                ))
+            });
+
+            tasks.push(task);
+        }
+
+        // Execute all downloads and collect results
+        let mut results = Vec::new();
+        let mut summary_stats = BatchDownloadSummary {
+            total_requested: tasks.len(),
+            successful: 0,
+            failed: 0,
+            skipped: failed_items.len(), // Pre-validation failures
+            total_bytes: 0,
+            average_speed: 0,
+            failed_items,
+        };
+
+        // Wait for all tasks to complete
+        for task in tasks {
+            match task.await {
+                Ok(Ok((request, download_result))) => {
+                    match download_result {
+                        Ok(result) => {
+                            // Successful download
+                            summary_stats.successful += 1;
+                            if let Some(size) = result.file_size {
+                                summary_stats.total_bytes += size;
+                            }
+
+                            results.push(BatchDownloadItemResult {
+                                request,
+                                result: Some(result),
+                                error: None,
+                            });
+                        }
+                        Err(e) => {
+                            // Download failed
+                            summary_stats.failed += 1;
+                            let identifier = Self::get_request_identifier(&request);
+                            summary_stats.failed_items.push(identifier);
+
+                            warn!("Batch download failed for request: {}", e);
+
+                            results.push(BatchDownloadItemResult {
+                                request,
+                                result: None,
+                                error: Some(e.to_string()),
+                            });
+
+                            // Check if we should stop on error
+                            if !input.continue_on_error {
+                                error!("Stopping batch download due to error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Ok(Err(e)) => {
+                    // Task setup error
+                    summary_stats.failed += 1;
+                    error!("Batch download task setup failed: {}", e);
+
+                    if !input.continue_on_error {
+                        return Err(e);
+                    }
+                }
+                Err(e) => {
+                    // Task panic or cancellation
+                    summary_stats.failed += 1;
+                    error!("Batch download task failed: {}", e);
+
+                    if !input.continue_on_error {
+                        return Err(crate::Error::Service(format!("Task execution failed: {e}")));
+                    }
+                }
+            }
+        }
+
+        // Calculate final statistics
+        let total_duration = start_time.elapsed().unwrap_or(Duration::ZERO);
+        let total_duration_secs = total_duration.as_secs_f64();
+
+        summary_stats.average_speed = if total_duration_secs > 0.0 {
+            (summary_stats.total_bytes as f64 / total_duration_secs) as u64
+        } else {
+            0
+        };
+
+        info!(
+            "Batch download completed: {}/{} successful, {} failed, {} skipped in {:.2}s",
+            summary_stats.successful,
+            summary_stats.total_requested,
+            summary_stats.failed,
+            summary_stats.skipped,
+            total_duration_secs
+        );
+
+        Ok(BatchDownloadResult {
+            results,
+            summary: summary_stats,
+            total_duration_seconds: total_duration_secs,
+        })
+    }
+
+    /// Validate batch download input
+    fn validate_batch_input(input: &BatchDownloadInput) -> Result<()> {
+        if input.papers.is_empty() {
+            return Err(crate::Error::InvalidInput {
+                field: "papers".to_string(),
+                reason: "At least one paper must be specified".to_string(),
+            });
+        }
+
+        if input.papers.len() > 100 {
+            return Err(crate::Error::InvalidInput {
+                field: "papers".to_string(),
+                reason: "Maximum 100 papers allowed per batch".to_string(),
+            });
+        }
+
+        if input.max_concurrent == 0 || input.max_concurrent > 20 {
+            return Err(crate::Error::InvalidInput {
+                field: "max_concurrent".to_string(),
+                reason: "Concurrency must be between 1 and 20".to_string(),
+            });
+        }
+
+        // Validate each request has either DOI or URL
+        for (index, request) in input.papers.iter().enumerate() {
+            if request.doi.is_none() && request.url.is_none() {
+                return Err(crate::Error::InvalidInput {
+                    field: format!("papers[{}]", index),
+                    reason: "Either DOI or URL must be provided".to_string(),
+                });
+            }
+
+            if request.doi.is_some() && request.url.is_some() {
+                return Err(crate::Error::InvalidInput {
+                    field: format!("papers[{}]", index),
+                    reason: "Cannot specify both DOI and URL".to_string(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Convert a batch request to an individual download input
+    fn convert_batch_request_to_download_input(
+        request: &BatchDownloadRequest,
+        shared_settings: &BatchDownloadSettings,
+    ) -> Result<DownloadInput> {
+        Ok(DownloadInput {
+            doi: request.doi.clone(),
+            url: request.url.clone(),
+            filename: request.filename.clone(),
+            directory: shared_settings.directory.clone(),
+            category: request
+                .category
+                .clone()
+                .or_else(|| shared_settings.category.clone()),
+            overwrite: shared_settings.overwrite,
+            verify_integrity: shared_settings.verify_integrity,
+        })
+    }
+
+    /// Get identifier string from batch request for error reporting
+    fn get_request_identifier(request: &BatchDownloadRequest) -> String {
+        request
+            .doi
+            .as_ref()
+            .or(request.url.as_ref()).cloned()
+            .unwrap_or_else(|| "unknown".to_string())
     }
 
     /// Validate download input
@@ -1945,5 +2280,141 @@ mod tests {
         // Should use the custom directory from config
         assert!(file_path.starts_with("/tmp/test-downloads"));
         assert!(file_path.ends_with("test.pdf"));
+    }
+
+    // ===========================
+    // Batch Download Tests
+    // ===========================
+
+    #[test]
+    fn test_batch_download_input_validation() {
+        // Empty papers list should fail
+        let empty_batch = BatchDownloadInput {
+            papers: vec![],
+            max_concurrent: 3,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+        assert!(DownloadTool::validate_batch_input(&empty_batch).is_err());
+
+        // Too many papers should fail
+        let papers: Vec<_> = (0..101)
+            .map(|i| BatchDownloadRequest {
+                doi: Some(format!("10.1038/test{i}")),
+                url: None,
+                filename: None,
+                category: None,
+            })
+            .collect();
+        let too_many_batch = BatchDownloadInput {
+            papers,
+            max_concurrent: 3,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+        assert!(DownloadTool::validate_batch_input(&too_many_batch).is_err());
+
+        // Invalid concurrency should fail
+        let invalid_concurrency_batch = BatchDownloadInput {
+            papers: vec![BatchDownloadRequest {
+                doi: Some("10.1038/test".to_string()),
+                url: None,
+                filename: None,
+                category: None,
+            }],
+            max_concurrent: 0,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+        assert!(DownloadTool::validate_batch_input(&invalid_concurrency_batch).is_err());
+
+        // Valid batch should pass
+        let valid_batch = BatchDownloadInput {
+            papers: vec![
+                BatchDownloadRequest {
+                    doi: Some("10.1038/test1".to_string()),
+                    url: None,
+                    filename: None,
+                    category: None,
+                },
+                BatchDownloadRequest {
+                    doi: None,
+                    url: Some("https://example.com/paper2.pdf".to_string()),
+                    filename: None,
+                    category: None,
+                },
+            ],
+            max_concurrent: 3,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+        assert!(DownloadTool::validate_batch_input(&valid_batch).is_ok());
+    }
+
+    #[test]
+    fn test_convert_batch_request_to_download_input() {
+        let request = BatchDownloadRequest {
+            doi: Some("10.1038/test".to_string()),
+            url: None,
+            filename: Some("custom.pdf".to_string()),
+            category: Some("research".to_string()),
+        };
+
+        let shared_settings = BatchDownloadSettings {
+            directory: Some("/test/dir".to_string()),
+            category: Some("default_category".to_string()),
+            overwrite: true,
+            verify_integrity: false,
+        };
+
+        let download_input =
+            DownloadTool::convert_batch_request_to_download_input(&request, &shared_settings)
+                .unwrap();
+
+        assert_eq!(download_input.doi, Some("10.1038/test".to_string()));
+        assert_eq!(download_input.filename, Some("custom.pdf".to_string()));
+        assert_eq!(download_input.directory, Some("/test/dir".to_string()));
+        assert_eq!(download_input.category, Some("research".to_string())); // Request overrides shared
+        assert_eq!(download_input.overwrite, true);
+        assert_eq!(download_input.verify_integrity, false);
+    }
+
+    #[test]
+    fn test_get_request_identifier() {
+        // Test DOI identifier
+        let doi_request = BatchDownloadRequest {
+            doi: Some("10.1038/test".to_string()),
+            url: None,
+            filename: None,
+            category: None,
+        };
+        assert_eq!(
+            DownloadTool::get_request_identifier(&doi_request),
+            "10.1038/test"
+        );
+
+        // Test URL identifier
+        let url_request = BatchDownloadRequest {
+            doi: None,
+            url: Some("https://example.com/paper.pdf".to_string()),
+            filename: None,
+            category: None,
+        };
+        assert_eq!(
+            DownloadTool::get_request_identifier(&url_request),
+            "https://example.com/paper.pdf"
+        );
+
+        // Test fallback to "unknown"
+        let empty_request = BatchDownloadRequest {
+            doi: None,
+            url: None,
+            filename: None,
+            category: None,
+        };
+        assert_eq!(
+            DownloadTool::get_request_identifier(&empty_request),
+            "unknown"
+        );
     }
 }

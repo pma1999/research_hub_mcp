@@ -2,7 +2,7 @@ use crate::{Config, Result};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 /// Input parameters for the bibliography tool
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -111,55 +111,113 @@ impl BibliographyTool {
         Ok(Self { _config: config })
     }
 
-    /// Generate bibliography from paper identifiers
+    /// Generate bibliography from paper identifiers with parallel metadata fetching
     #[instrument(skip(self))]
     pub async fn generate(&self, input: BibliographyInput) -> Result<BibliographyResult> {
         info!(
-            "Generating bibliography for {} papers in {:?} format",
+            "Generating bibliography for {} papers in {:?} format with parallel metadata fetching",
             input.identifiers.len(),
             input.format
         );
 
+        // Use semaphore to limit concurrent metadata fetches (tripled to 30)
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(30));
+
+        // Create tasks for parallel metadata fetching
+        let mut tasks = Vec::new();
+
+        for identifier in input.identifiers.clone() {
+            let semaphore = semaphore.clone();
+            let format = input.format.clone();
+            let include_abstract = input.include_abstract;
+            let include_keywords = input.include_keywords;
+            let identifier_for_task = identifier.clone(); // Clone for the async task
+
+            let task = tokio::spawn(async move {
+                let _permit = semaphore.acquire().await.map_err(|e| {
+                    crate::Error::Service(format!("Failed to acquire bibliography semaphore: {e}"))
+                })?;
+
+                debug!("Fetching metadata for: {}", identifier_for_task);
+
+                // Simulate async metadata fetching
+                let metadata_result = tokio::task::spawn_blocking({
+                    let identifier = identifier_for_task.clone();
+                    move || Self::fetch_metadata_sync(&identifier)
+                })
+                .await
+                .map_err(|e| crate::Error::Service(format!("Task join error: {e}")))?;
+
+                let metadata = metadata_result?;
+
+                let citation = Self::format_citation_static(
+                    &metadata,
+                    &identifier_for_task,
+                    &format,
+                    include_abstract,
+                    include_keywords,
+                );
+
+                Ok::<Citation, crate::Error>(citation)
+            });
+
+            tasks.push((identifier, task)); // Use original identifier here
+        }
+
+        // Wait for all tasks to complete and collect results
         let mut citations = Vec::new();
         let mut errors = Vec::new();
 
-        for identifier in &input.identifiers {
-            match self.fetch_metadata(identifier) {
-                Ok(metadata) => {
-                    let citation = self.format_citation(
-                        &metadata,
-                        identifier,
-                        &input.format,
-                        input.include_abstract,
-                        input.include_keywords,
-                    );
+        for (identifier, task) in tasks {
+            match task.await {
+                Ok(Ok(citation)) => {
                     citations.push(citation);
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
+                    warn!("Failed to generate citation for {}: {}", identifier, e);
                     errors.push(CitationError {
-                        identifier: identifier.clone(),
+                        identifier,
                         message: e.to_string(),
+                    });
+                }
+                Err(e) => {
+                    error!("Task failed for {}: {}", identifier, e);
+                    errors.push(CitationError {
+                        identifier,
+                        message: format!("Task execution failed: {e}"),
                     });
                 }
             }
         }
 
+        // Sort citations to maintain order (optional - by identifier)
+        citations.sort_by(|a, b| a.identifier.cmp(&b.identifier));
+
         // Generate combined bibliography
         let bibliography = self.combine_citations(&citations, &input.format);
+
+        info!(
+            "Bibliography generation completed: {} citations, {} errors",
+            citations.len(),
+            errors.len()
+        );
 
         Ok(BibliographyResult {
             citations,
             bibliography,
-            format: input.format.clone(),
+            format: input.format,
             errors,
         })
     }
 
-    /// Fetch metadata for a paper
-    fn fetch_metadata(&self, identifier: &str) -> Result<PaperMetadata> {
+    /// Fetch metadata for a paper (static version for async tasks)
+    fn fetch_metadata_sync(identifier: &str) -> Result<PaperMetadata> {
         // In a real implementation, this would query CrossRef, Semantic Scholar, etc.
         // For now, we'll create mock metadata
-        info!("Fetching metadata for: {}", identifier);
+        debug!("Fetching metadata for: {}", identifier);
+
+        // Simulate some processing time (removed for mock - in real implementation
+        // this would be an actual API call)
 
         // Mock implementation - replace with actual API calls
         Ok(PaperMetadata {
@@ -178,9 +236,13 @@ impl BibliographyTool {
         })
     }
 
-    /// Format a citation based on the selected style
-    fn format_citation(
-        &self,
+    /// Fetch metadata for a paper (instance method - delegates to static)
+    fn fetch_metadata(&self, identifier: &str) -> Result<PaperMetadata> {
+        Self::fetch_metadata_sync(identifier)
+    }
+
+    /// Format a citation based on the selected style (static version for async tasks)
+    fn format_citation_static(
         metadata: &PaperMetadata,
         identifier: &str,
         format: &CitationFormat,
@@ -189,17 +251,17 @@ impl BibliographyTool {
     ) -> Citation {
         let text = match format {
             CitationFormat::BibTeX => {
-                self.format_bibtex(metadata, include_abstract, include_keywords)
+                Self::format_bibtex_static(metadata, include_abstract, include_keywords)
             }
-            CitationFormat::APA => self.format_apa(metadata),
-            CitationFormat::MLA => self.format_mla(metadata),
-            CitationFormat::Chicago => self.format_chicago(metadata),
-            CitationFormat::IEEE => self.format_ieee(metadata),
-            CitationFormat::Harvard => self.format_harvard(metadata),
+            CitationFormat::APA => Self::format_apa_static(metadata),
+            CitationFormat::MLA => Self::format_mla_static(metadata),
+            CitationFormat::Chicago => Self::format_chicago_static(metadata),
+            CitationFormat::IEEE => Self::format_ieee_static(metadata),
+            CitationFormat::Harvard => Self::format_harvard_static(metadata),
         };
 
         let key = match format {
-            CitationFormat::BibTeX => Some(self.generate_bibtex_key(metadata)),
+            CitationFormat::BibTeX => Some(Self::generate_bibtex_key_static(metadata)),
             _ => None,
         };
 
@@ -209,6 +271,24 @@ impl BibliographyTool {
             key,
             metadata: metadata.clone(),
         }
+    }
+
+    /// Format a citation based on the selected style (instance method - delegates to static)
+    fn format_citation(
+        &self,
+        metadata: &PaperMetadata,
+        identifier: &str,
+        format: &CitationFormat,
+        include_abstract: bool,
+        include_keywords: bool,
+    ) -> Citation {
+        Self::format_citation_static(
+            metadata,
+            identifier,
+            format,
+            include_abstract,
+            include_keywords,
+        )
     }
 
     /// Format as BibTeX
@@ -513,6 +593,271 @@ impl BibliographyTool {
                 .collect::<Vec<_>>()
                 .join("\n\n")
         }
+    }
+
+    // ================================
+    // Static versions for async tasks
+    // ================================
+
+    /// Format as BibTeX (static version)
+    fn format_bibtex_static(
+        metadata: &PaperMetadata,
+        include_abstract: bool,
+        include_keywords: bool,
+    ) -> String {
+        let key = Self::generate_bibtex_key_static(metadata);
+        let mut parts = vec![
+            format!("@article{{{},", key),
+            format!("  title = {{{}}},", metadata.title),
+            format!("  author = {{{}}},", metadata.authors.join(" and ")),
+        ];
+
+        if let Some(year) = metadata.year {
+            parts.push(format!("  year = {{{year}}},"));
+        }
+
+        if let Some(ref journal) = metadata.journal {
+            parts.push(format!("  journal = {{{journal}}},"));
+        }
+
+        if let Some(ref volume) = metadata.volume {
+            parts.push(format!("  volume = {{{volume}}},"));
+        }
+
+        if let Some(ref issue) = metadata.issue {
+            parts.push(format!("  number = {{{issue}}},"));
+        }
+
+        if let Some(ref pages) = metadata.pages {
+            parts.push(format!("  pages = {{{pages}}},"));
+        }
+
+        if let Some(ref doi) = metadata.doi {
+            parts.push(format!("  doi = {{{doi}}},"));
+        }
+
+        if let Some(ref url) = metadata.url {
+            parts.push(format!("  url = {{{url}}},"));
+        }
+
+        if include_abstract {
+            if let Some(ref abstract_text) = metadata.abstract_text {
+                parts.push(format!("  abstract = {{{abstract_text}}},"));
+            }
+        }
+
+        if include_keywords && !metadata.keywords.is_empty() {
+            parts.push(format!(
+                "  keywords = {{{}}},",
+                metadata.keywords.join(", ")
+            ));
+        }
+
+        // Remove trailing comma from last entry
+        if let Some(last) = parts.last_mut() {
+            if last.ends_with(',') {
+                last.pop();
+            }
+        }
+
+        parts.push("}".to_string());
+        parts.join("\n")
+    }
+
+    /// Generate BibTeX key (static version)
+    fn generate_bibtex_key_static(metadata: &PaperMetadata) -> String {
+        let first_author = metadata
+            .authors
+            .first()
+            .and_then(|a| a.split(',').next())
+            .unwrap_or("Unknown");
+
+        let year = metadata
+            .year
+            .map_or_else(|| "0000".to_string(), |y| y.to_string());
+
+        let title_word = metadata.title.split_whitespace().next().unwrap_or("Paper");
+
+        format!(
+            "{}{}{}",
+            first_author.replace(' ', ""),
+            year,
+            title_word.chars().take(4).collect::<String>()
+        )
+    }
+
+    /// Format as APA (static version)
+    fn format_apa_static(metadata: &PaperMetadata) -> String {
+        let authors = Self::format_authors_apa_static(&metadata.authors);
+        let year = metadata
+            .year
+            .map_or_else(|| "(n.d.)".to_string(), |y| format!("({y})"));
+
+        let mut citation = format!("{}. {}. {}.", authors, year, metadata.title);
+
+        if let Some(ref journal) = metadata.journal {
+            citation.push_str(&format!(" {journal}"));
+
+            if let Some(ref volume) = metadata.volume {
+                citation.push_str(&format!(", {volume}"));
+            }
+
+            if let Some(ref issue) = metadata.issue {
+                citation.push_str(&format!("({issue})"));
+            }
+
+            if let Some(ref pages) = metadata.pages {
+                citation.push_str(&format!(", {pages}"));
+            }
+        }
+
+        if let Some(ref doi) = metadata.doi {
+            citation.push_str(&format!(". https://doi.org/{doi}"));
+        }
+
+        citation
+    }
+
+    /// Format authors for APA style (static version)
+    fn format_authors_apa_static(authors: &[String]) -> String {
+        if authors.is_empty() {
+            return "Unknown Author".to_string();
+        }
+
+        authors.join(", ")
+    }
+
+    /// Format as MLA (static version)
+    fn format_mla_static(metadata: &PaperMetadata) -> String {
+        let authors = metadata.authors.join(", ");
+        let mut citation = format!("{}. \"{}\"", authors, metadata.title);
+
+        if let Some(ref journal) = metadata.journal {
+            citation.push_str(&format!(". {journal}"));
+        }
+
+        if let Some(ref volume) = metadata.volume {
+            citation.push_str(&format!(", vol. {volume}"));
+        }
+
+        if let Some(ref issue) = metadata.issue {
+            citation.push_str(&format!(", no. {issue}"));
+        }
+
+        if let Some(year) = metadata.year {
+            citation.push_str(&format!(", {year}"));
+        }
+
+        if let Some(ref pages) = metadata.pages {
+            citation.push_str(&format!(", pp. {pages}"));
+        }
+
+        citation.push('.');
+        citation
+    }
+
+    /// Format as Chicago (static version)
+    fn format_chicago_static(metadata: &PaperMetadata) -> String {
+        let authors = metadata.authors.join(", ");
+        let mut citation = format!("{}. \"{}\"", authors, metadata.title);
+
+        if let Some(ref journal) = metadata.journal {
+            citation.push_str(&format!(". {journal}"));
+
+            if let Some(ref volume) = metadata.volume {
+                citation.push_str(&format!(" {volume}"));
+            }
+
+            if let Some(ref issue) = metadata.issue {
+                citation.push_str(&format!(", no. {issue}"));
+            }
+        }
+
+        if let Some(year) = metadata.year {
+            citation.push_str(&format!(" ({year})"));
+        }
+
+        if let Some(ref pages) = metadata.pages {
+            citation.push_str(&format!(": {pages}"));
+        }
+
+        citation.push('.');
+        citation
+    }
+
+    /// Format as IEEE (static version)
+    fn format_ieee_static(metadata: &PaperMetadata) -> String {
+        let authors = metadata
+            .authors
+            .iter()
+            .map(|a| {
+                let parts: Vec<&str> = a.split(',').collect();
+                if parts.len() >= 2 {
+                    format!(
+                        "{}. {}",
+                        parts[1].trim().chars().next().unwrap_or('?'),
+                        parts[0].trim()
+                    )
+                } else {
+                    a.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let mut citation = format!("{}, \"{}\"", authors, metadata.title);
+
+        if let Some(ref journal) = metadata.journal {
+            citation.push_str(&format!(", {journal}"));
+        }
+
+        if let Some(ref volume) = metadata.volume {
+            citation.push_str(&format!(", vol. {volume}"));
+        }
+
+        if let Some(ref issue) = metadata.issue {
+            citation.push_str(&format!(", no. {issue}"));
+        }
+
+        if let Some(ref pages) = metadata.pages {
+            citation.push_str(&format!(", pp. {pages}"));
+        }
+
+        if let Some(year) = metadata.year {
+            citation.push_str(&format!(", {year}"));
+        }
+
+        citation.push('.');
+        citation
+    }
+
+    /// Format as Harvard (static version)
+    fn format_harvard_static(metadata: &PaperMetadata) -> String {
+        let authors = metadata.authors.join(", ");
+        let year = metadata
+            .year
+            .map_or_else(|| "n.d.".to_string(), |y| y.to_string());
+
+        let mut citation = format!("{} {}, '{}',", authors, year, metadata.title);
+
+        if let Some(ref journal) = metadata.journal {
+            citation.push_str(&format!(" {journal},"));
+        }
+
+        if let Some(ref volume) = metadata.volume {
+            citation.push_str(&format!(" vol. {volume},"));
+        }
+
+        if let Some(ref issue) = metadata.issue {
+            citation.push_str(&format!(" no. {issue},"));
+        }
+
+        if let Some(ref pages) = metadata.pages {
+            citation.push_str(&format!(" pp. {pages}"));
+        }
+
+        citation.push('.');
+        citation
     }
 }
 

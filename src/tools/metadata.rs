@@ -1,4 +1,5 @@
 use crate::{Config, Result};
+use futures::StreamExt;
 use lopdf::{Document, Object};
 use regex::Regex;
 use schemars::JsonSchema;
@@ -936,6 +937,87 @@ impl MetadataExtractor {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
+    /// Extract metadata from a single file (internal method for batch processing)
+    async fn extract_single_file_internal(&self, input: MetadataInput) -> Result<MetadataResult> {
+        let start_time = SystemTime::now();
+        debug!("Starting metadata extraction for: {}", input.file_path);
+
+        let file_path = PathBuf::from(&input.file_path);
+
+        // Validate file exists
+        if !file_path.exists() {
+            return Ok(MetadataResult {
+                status: ExtractionStatus::Failed,
+                metadata: None,
+                error: Some(format!(
+                    "File not found: {file_path}",
+                    file_path = input.file_path
+                )),
+                processing_time_ms: 0,
+                file_path: input.file_path,
+            });
+        }
+
+        // Check cache if enabled
+        if input.use_cache {
+            if let Some(cached) = self.get_cached_metadata(&file_path).await? {
+                debug!("Returning cached metadata for: {}", input.file_path);
+                let processing_time = start_time.elapsed().unwrap_or_default();
+
+                return Ok(MetadataResult {
+                    status: ExtractionStatus::Cached,
+                    metadata: Some(cached),
+                    error: None,
+                    processing_time_ms: processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+                    file_path: input.file_path,
+                });
+            }
+        }
+
+        // Extract metadata from PDF
+        let metadata = match self
+            .extract_from_pdf(&file_path, input.extract_references)
+            .await
+        {
+            Ok(mut meta) => {
+                // Validate with external sources if requested
+                if input.validate_external {
+                    self.validate_with_crossref(&mut meta).await;
+                }
+
+                // Cache the result
+                if input.use_cache {
+                    self.cache_metadata(&file_path, &meta).await?;
+                }
+
+                meta
+            }
+            Err(e) => {
+                error!("Failed to extract metadata: {}", e);
+                let processing_time = start_time.elapsed().unwrap_or_default();
+
+                return Ok(MetadataResult {
+                    status: ExtractionStatus::Failed,
+                    metadata: None,
+                    error: Some(e.to_string()),
+                    processing_time_ms: processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+                    file_path: input.file_path,
+                });
+            }
+        };
+
+        let processing_time = start_time.elapsed().unwrap_or_default();
+
+        // Return successful result
+        Ok(MetadataResult {
+            status: ExtractionStatus::Success,
+            metadata: Some(metadata),
+            error: None,
+            processing_time_ms: processing_time.as_millis().try_into().unwrap_or(u64::MAX),
+            file_path: input.file_path,
+        })
+    }
+
     /// Extract metadata from multiple files
     async fn extract_batch(
         &self,
@@ -944,45 +1026,99 @@ impl MetadataExtractor {
         validate_external: bool,
     ) -> Result<MetadataResult> {
         let start_time = SystemTime::now();
-        let mut results = Vec::new();
-        let mut success_count = 0;
-        let mut failure_count = 0;
+        let num_files = files.len();
 
-        for file_path in files {
-            let input = MetadataInput {
-                file_path: file_path.clone(),
-                use_cache,
-                validate_external,
-                extract_references: false,
-                batch_files: None,
-            };
+        info!(
+            "Starting batch metadata extraction for {} files with parallel processing",
+            num_files
+        );
 
-            match self.extract_metadata(input).await {
-                Ok(result) => {
-                    if matches!(
-                        result.status,
-                        ExtractionStatus::Success | ExtractionStatus::Cached
-                    ) {
-                        success_count += 1;
-                    } else {
-                        failure_count += 1;
-                    }
-                    results.push(result);
-                }
-                Err(e) => {
-                    failure_count += 1;
-                    results.push(MetadataResult {
-                        status: ExtractionStatus::Failed,
-                        metadata: None,
-                        error: Some(e.to_string()),
-                        processing_time_ms: 0,
+        // Use semaphore to limit concurrent extractions (tripled to 12 for CPU-bound work)
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(12));
+
+        // Process files in parallel using futures::stream
+        let results: Vec<MetadataResult> = futures::stream::iter(files.into_iter())
+            .map(|file_path| {
+                let semaphore = semaphore.clone();
+                let extractor_config = self.config.clone();
+                let cache_db = self.cache_db.clone();
+                let patterns = self.extraction_patterns.clone();
+                let client = self.crossref_client.clone();
+
+                async move {
+                    let _permit = semaphore.acquire().await.map_err(|e| {
+                        crate::Error::Service(format!("Failed to acquire metadata semaphore: {e}"))
+                    })?;
+
+                    debug!("Starting metadata extraction for: {}", file_path);
+
+                    // Create a temporary extractor for this task to avoid Send issues
+                    let temp_extractor = Self {
+                        config: extractor_config,
+                        cache_db,
+                        cache_ttl: self.cache_ttl,
+                        extraction_patterns: patterns,
+                        crossref_client: client,
+                        stats: Arc::new(RwLock::new(ExtractionStats::default())), // Temp stats
+                    };
+
+                    let input = MetadataInput {
+                        file_path: file_path.clone(),
+                        use_cache,
+                        validate_external,
+                        extract_references: false,
+                        batch_files: None,
+                    };
+
+                    // Process single file directly without recursion
+                    let result = temp_extractor.extract_single_file_internal(input).await;
+                    debug!(
+                        "Completed metadata extraction for: {} - result: {:?}",
                         file_path,
-                    });
+                        result.as_ref().map(|r| &r.status)
+                    );
+
+                    result
                 }
+            })
+            .buffer_unordered(12) // Process up to 12 files concurrently
+            .collect::<Vec<Result<MetadataResult>>>()
+            .await
+            .into_iter()
+            .map(|result| match result {
+                Ok(metadata_result) => metadata_result,
+                Err(e) => MetadataResult {
+                    status: ExtractionStatus::Failed,
+                    metadata: None,
+                    error: Some(e.to_string()),
+                    processing_time_ms: 0,
+                    file_path: "unknown".to_string(),
+                },
+            })
+            .collect();
+
+        // Calculate statistics
+        let mut success_count = 0;
+        
+
+        for result in &results {
+            if matches!(
+                result.status,
+                ExtractionStatus::Success | ExtractionStatus::Cached
+            ) {
+                success_count += 1;
             }
         }
+        let failure_count: usize = results.len() - success_count;
 
         let total_time = start_time.elapsed().unwrap_or_default();
+
+        info!(
+            "Batch metadata extraction completed: {}/{} successful in {:.2}s",
+            success_count,
+            num_files,
+            total_time.as_secs_f64()
+        );
 
         // Return as JSON-serialized batch result in a single MetadataResult
         let batch_result = BatchMetadataResult {

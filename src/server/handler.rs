@@ -1,7 +1,9 @@
 use crate::tools::{
     bibliography::BibliographyInput,
     code_search::CodeSearchInput,
-    download::DownloadInput as ActualDownloadInput,
+    download::{
+        BatchDownloadInput as ActualBatchDownloadInput, DownloadInput as ActualDownloadInput,
+    },
     metadata::MetadataInput as ActualMetadataInput,
     search::{SearchInput as ActualSearchInput, SearchResult},
 };
@@ -272,6 +274,13 @@ impl ServerHandler for ResearchServerHandler {
                         },
                         "required": ["doi"]
                     }).as_object().unwrap().clone()),
+                    output_schema: None,
+                    annotations: None,
+                },
+                Tool {
+                    name: "download_papers_batch".into(),
+                    description: Some("Download multiple papers concurrently by DOI. Significantly faster for downloading multiple papers.".into()),
+                    input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(ActualBatchDownloadInput)).unwrap().as_object().unwrap().clone()),
                     output_schema: None,
                     annotations: None,
                 },
@@ -548,6 +557,132 @@ impl ServerHandler for ResearchServerHandler {
                                     )
                                 }
                             };
+                            Ok(CallToolResult {
+                                content: Some(vec![Content::text(error_msg)]),
+                                structured_content: None,
+                                is_error: Some(true),
+                            })
+                        }
+                    }
+                }
+                "download_papers_batch" => {
+                    let input: ActualBatchDownloadInput = serde_json::from_value(
+                        serde_json::Value::Object(request.arguments.unwrap_or_default()),
+                    )
+                    .map_err(|e| {
+                        ErrorData::invalid_params(
+                            format!("Invalid batch download input: {e}"),
+                            None,
+                        )
+                    })?;
+
+                    debug!("Starting batch download with {} papers", input.papers.len());
+                    match download_tool.download_papers_batch(input).await {
+                        Ok(result) => {
+                            debug!(
+                                "Batch download completed: {}/{} successful",
+                                result.summary.successful, result.summary.total_requested
+                            );
+
+                            let success_rate = if result.summary.total_requested > 0 {
+                                (result.summary.successful as f64
+                                    / result.summary.total_requested as f64)
+                                    * 100.0
+                            } else {
+                                0.0
+                            };
+
+                            let mut content = format!(
+                                "✅ Batch Download Complete!\n\n\
+                                📊 Summary:\n\
+                                • Total requested: {}\n\
+                                • Successful: {} ({:.1}%)\n\
+                                • Failed: {}\n\
+                                • Skipped: {}\n\
+                                • Total time: {:.1}s\n\
+                                • Total data: {:.1} MB\n\
+                                • Average speed: {:.1} KB/s\n",
+                                result.summary.total_requested,
+                                result.summary.successful,
+                                success_rate,
+                                result.summary.failed,
+                                result.summary.skipped,
+                                result.total_duration_seconds,
+                                result.summary.total_bytes as f64 / 1_048_576.0, // Convert to MB
+                                result.summary.average_speed as f64 / 1024.0     // Convert to KB/s
+                            );
+
+                            // Add details about successful downloads
+                            let successful_downloads: Vec<_> = result
+                                .results
+                                .iter()
+                                .filter(|r| r.result.is_some())
+                                .collect();
+
+                            if !successful_downloads.is_empty() {
+                                content.push_str("\n📁 Downloaded Papers:\n");
+                                for item in successful_downloads.iter().take(10) {
+                                    // Limit to first 10 for readability
+                                    if let Some(ref download_result) = item.result {
+                                        if let Some(ref file_path) = download_result.file_path {
+                                            let file_name = file_path
+                                                .file_name()
+                                                .and_then(|name| name.to_str())
+                                                .unwrap_or("unknown");
+                                            let size_mb = download_result.file_size.unwrap_or(0)
+                                                as f64
+                                                / 1_048_576.0;
+                                            content.push_str(&format!(
+                                                "• {} ({:.1} MB)\n",
+                                                file_name, size_mb
+                                            ));
+                                        }
+                                    }
+                                }
+                                if successful_downloads.len() > 10 {
+                                    content.push_str(&format!(
+                                        "• ... and {} more files\n",
+                                        successful_downloads.len() - 10
+                                    ));
+                                }
+                            }
+
+                            // Add error details if there were failures
+                            if result.summary.failed > 0 && !result.summary.failed_items.is_empty()
+                            {
+                                content.push_str("\n❌ Failed Downloads:\n");
+                                for failed_item in result.summary.failed_items.iter().take(5) {
+                                    // Limit to first 5
+                                    content.push_str(&format!("• {}\n", failed_item));
+                                }
+                                if result.summary.failed_items.len() > 5 {
+                                    content.push_str(&format!(
+                                        "• ... and {} more failures\n",
+                                        result.summary.failed_items.len() - 5
+                                    ));
+                                }
+                            }
+
+                            Ok(CallToolResult {
+                                content: Some(vec![Content::text(content)]),
+                                structured_content: None,
+                                is_error: Some(result.summary.failed > result.summary.successful),
+                            })
+                        }
+                        Err(e) => {
+                            debug!("Batch download failed: {}", e);
+                            let error_msg = format!(
+                                "⚠️ Batch download failed\n\n\
+                                Error: {}\n\n\
+                                This could be due to:\n\
+                                • Invalid input parameters\n\
+                                • Network connectivity issues\n\
+                                • Resource constraints\n\
+                                • Provider limitations\n\n\
+                                Please check your input and try again.",
+                                e
+                            );
+
                             Ok(CallToolResult {
                                 content: Some(vec![Content::text(error_msg)]),
                                 structured_content: None,
