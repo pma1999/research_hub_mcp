@@ -112,7 +112,7 @@ async fn test_mcp_server_initialization() -> Result<()> {
     assert!(response["result"]["protocolVersion"].is_string());
     assert_eq!(
         response["result"]["serverInfo"]["name"],
-        "rust-research-mcp"
+        "knowledge_accumulator_mcp"
     );
     assert!(response["result"]["capabilities"]["tools"].is_object());
 

@@ -19,7 +19,7 @@ fn test_mcp_basic_functionality() {
 
     // Test 1: Server responds to initialization
     println!("Test 1: Server initialization");
-    let output = Command::new("./target/release/rust-research-mcp")
+    let output = Command::new("./target/release/knowledge_accumulator_mcp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -43,7 +43,7 @@ fn test_mcp_basic_functionality() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("rust-research-mcp"),
+        stdout.contains("knowledge_accumulator_mcp"),
         "Server should respond with its name"
     );
     assert!(
@@ -56,7 +56,7 @@ fn test_mcp_basic_functionality() {
     println!("\nTest 2: Verify simplified schemas");
 
     // We need to send both initialize and list in one session
-    let mut child = Command::new("./target/release/rust-research-mcp")
+    let mut child = Command::new("./target/release/knowledge_accumulator_mcp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -76,7 +76,7 @@ fn test_mcp_basic_functionality() {
     // Read init response
     let mut init_response = String::new();
     reader.read_line(&mut init_response).unwrap();
-    assert!(init_response.contains("rust-research-mcp"));
+    assert!(init_response.contains("knowledge_accumulator_mcp"));
 
     // Send tools/list
     writeln!(
@@ -136,7 +136,7 @@ fn test_custom_configuration() {
     let temp_dir = TempDir::new().unwrap();
     let download_path = temp_dir.path().to_string_lossy().to_string();
 
-    let output = Command::new("./target/release/rust-research-mcp")
+    let output = Command::new("./target/release/knowledge_accumulator_mcp")
         .args(&["--download-dir", &download_path, "--log-level", "error"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -155,7 +155,7 @@ fn test_custom_configuration() {
         .expect("Failed to run server");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("rust-research-mcp"));
+    assert!(stdout.contains("knowledge_accumulator_mcp"));
 
     println!("✓ Server accepts custom download directory configuration");
 }

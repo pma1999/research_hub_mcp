@@ -64,7 +64,7 @@ fn test_mcp_server_full_flow() -> Result<()> {
     assert_eq!(response["id"], 1);
     assert_eq!(
         response["result"]["serverInfo"]["name"],
-        "rust-research-mcp"
+        "knowledge_accumulator_mcp"
     );
     println!("✓ Initialization successful");
 
@@ -261,7 +261,7 @@ fn test_custom_download_directory() -> Result<()> {
     let response: Value = serde_json::from_str(&response_line)?;
     assert_eq!(
         response["result"]["serverInfo"]["name"],
-        "rust-research-mcp"
+        "knowledge_accumulator_mcp"
     );
 
     println!(
@@ -306,7 +306,7 @@ fn test_sequential_operations() -> Result<()> {
 
     let mut line = String::new();
     stdout_reader.read_line(&mut line)?;
-    assert!(line.contains("rust-research-mcp"));
+    assert!(line.contains("knowledge_accumulator_mcp"));
 
     // Send initialized notification (required by MCP protocol)
     let initialized_notification = json!({

@@ -169,7 +169,7 @@ async fn test_resource_monitoring() {
 #[test]
 fn test_standard_pid_path() {
     let path = PidFile::standard_path();
-    assert!(path.to_string_lossy().contains("rust-sci-hub-mcp.pid"));
+    assert!(path.to_string_lossy().contains("knowledge_accumulator_mcp.pid"));
 
     // Path should be absolute
     assert!(path.is_absolute());
