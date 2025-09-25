@@ -68,8 +68,7 @@ async fn test_transport_validation() {
 #[tokio::test]
 async fn test_server_handler_integration() {
     let config = Config::default();
-    let handler =
-        rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
+    let handler = rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
 
     // Test ping
     let ping_result = handler.ping().await;
@@ -79,9 +78,8 @@ async fn test_server_handler_integration() {
 #[tokio::test]
 async fn test_concurrent_operations() {
     let config = Config::default();
-    let handler = Arc::new(
-        rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap(),
-    );
+    let handler =
+        Arc::new(rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap());
 
     // Test multiple concurrent ping operations
     let mut tasks = Vec::new();

@@ -1,3 +1,4 @@
+use rmcp::ServerHandler;
 use rust_research_mcp::{
     client::{
         providers::{
@@ -14,7 +15,6 @@ use rust_research_mcp::{
     },
     Config, DownloadTool, MetadataExtractor, SearchTool,
 };
-use rmcp::ServerHandler;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;

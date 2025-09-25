@@ -1,6 +1,4 @@
-use rust_research_mcp::{
-    Config, DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler,
-};
+use rust_research_mcp::{Config, DaemonConfig, DaemonService, HealthCheck, PidFile, SignalHandler};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -169,9 +167,7 @@ async fn test_resource_monitoring() {
 #[test]
 fn test_standard_pid_path() {
     let path = PidFile::standard_path();
-    assert!(path
-        .to_string_lossy()
-        .contains("rust_research_mcp.pid"));
+    assert!(path.to_string_lossy().contains("rust_research_mcp.pid"));
 
     // Path should be absolute
     assert!(path.is_absolute());

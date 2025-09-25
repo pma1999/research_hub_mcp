@@ -1,5 +1,5 @@
-use rust_research_mcp::{Config, Error};
 use proptest::prelude::*;
+use rust_research_mcp::{Config, Error};
 
 /// Property-based tests for critical algorithms and data structures
 mod doi_validation_props {
