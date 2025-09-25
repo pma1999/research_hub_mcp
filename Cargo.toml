@@ -9,6 +9,16 @@ name = "rust-research-mcp"
 repository = "https://github.com/Ladvien/sci_hub_mcp"
 rust-version = "1.70"
 version = "0.6.7"
+exclude = [
+    "build/",
+    "target/",
+    "benches/",
+    "tests/fixtures/",
+    "*.tar.gz",
+    ".github/",
+    "scripts/",
+    "docs/",
+]
 
 [dependencies]
 # MCP Framework
