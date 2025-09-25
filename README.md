@@ -1,14 +1,10 @@
-# knowledge_accumulator_mcp
+# rust-research-mcp
 
-A Model Context Protocol (MCP) server that helps accumulate and organize academic knowledge through intelligent paper search, retrieval, and categorization.
+A Model Context Protocol (MCP) server for academic research and knowledge accumulation through intelligent paper search, retrieval, and metadata extraction.
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=flat&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![MCP Compatible](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
-[![Crates.io](https://img.shields.io/crates/v/knowledge_accumulator_mcp.svg)](https://crates.io/crates/knowledge_accumulator_mcp)
-[![CI](https://github.com/Ladvien/knowledge_accumulator_mcp/workflows/CI/badge.svg)](https://github.com/Ladvien/knowledge_accumulator_mcp/actions)
-[![Coverage](https://codecov.io/gh/Ladvien/knowledge_accumulator_mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/Ladvien/knowledge_accumulator_mcp)
-[![Security Audit](https://github.com/Ladvien/knowledge_accumulator_mcp/workflows/Security%20Audit/badge.svg)](https://github.com/Ladvien/knowledge_accumulator_mcp/actions)
 [![MSRV](https://img.shields.io/badge/MSRV-1.70.0-blue)](https://github.com/rust-lang/rust/releases/tag/1.70.0)
 
 ## ⚠️ Legal Disclaimer
@@ -31,12 +27,13 @@ The developers of this tool do not condone or support any illegal activities. Us
 
 ## Features
 
-- 🔍 **Multi-Provider Search**: Comprehensive search across 12+ academic sources:
+- 🔍 **Multi-Provider Search**: Comprehensive search across 14 academic sources:
   - **CrossRef** - Authoritative metadata for 130M+ papers
   - **Semantic Scholar** - AI-powered search with PDF access
   - **arXiv** - Physics, CS, and math preprints
   - **PubMed Central** - Biomedical and life science papers
   - **OpenReview** - ML conference papers (NeurIPS, ICLR, etc.)
+  - **OpenAlex** - Open bibliographic database
   - **CORE** - 350M+ open access papers
   - **Unpaywall** - Legal free PDF discovery
   - **SSRN** - Social science working papers
@@ -51,48 +48,46 @@ The developers of this tool do not condone or support any illegal activities. Us
   - Content availability (PDF access, recent papers, open access)
   - Temporal relevance (recent vs. historical content)
 
-- 📥 **Robust Downloads**: Multi-provider fallback with zero-byte protection
-- ⚡ **Batch Processing**: Parallel downloads, metadata extraction, and bibliography generation
-  - **Download multiple papers**: Up to 9 concurrent downloads (5-10x faster)
-  - **Batch metadata extraction**: Process 12 PDFs simultaneously (4-8x faster)
-  - **Parallel citation generation**: 30 concurrent metadata fetches (10-20x faster)
-- 📊 **Metadata Extraction**: Extract bibliographic information from PDFs
-- 🔍 **Code Pattern Search**: Regex-powered search for algorithm implementations in papers
+- 📥 **Robust Downloads**: Multi-provider fallback with zero-byte protection and integrity verification
+- 🔍 **Code Pattern Search**: Regex-powered search for algorithm implementations in research papers
+- 📊 **Metadata Extraction**: Extract bibliographic information from PDFs with batch processing
 - 📚 **Bibliography Generation**: Multi-format citations (BibTeX, APA, MLA, Chicago, IEEE, Harvard)
-- 🤖 **MCP Integration**: Enhanced for Claude Desktop and Claude Code workflows
+- 🏷️ **Smart Categorization**: Automatic paper categorization and organization
+- 🤖 **MCP Integration**: Native support for Claude Desktop and Claude Code workflows
 - ⚡ **High Performance**: Built with Rust for speed and reliability
-- 🔄 **Resilient**: Circuit breakers, automatic retries, and graceful error handling
+- 🔄 **Resilient Architecture**: Circuit breakers, rate limiting, automatic retries, and graceful error handling
+- 🛡️ **Security First**: HTTPS-only connections, certificate validation, and secure HTTP client factory
+- 🔧 **Daemon Mode**: Background service with health monitoring and signal handling
 
 ## Installation
-****
+
 ### Quick Start (Recommended)
 
-**Download the latest release binary:**
-
-```bash
-# macOS (Apple Silicon)
-curl -L -o knowledge_accumulator_mcp https://github.com/Ladvien/knowledge_accumulator_mcp/releases/latest/download/knowledge_accumulator_mcp
-chmod +x knowledge_accumulator_mcp
-
-# Move to a permanent location
-sudo mv knowledge_accumulator_mcp /usr/local/bin/
-```
-
-### Building from Source
-
-If you prefer to build from source:
+**Build from source:**
 
 ```bash
 # Prerequisites: Rust 1.70+ (install from https://rustup.rs/)
-
-# Clone the repository
-git clone https://github.com/Ladvien/knowledge_accumulator_mcp.git
-cd knowledge_accumulator_mcp
-
-# Build the release binary
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
 cargo build --release
 
-# The binary will be at ./target/release/knowledge_accumulator_mcp
+# Binary will be at ./target/release/rust-research-mcp
+# Move to a permanent location
+sudo cp target/release/rust-research-mcp /usr/local/bin/
+```
+
+### Alternative Installation Methods
+
+**Using Cargo:**
+```bash
+cargo install rust-research-mcp
+```
+
+**Development Build:**
+```bash
+git clone https://github.com/Ladvien/sci_hub_mcp.git
+cd sci_hub_mcp
+cargo build --release
 ```
 
 ### Configuration for Claude Desktop
@@ -106,8 +101,8 @@ Add the following to your Claude Desktop configuration file:
 ```json
 {
   "mcpServers": {
-    "knowledge_accumulator_mcp": {
-      "command": "/opt/homebrew/bin/knowledge_accumulator_mcp",
+    "rust-research-mcp": {
+      "command": "/usr/local/bin/rust-research-mcp",
       "args": [
         "--download-dir", "~/downloads/research_papers",
         "--log-level", "info"
@@ -118,6 +113,21 @@ Add the following to your Claude Desktop configuration file:
     }
   }
 }
+```
+
+### Daemon Mode
+
+For production deployments, you can run the server as a daemon:
+
+```bash
+# Start daemon with custom configuration
+rust-research-mcp --daemon --pid-file /var/run/rust-research-mcp.pid --health-port 8090
+
+# Check daemon status
+curl http://localhost:8090/health
+
+# Stop daemon (sends SIGTERM for graceful shutdown)
+kill -TERM $(cat /var/run/rust-research-mcp.pid)
 ```
 
 ## Usage
@@ -131,238 +141,179 @@ Once configured, you can ask Claude to:
 ### Command Line Options
 
 ```bash
-knowledge_accumulator_mcp [OPTIONS]
+rust-research-mcp [OPTIONS]
 
 Options:
-  --download-dir <PATH>    Directory for downloaded papers [default: ~/downloads/papers]
-  --log-level <LEVEL>      Log level (error, warn, info, debug, trace) [default: info]
-  --config <PATH>          Path to configuration file
-  --help                   Print help information
-  --version                Print version information
+  -v, --verbose                    Enable verbose logging
+  -c, --config <PATH>             Configuration file path
+  -d, --daemon                    Run as daemon
+      --pid-file <PATH>           PID file path (for daemon mode)
+      --health-port <PORT>        Health check port [default: 8090]
+      --port <PORT>               Override server port
+      --host <HOST>               Override server host
+      --log-level <LEVEL>         Override log level (trace, debug, info, warn, error)
+      --profile <PROFILE>         Set environment profile (development, production)
+      --download-dir <PATH>       Override download directory path
+      --generate-schema           Generate JSON schema for configuration
+  -h, --help                      Print help information
+  -V, --version                   Print version information
 ```
 
 ### Environment Variables
 
-- `RSH_DOWNLOAD_DIRECTORY`: Override download directory
-- `RSH_LOG_LEVEL`: Override log level
-- `RUST_LOG`: Standard Rust logging configuration
+- `RUST_RESEARCH_MCP_*`: Configuration variables (see config.toml for full list)
+- `RUST_LOG`: Standard Rust logging configuration (debug, info, warn, error, trace)
 
 ## Available Tools
 
 ### Core Research Tools
 
 #### search_papers
-Search for academic papers across multiple sources.
+Search for academic papers across 14 different academic sources with intelligent provider routing.
 
 **Parameters:**
-- `query` (required): Search query (DOI, title, or author)
+- `query` (required): Search query (DOI, title, author, or keywords)
+- `search_type` (optional): Search type (`auto`, `doi`, `title`, `author`, `author_year`)
 - `limit` (optional): Maximum results to return (default: 10)
+- `offset` (optional): Pagination offset (default: 0)
 
 #### download_paper
-Download a paper PDF by DOI.
+Download a paper PDF with multi-provider fallback and integrity verification.
 
 **Parameters:**
-- `doi` (required): The DOI of the paper to download
+- `doi` (optional): DOI of the paper to download
+- `url` (optional): Direct download URL (alternative to DOI)
 - `filename` (optional): Custom filename for the downloaded PDF
-
-#### download_papers_batch ✨ NEW!
-Download multiple papers concurrently for significantly faster batch downloads.
-
-**Parameters:**
-- `papers` (required): Array of download requests, each containing:
-  - `doi` (optional): DOI of the paper to download
-  - `url` (optional): Direct download URL (alternative to DOI)
-  - `filename` (optional): Custom filename for this specific paper
-  - `category` (optional): Organization category for this paper
-- `max_concurrent` (optional): Maximum concurrent downloads (default: 9, max: 20)
-- `continue_on_error` (optional): Continue downloading if some papers fail (default: true)
-- `shared_settings` (optional): Common settings for all downloads:
-  - `directory` (optional): Target directory for all downloads
-  - `category` (optional): Default category for organizing downloads
-  - `overwrite` (optional): Whether to overwrite existing files (default: false)
-  - `verify_integrity` (optional): Verify file integrity after download (default: true)
-
-**Example Usage:**
-```
-Ask Claude: "Download these papers in parallel: [{'doi': '10.1038/nature12373'}, {'doi': '10.1126/science.1259855'}]"
-```
-
-**Performance:** Up to 5-10x faster than downloading papers individually!
+- `directory` (optional): Target directory (uses default download directory if not specified)
+- `category` (optional): Organization category (creates subdirectory)
+- `overwrite` (optional): Whether to overwrite existing files (default: false)
+- `verify_integrity` (optional): Verify file integrity after download (default: true)
 
 #### extract_metadata
-Extract bibliographic metadata from a PDF file.
+Extract bibliographic metadata from PDF files using multiple extraction methods.
 
 **Parameters:**
 - `file_path` (required): Path to the PDF file
-- `batch_files` (optional): Array of file paths for batch processing (processes up to 12 files concurrently)
+- `extract_full_text` (optional): Also extract full text content (default: false)
+- `extract_references` (optional): Extract reference list (default: false)
 
-**Example Usage:**
-```
-Single file: "Extract metadata from paper.pdf"
-Batch processing: "Extract metadata from these files: ['paper1.pdf', 'paper2.pdf', 'paper3.pdf']"
-```
-
-**Performance:** Up to 4-8x faster when processing multiple PDFs concurrently!
-
-### Claude Code Enhanced Tools
+### Advanced Tools
 
 #### search_code
-Search for code patterns within downloaded research papers using regex.
+Search for code patterns within downloaded research papers using regex patterns.
 
 **Parameters:**
 - `pattern` (required): Regex pattern to search for
-- `language` (optional): Programming language filter (python, javascript, rust, etc.)
 - `search_dir` (optional): Directory to search in (defaults to download directory)
-- `limit` (optional): Maximum results (default: 20)
-- `context_lines` (optional): Lines of context around matches (default: 3)
-
-**Example Usage:**
-```
-Ask Claude: "Search for 'def train_model' in my downloaded papers"
-```
+- `file_extensions` (optional): File extensions to search (default: [".pdf", ".txt"])
+- `max_results` (optional): Maximum results to return (default: 50)
+- `context_lines` (optional): Lines of context around matches (default: 2)
 
 #### generate_bibliography
-Generate citations and bibliography from paper DOIs in various formats with parallel metadata fetching.
+Generate formatted citations from paper metadata in multiple citation styles.
 
 **Parameters:**
-- `identifiers` (required): Array of DOIs or paper identifiers
-- `format` (optional): Citation format - `bibtex`, `apa`, `mla`, `chicago`, `ieee`, `harvard` (default: bibtex)
-- `include_abstract` (optional): Include abstract in citation (default: false)
-- `include_keywords` (optional): Include keywords in citation (default: false)
+- `papers` (required): Array of paper metadata or DOIs
+- `format` (optional): Citation format (`bibtex`, `apa`, `mla`, `chicago`, `ieee`) (default: bibtex)
+- `sort_by` (optional): Sort order (`author`, `year`, `title`) (default: author)
+- `include_abstracts` (optional): Include abstracts in output (default: false)
 
-**Example Usage:**
-```
-Ask Claude: "Generate a BibTeX bibliography for these DOIs: ['10.1038/nature12373', '10.1126/science.1259855']"
-```
+#### categorize_papers
+Automatically categorize research papers based on content and metadata.
 
-**Performance:** Up to 10-20x faster for large reference lists with 30 concurrent metadata fetches!
+**Parameters:**
+- `papers` (required): Array of paper metadata or file paths
+- `category_scheme` (optional): Categorization scheme (`subject`, `methodology`, `custom`)
+- `custom_categories` (optional): Custom category definitions
+- `confidence_threshold` (optional): Minimum confidence for categorization (default: 0.7)
 
-## Batch Processing Best Practices
+## Example Workflows
 
-### Download Limits and Guidelines
-
-**Maximum Batch Size**: 100 papers per batch call
-- For collections >100 papers, split into multiple batches
-- Example: 250 papers = 3 batches (100 + 100 + 50)
-
-**Concurrency Settings**:
-- **Fast connection (100+ Mbps)**: `max_concurrent: 15-20`
-- **Standard connection (25-100 Mbps)**: `max_concurrent: 9-12` (default)
-- **Slow connection (<25 Mbps)**: `max_concurrent: 3-6`
-
-### Error Recovery Strategies
-
-**Recommended Settings**:
-- `continue_on_error: true` - Don't stop entire batch if some papers fail
-- `verify_integrity: true` - Detect and retry corrupted downloads
-- `overwrite: false` - Skip existing files to resume interrupted batches
-
-**Handling Failed Downloads**:
-1. Review error messages for specific failures
-2. Retry failed papers individually or in smaller batches
-3. Check provider availability for specific DOIs
-4. Consider alternative sources for difficult-to-access papers
-
-### Performance Optimization
-
-**Metadata Extraction**:
-- Processes up to 12 PDFs concurrently
-- No total file limit - batch large collections efficiently
-- Use `batch_files` parameter for multi-file processing
-
-**Bibliography Generation**:
-- 30 concurrent metadata fetches for large reference lists
-- Supports all standard formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard)
-- Include abstracts and keywords as needed
-
-**Example Large Collection Workflow**:
+### Research Collection Workflow
 ```bash
-# Step 1: Search for papers
-"Search for 150 papers on machine learning from 2023"
+# Step 1: Search for papers on a topic
+"Search for recent papers on transformer architectures, limit 20"
 
-# Step 2: Download in batches
-"Download first 100 papers from search results with max_concurrent=12"
-"Download remaining 50 papers with continue_on_error=true"
+# Step 2: Download selected papers
+"Download the paper with DOI 10.1038/nature12373 to ~/research/transformers/"
 
-# Step 3: Process metadata in batch
-"Extract metadata from all downloaded PDFs in the ML_2023 directory"
+# Step 3: Extract metadata for organization
+"Extract metadata from ~/research/transformers/paper.pdf"
 
-# Step 4: Generate bibliography
-"Create BibTeX bibliography from all paper DOIs with abstracts included"
+# Step 4: Search for code implementations
+"Search for 'class Transformer' pattern in ~/research/transformers/"
+
+# Step 5: Generate bibliography
+"Create BibTeX bibliography from collected papers"
+```
+
+### Literature Review Workflow
+```bash
+# Search across multiple aspects of a topic
+"Search for papers by author 'Yoshua Bengio' on deep learning"
+"Search for papers on attention mechanisms in neural networks"
+
+# Organize papers by category
+"Categorize papers in ~/research/attention/ by methodology"
+
+# Generate comprehensive bibliography
+"Generate IEEE format bibliography from all categorized papers"
 ```
 
 ## Claude Code Integration
 
-This MCP server is specifically enhanced for **Claude Code** workflows:
+This MCP server is specifically enhanced for **Claude Code** workflows with advanced research capabilities:
 
-### Research-Driven Development
-- **Code Pattern Discovery**: Find algorithm implementations in research papers
-- **Citation Management**: Generate properly formatted references for your projects
-- **Research Documentation**: Extract and organize findings from academic sources
-
-### Common Workflows
-
-#### 1. Algorithm Research
-```bash
-# Search for papers on a topic
-"Find recent papers on transformer architectures"
-
-# Download relevant papers
-"Download the first 3 papers from the search results"
-
-# Search for implementation patterns
-"Search for 'class Transformer' in downloaded papers"
-```
-
-#### 2. Literature Review
-```bash
-# Collect papers on a research area
-"Search for papers by Yoshua Bengio on deep learning"
-
-# Generate bibliography
-"Create a BibTeX bibliography from the downloaded paper DOIs"
-
-# Extract key concepts
-"Search for 'attention mechanism' implementations"
-```
-
-#### 3. Code Documentation
-```bash
-# Find reference implementations
-"Search for 'def attention' in my research papers"
-
-# Generate proper citations
-"Create IEEE format citations for papers containing this algorithm"
-```
+### Key Benefits for Developers
+- **Algorithm Discovery**: Find reference implementations in academic papers
+- **Code Pattern Search**: Regex-powered search across research publications
+- **Citation Management**: Generate properly formatted references for projects
+- **Research Organization**: Automatic categorization and metadata extraction
 
 ### Integration Tips
-
-1. **Set up downloads directory**: Configure a dedicated research papers directory
-2. **Use regex patterns**: Leverage powerful pattern matching for code discovery  
-3. **Batch operations**: Process multiple papers efficiently with the bibliography tool
-4. **Context awareness**: Use context lines to understand code snippets better
+1. **Configure download directory**: Set up dedicated research workspace
+2. **Use search patterns**: Leverage regex for finding specific implementations
+3. **Organize by categories**: Use automatic categorization for better organization
+4. **Generate documentation**: Create proper citations and bibliographies
 
 ## Configuration File
 
 Create a configuration file at `~/.config/knowledge_accumulator_mcp/config.toml`:
 
 ```toml
+# Server configuration
 [server]
 port = 8080
 host = "127.0.0.1"
+graceful_shutdown_timeout_secs = 30
 
+# Research source configuration
 [research_source]
-# Timeout per provider when searching across multiple sources (default: 30 seconds)
 provider_timeout_secs = 30
+max_results_per_provider = 50
 
+# Download settings
 [downloads]
 directory = "~/downloads/research_papers"
-max_concurrent = 3
+max_concurrent_downloads = 5
 max_file_size_mb = 100
+verify_integrity = true
 
+# Logging configuration
 [logging]
 level = "info"
-format = "json"
+format = "pretty"
+output = "stderr"
+
+# Resilience settings
+[circuit_breaker]
+failure_threshold = 5
+timeout_duration_secs = 60
+half_open_max_calls = 3
+
+[rate_limiting]
+requests_per_second = 2
+burst_size = 10
 ```
 
 ## Development
@@ -370,14 +321,17 @@ format = "json"
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (parallel execution)
 cargo nextest run
 
-# Run with coverage
+# Run specific test
+cargo nextest run TEST_NAME
+
+# Run with coverage report
 cargo tarpaulin --out Html
 
-# Run benchmarks
-cargo bench
+# Run integration tests
+cargo test --test comprehensive_e2e_scenarios
 ```
 
 ### Code Quality
@@ -386,47 +340,67 @@ cargo bench
 # Format code
 cargo fmt
 
-# Run linter
+# Run linter (must pass before commit)
 cargo clippy -- -D warnings
 
 # Security audit
 cargo audit
+
+# Build release version
+cargo build --release
 ```
 
 ## Architecture
 
-The project follows a modular architecture:
+The project follows a clean, modular architecture with dependency injection:
 
 ```
 src/
+├── main.rs          # CLI entry point and configuration
+├── lib.rs           # Public API and exports
 ├── server/          # MCP server implementation
-├── tools/           # MCP tools (search, download, metadata)
-├── client/          # Research source clients
-│   └── providers/   # Source-specific implementations
-├── resilience/      # Error handling and retry logic
-└── config/          # Configuration management
+│   ├── handler.rs   # MCP request handler
+│   └── transport.rs # Transport layer validation
+├── tools/           # MCP tool implementations
+│   ├── search.rs    # Multi-provider search
+│   ├── download.rs  # Paper download with fallback
+│   ├── metadata.rs  # PDF metadata extraction
+│   ├── code_search.rs # Code pattern search
+│   ├── bibliography.rs # Citation generation
+│   └── categorize.rs # Paper categorization
+├── client/          # Research source integration
+│   ├── meta_search.rs # Meta-search orchestration
+│   ├── mirror.rs    # Mirror management
+│   ├── rate_limiter.rs # Rate limiting
+│   └── providers/   # Academic source implementations
+│       ├── arxiv.rs
+│       ├── crossref.rs
+│       ├── semantic_scholar.rs
+│       ├── pubmed_central.rs
+│       ├── openreview.rs
+│       ├── openalex.rs
+│       └── ... (14 providers total)
+├── resilience/      # Circuit breakers and retry logic
+├── services/        # Business logic services
+├── config/          # Configuration management
+└── error.rs         # Centralized error handling
 ```
 
 ## Changelog
 
-### Version 0.4.0 (Latest)
-- **🚀 Major Multi-Provider Enhancement**: Added 8 new academic sources
-  - PubMed Central for biomedical papers with NCBI E-utilities API
-  - OpenReview for ML conference papers (NeurIPS, ICLR, ICML)
-  - MDPI for open access journals with HTML parsing
-  - ResearchGate with ethical ToS-compliant access
-- **🧠 Intelligent Priority Ordering**: Context-aware provider selection
-  - Domain-specific routing (CS/ML → arXiv/OpenReview, biomedical → PubMed)
-  - Search type optimization (DOI → CrossRef, author → Semantic Scholar)
-  - Content availability boosting (PDF access, recent papers)
-  - Temporal relevance adjustments
-- **🔧 Enhanced Testing**: Fixed all integration and security tests
-- **📊 Improved Coverage**: 12+ providers with specialized capabilities
-
-### Version 0.3.0
-- Critical fix for zero-byte file creation on failed downloads
-- Multi-provider academic search with comprehensive testing
-- Complete repository cleanup and Sci-Hub provider overhaul
+### Version 0.6.6 (Current)
+- **🏗️ Complete Architecture Redesign**: Clean hexagonal architecture with dependency injection
+- **🚀 14 Academic Providers**: Comprehensive coverage including OpenAlex, PubMed Central, OpenReview
+- **🧠 Intelligent Provider Routing**: Context-aware selection based on domain, search type, and content availability
+- **🔧 Enhanced MCP Integration**: Full rmcp framework integration with proper tool definitions
+- **🛡️ Security Hardened**: HTTPS-only clients, certificate validation, secure HTTP factory
+- **🔄 Resilience Features**: Circuit breakers, rate limiting, automatic retries, graceful degradation
+- **🏷️ Smart Categorization**: Automatic paper categorization and organization
+- **📊 Advanced Metadata Extraction**: Multiple extraction methods with batch processing
+- **🔍 Code Pattern Search**: Regex-powered search across research publications
+- **📚 Multi-format Citations**: BibTeX, APA, MLA, Chicago, IEEE format support
+- **🔧 Daemon Mode**: Production-ready background service with health monitoring
+- **📝 Comprehensive Testing**: E2E scenarios, integration tests, security auditing
 
 ## Contributing
 
@@ -443,24 +417,40 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 ### Common Issues
 
 **Issue**: Papers not downloading
-- **Solution**: Some papers may not be available through Sci-Hub, especially very recent publications. The tool will provide helpful suggestions for alternatives.
+- **Solution**: The tool uses 14 different providers with intelligent fallback. Check network connectivity and try alternative search terms.
 
-**Issue**: Connection errors
-- **Solution**: Check your internet connection and firewall settings. The tool requires access to academic databases.
+**Issue**: MCP server not connecting
+- **Solution**: Verify the binary path in `claude_desktop_config.json` is absolute and the binary has execute permissions (`chmod +x`).
 
-**Issue**: Claude Desktop not recognizing the server
-- **Solution**: Ensure the path in `claude_desktop_config.json` is absolute and the binary has execute permissions.
+**Issue**: High memory usage
+- **Solution**: Configure appropriate concurrency limits in `config.toml`. Lower `max_concurrent_downloads` for systems with limited resources.
+
+**Issue**: Provider timeout errors
+- **Solution**: Increase `provider_timeout_secs` in configuration or check internet connectivity to academic databases.
+
+**Issue**: Circuit breaker errors
+- **Solution**: The system uses circuit breakers for resilience. Wait for the timeout period or check provider availability.
 
 ### Logs
 
-Logs are available at:
-- **macOS**: `~/Library/Logs/Claude/mcp-server-knowledge_accumulator_mcp.log`
+**Daemon Mode Logs:**
+- View with: `journalctl -u rust-research-mcp` (systemd)
+- Or check: `/var/log/rust-research-mcp.log`
+
+**Claude Desktop Logs:**
+- **macOS**: `~/Library/Logs/Claude/mcp-server-rust-research-mcp.log`
 - **Linux**: `~/.local/share/Claude/logs/`
 - **Windows**: `%APPDATA%\Claude\logs\`
 
+**Debug Mode:**
+```bash
+# Enable debug logging
+RUST_LOG=debug rust-research-mcp --verbose
+```
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
@@ -476,7 +466,7 @@ This tool is provided "as is" without warranty of any kind. The authors and cont
 
 ## Support
 
-For issues, questions, or suggestions, please [open an issue](https://github.com/yourusername/knowledge_accumulator_mcp/issues) on GitHub.
+For issues, questions, or suggestions, please [open an issue](https://github.com/Ladvien/sci_hub_mcp/issues) on GitHub.
 
 ---
 

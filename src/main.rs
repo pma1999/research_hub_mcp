@@ -2,15 +2,15 @@
 
 use anyhow::Result;
 use clap::Parser;
-use knowledge_accumulator_mcp::{
+use rust_research_mcp::{
     Config, ConfigOverrides, DaemonConfig, DaemonService, PidFile, Server,
 };
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
 #[derive(Parser)]
-#[command(name = "knowledge_accumulator_mcp")]
-#[command(about = "A MCP server for accumulating and organizing academic knowledge")]
+#[command(name = "rust-research-mcp")]
+#[command(about = "A MCP server for academic research and knowledge accumulation")]
 #[command(version)]
 struct Cli {
     /// Enable verbose logging
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting knowledge_accumulator_mcp server");
+    info!("Starting rust-research-mcp server");
 
     // Handle schema generation request
     if cli.generate_schema {

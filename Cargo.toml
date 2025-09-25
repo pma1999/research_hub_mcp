@@ -5,10 +5,10 @@ description = "A Model Context Protocol (MCP) server for accumulating and organi
 edition = "2021"
 keywords = ["mcp", "academic", "papers", "research", "knowledge"]
 license = "GPL-3.0"
-name = "knowledge_accumulator_mcp"
-repository = "https://github.com/Ladvien/knowledge_accumulator_mcp"
+name = "rust-research-mcp"
+repository = "https://github.com/Ladvien/sci_hub_mcp"
 rust-version = "1.70"
-version = "0.6.6"
+version = "0.6.7"
 
 [dependencies]
 # MCP Framework
@@ -106,11 +106,11 @@ criterion = {version = "0.5", features = ["html_reports"]}
 vergen = {version = "8.0", features = ["build", "git", "gitcl"]}
 
 [[bin]]
-name = "knowledge_accumulator_mcp"
+name = "rust-research-mcp"
 path = "src/main.rs"
 
 [lib]
-name = "knowledge_accumulator_mcp"
+name = "rust_research_mcp"
 path = "src/lib.rs"
 
 [[bench]]
