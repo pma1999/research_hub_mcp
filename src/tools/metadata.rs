@@ -15,18 +15,29 @@ use tracing::{debug, error, info, instrument, warn};
 /// Input parameters for metadata extraction
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MetadataInput {
-    /// Path to the PDF file to extract metadata from
+    /// Path to single PDF file
+    #[schemars(
+        description = "Path to PDF file for single extraction. Use batch_files for multiple PDFs."
+    )]
     pub file_path: String,
     /// Whether to use cached results if available
+    #[schemars(description = "Use cached metadata if available (default: true)")]
     #[serde(default = "default_use_cache")]
     pub use_cache: bool,
     /// Whether to validate metadata with external sources
+    #[schemars(
+        description = "Validate extracted metadata with external sources like CrossRef (default: false)"
+    )]
     #[serde(default)]
     pub validate_external: bool,
     /// Whether to extract references/citations
+    #[schemars(description = "Extract references and citations from the PDF (default: false)")]
     #[serde(default = "default_extract_refs")]
     pub extract_references: bool,
-    /// Batch processing - list of file paths
+    /// Batch processing file list
+    #[schemars(
+        description = "Array of PDF file paths for batch processing. Processes up to 12 files concurrently. No limit on total files."
+    )]
     pub batch_files: Option<Vec<String>>,
 }
 
@@ -1099,7 +1110,6 @@ impl MetadataExtractor {
 
         // Calculate statistics
         let mut success_count = 0;
-        
 
         for result in &results {
             if matches!(

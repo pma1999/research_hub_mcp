@@ -136,15 +136,23 @@ pub type ProgressCallback = Arc<dyn Fn(DownloadProgress) + Send + Sync>;
 /// Input parameters for batch paper download
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BatchDownloadInput {
-    /// List of papers to download
+    /// List of papers to download (REQUIRED: 1-100 papers per batch)
+    #[schemars(
+        description = "Array of paper download requests. LIMIT: 1-100 papers per batch. For larger collections, split into multiple batch calls."
+    )]
     pub papers: Vec<BatchDownloadRequest>,
-    /// Maximum number of concurrent downloads (default: 9)
+    /// Maximum concurrent downloads (LIMIT: 1-20, default: 9)
+    #[schemars(
+        description = "Number of concurrent downloads. LIMIT: 1-20 (default: 9). Higher values faster but use more bandwidth."
+    )]
     #[serde(default = "default_batch_concurrency")]
     pub max_concurrent: usize,
-    /// Whether to continue downloading remaining papers if some fail
+    /// Continue if some downloads fail (default: true)
+    #[schemars(description = "Continue downloading remaining papers if some fail (default: true)")]
     #[serde(default = "default_true")]
     pub continue_on_error: bool,
     /// Shared settings applied to all downloads
+    #[schemars(description = "Common settings applied to all downloads in the batch")]
     #[serde(default)]
     pub shared_settings: BatchDownloadSettings,
 }
@@ -152,15 +160,23 @@ pub struct BatchDownloadInput {
 /// Individual paper request for batch download
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BatchDownloadRequest {
-    /// DOI of the paper (preferred)
-    #[schemars(description = "DOI of the paper to download")]
+    /// DOI of the paper (preferred over URL)
+    #[schemars(
+        description = "DOI of the paper (e.g., '10.1038/nature12373'). Provide either DOI or URL, not both."
+    )]
     pub doi: Option<String>,
-    /// Direct URL to download (alternative to DOI)
-    #[schemars(description = "Direct download URL")]
+    /// Direct download URL (use if DOI unavailable)
+    #[schemars(
+        description = "Direct PDF URL. Use only if DOI unavailable. Cannot be used with DOI."
+    )]
     pub url: Option<String>,
     /// Custom filename for this specific paper
+    #[schemars(description = "Optional custom filename for the downloaded PDF")]
     pub filename: Option<String>,
     /// Custom category for this specific paper (overrides shared setting)
+    #[schemars(
+        description = "Optional category for organizing this specific paper (overrides shared_settings.category)"
+    )]
     pub category: Option<String>,
 }
 
@@ -652,16 +668,24 @@ impl DownloadTool {
         }
 
         if input.papers.len() > 100 {
+            let num_batches = (input.papers.len() + 99) / 100;
             return Err(crate::Error::InvalidInput {
                 field: "papers".to_string(),
-                reason: "Maximum 100 papers allowed per batch".to_string(),
+                reason: format!(
+                    "Maximum 100 papers per batch. You provided {} papers. Please split into {} separate batch calls of ≤100 papers each.",
+                    input.papers.len(),
+                    num_batches
+                ),
             });
         }
 
         if input.max_concurrent == 0 || input.max_concurrent > 20 {
             return Err(crate::Error::InvalidInput {
                 field: "max_concurrent".to_string(),
-                reason: "Concurrency must be between 1 and 20".to_string(),
+                reason: format!(
+                    "Concurrency must be 1-20 (you provided {}). Recommended: 9 for most connections, 3 for slow networks, 15-20 for fast networks.",
+                    input.max_concurrent
+                ),
             });
         }
 
@@ -683,6 +707,44 @@ impl DownloadTool {
         }
 
         Ok(())
+    }
+
+    /// Helper to split large download requests into appropriate batches
+    #[must_use]
+    pub fn split_into_batches(
+        papers: Vec<BatchDownloadRequest>,
+        batch_size: usize,
+    ) -> Vec<Vec<BatchDownloadRequest>> {
+        let effective_batch_size = batch_size.min(100);
+        papers
+            .chunks(effective_batch_size)
+            .map(|chunk| chunk.to_vec())
+            .collect()
+    }
+
+    /// Suggest optimal batch configuration
+    #[must_use]
+    pub fn suggest_batch_config(total_papers: usize) -> String {
+        if total_papers <= 100 {
+            format!("For {} papers: Use single batch call", total_papers)
+        } else {
+            let num_batches = (total_papers + 99) / 100;
+            let papers_per_batch = total_papers / num_batches;
+            let remainder = total_papers % num_batches;
+
+            if remainder == 0 {
+                format!(
+                    "For {} papers: Use {} batch calls with {} papers each",
+                    total_papers, num_batches, papers_per_batch
+                )
+            } else {
+                format!(
+                    "For {} papers: Use {} batch calls with ~{} papers each ({} batches with {} papers, 1 batch with {} papers)",
+                    total_papers, num_batches, papers_per_batch + 1,
+                    num_batches - 1, papers_per_batch + 1, remainder
+                )
+            }
+        }
     }
 
     /// Convert a batch request to an individual download input
@@ -709,7 +771,8 @@ impl DownloadTool {
         request
             .doi
             .as_ref()
-            .or(request.url.as_ref()).cloned()
+            .or(request.url.as_ref())
+            .cloned()
             .unwrap_or_else(|| "unknown".to_string())
     }
 
@@ -2416,5 +2479,195 @@ mod tests {
             DownloadTool::get_request_identifier(&empty_request),
             "unknown"
         );
+    }
+
+    // ===========================
+    // Error Message Validation Tests
+    // ===========================
+
+    #[test]
+    fn test_batch_download_error_messages_too_many_papers() {
+        // Test error message for exceeding paper limit
+        let papers: Vec<_> = (0..101)
+            .map(|i| BatchDownloadRequest {
+                doi: Some(format!("10.1038/test{i}")),
+                url: None,
+                filename: None,
+                category: None,
+            })
+            .collect();
+
+        let batch_input = BatchDownloadInput {
+            papers,
+            max_concurrent: 9,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+
+        let result = DownloadTool::validate_batch_input(&batch_input);
+        assert!(result.is_err());
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Maximum 100 papers per batch"));
+        assert!(error_msg.contains("You provided 101 papers"));
+        assert!(error_msg.contains("split into 2 separate batch calls"));
+    }
+
+    #[test]
+    fn test_batch_download_error_messages_invalid_concurrency() {
+        // Test error message for invalid concurrency (too low)
+        let batch_input = BatchDownloadInput {
+            papers: vec![BatchDownloadRequest {
+                doi: Some("10.1038/test".to_string()),
+                url: None,
+                filename: None,
+                category: None,
+            }],
+            max_concurrent: 0,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+
+        let result = DownloadTool::validate_batch_input(&batch_input);
+        assert!(result.is_err());
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Concurrency must be 1-20"));
+        assert!(error_msg.contains("you provided 0"));
+        assert!(error_msg.contains("Recommended: 9 for most connections"));
+
+        // Test error message for invalid concurrency (too high)
+        let batch_input_high = BatchDownloadInput {
+            papers: vec![BatchDownloadRequest {
+                doi: Some("10.1038/test".to_string()),
+                url: None,
+                filename: None,
+                category: None,
+            }],
+            max_concurrent: 25,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+
+        let result_high = DownloadTool::validate_batch_input(&batch_input_high);
+        assert!(result_high.is_err());
+
+        let error_msg_high = result_high.unwrap_err().to_string();
+        assert!(error_msg_high.contains("Concurrency must be 1-20"));
+        assert!(error_msg_high.contains("you provided 25"));
+        assert!(error_msg_high.contains("fast networks"));
+    }
+
+    #[test]
+    fn test_batch_download_helper_methods() {
+        // Test split_into_batches helper with actual paper list
+        let papers_101: Vec<_> = (0..101)
+            .map(|i| BatchDownloadRequest {
+                doi: Some(format!("10.1038/test{i}")),
+                url: None,
+                filename: None,
+                category: None,
+            })
+            .collect();
+
+        let batches_101 = DownloadTool::split_into_batches(papers_101, 100);
+        assert_eq!(batches_101.len(), 2);
+        assert_eq!(batches_101[0].len(), 100);
+        assert_eq!(batches_101[1].len(), 1);
+
+        // Test suggest_batch_config helper
+        let suggestion_50 = DownloadTool::suggest_batch_config(50);
+        assert!(suggestion_50.contains("Use single batch call"));
+        assert!(suggestion_50.contains("50 papers"));
+
+        let suggestion_250 = DownloadTool::suggest_batch_config(250);
+        assert!(suggestion_250.contains("3 batch calls"));
+        assert!(suggestion_250.contains("250 papers"));
+
+        let suggestion_500 = DownloadTool::suggest_batch_config(500);
+        assert!(suggestion_500.contains("5 batch calls"));
+        assert!(suggestion_500.contains("500 papers"));
+    }
+
+    #[test]
+    fn test_individual_download_error_messages() {
+        // Test error message when both DOI and URL provided
+        let both_input = DownloadInput {
+            doi: Some("10.1038/nature12373".to_string()),
+            url: Some("https://example.com/paper.pdf".to_string()),
+            filename: None,
+            directory: None,
+            category: None,
+            overwrite: false,
+            verify_integrity: true,
+        };
+
+        let result = DownloadTool::validate_input(&both_input);
+        assert!(result.is_err());
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Cannot specify both DOI and URL"));
+
+        // Test error message when neither DOI nor URL provided
+        let neither_input = DownloadInput {
+            doi: None,
+            url: None,
+            filename: None,
+            directory: None,
+            category: None,
+            overwrite: false,
+            verify_integrity: true,
+        };
+
+        let result_neither = DownloadTool::validate_input(&neither_input);
+        assert!(result_neither.is_err());
+
+        let error_msg_neither = result_neither.unwrap_err().to_string();
+        assert!(error_msg_neither.contains("Either DOI or URL must be provided"));
+    }
+
+    #[test]
+    fn test_batch_request_validation_error_messages() {
+        // Test batch request with neither DOI nor URL
+        let invalid_request = BatchDownloadRequest {
+            doi: None,
+            url: None,
+            filename: None,
+            category: None,
+        };
+
+        let batch_input = BatchDownloadInput {
+            papers: vec![invalid_request],
+            max_concurrent: 9,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+
+        let result = DownloadTool::validate_batch_input(&batch_input);
+        assert!(result.is_err());
+
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("papers[0] - Either DOI or URL must be provided"));
+
+        // Test batch request with both DOI and URL
+        let invalid_both_request = BatchDownloadRequest {
+            doi: Some("10.1038/test".to_string()),
+            url: Some("https://example.com/test.pdf".to_string()),
+            filename: None,
+            category: None,
+        };
+
+        let batch_input_both = BatchDownloadInput {
+            papers: vec![invalid_both_request],
+            max_concurrent: 9,
+            continue_on_error: true,
+            shared_settings: BatchDownloadSettings::default(),
+        };
+
+        let result_both = DownloadTool::validate_batch_input(&batch_input_both);
+        assert!(result_both.is_err());
+
+        let error_msg_both = result_both.unwrap_err().to_string();
+        assert!(error_msg_both.contains("papers[0] - Cannot specify both DOI and URL"));
     }
 }

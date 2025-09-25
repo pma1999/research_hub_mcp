@@ -237,6 +237,60 @@ Ask Claude: "Generate a BibTeX bibliography for these DOIs: ['10.1038/nature1237
 
 **Performance:** Up to 10-20x faster for large reference lists with 30 concurrent metadata fetches!
 
+## Batch Processing Best Practices
+
+### Download Limits and Guidelines
+
+**Maximum Batch Size**: 100 papers per batch call
+- For collections >100 papers, split into multiple batches
+- Example: 250 papers = 3 batches (100 + 100 + 50)
+
+**Concurrency Settings**:
+- **Fast connection (100+ Mbps)**: `max_concurrent: 15-20`
+- **Standard connection (25-100 Mbps)**: `max_concurrent: 9-12` (default)
+- **Slow connection (<25 Mbps)**: `max_concurrent: 3-6`
+
+### Error Recovery Strategies
+
+**Recommended Settings**:
+- `continue_on_error: true` - Don't stop entire batch if some papers fail
+- `verify_integrity: true` - Detect and retry corrupted downloads
+- `overwrite: false` - Skip existing files to resume interrupted batches
+
+**Handling Failed Downloads**:
+1. Review error messages for specific failures
+2. Retry failed papers individually or in smaller batches
+3. Check provider availability for specific DOIs
+4. Consider alternative sources for difficult-to-access papers
+
+### Performance Optimization
+
+**Metadata Extraction**:
+- Processes up to 12 PDFs concurrently
+- No total file limit - batch large collections efficiently
+- Use `batch_files` parameter for multi-file processing
+
+**Bibliography Generation**:
+- 30 concurrent metadata fetches for large reference lists
+- Supports all standard formats (BibTeX, APA, MLA, Chicago, IEEE, Harvard)
+- Include abstracts and keywords as needed
+
+**Example Large Collection Workflow**:
+```bash
+# Step 1: Search for papers
+"Search for 150 papers on machine learning from 2023"
+
+# Step 2: Download in batches
+"Download first 100 papers from search results with max_concurrent=12"
+"Download remaining 50 papers with continue_on_error=true"
+
+# Step 3: Process metadata in batch
+"Extract metadata from all downloaded PDFs in the ML_2023 directory"
+
+# Step 4: Generate bibliography
+"Create BibTeX bibliography from all paper DOIs with abstracts included"
+```
+
 ## Claude Code Integration
 
 This MCP server is specifically enhanced for **Claude Code** workflows:

@@ -279,14 +279,14 @@ impl ServerHandler for ResearchServerHandler {
                 },
                 Tool {
                     name: "download_papers_batch".into(),
-                    description: Some("Download multiple papers concurrently by DOI. Significantly faster for downloading multiple papers.".into()),
+                    description: Some("Download multiple papers concurrently (MAX 100 papers per batch, 1-20 concurrent). For >100 papers, split into multiple batches. 5-10x faster than individual downloads.".into()),
                     input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(ActualBatchDownloadInput)).unwrap().as_object().unwrap().clone()),
                     output_schema: None,
                     annotations: None,
                 },
                 Tool {
                     name: "extract_metadata".into(),
-                    description: Some("Extract bibliographic metadata from a PDF file or DOI".into()),
+                    description: Some("Extract metadata from PDF files. Single file or batch processing (12 concurrent for batch_files array). Returns title, authors, DOI, abstract, etc.".into()),
                     input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(ActualMetadataInput)).unwrap().as_object().unwrap().clone()),
                     output_schema: None,
                     annotations: None,
@@ -300,7 +300,7 @@ impl ServerHandler for ResearchServerHandler {
                 },
                 Tool {
                     name: "generate_bibliography".into(),
-                    description: Some("Generate citations and bibliography from paper DOIs in various formats (BibTeX, APA, MLA, etc.)".into()),
+                    description: Some("Generate citations from DOIs with parallel fetching (processes unlimited DOIs with 30 concurrent fetches). Supports BibTeX, APA, MLA, Chicago, IEEE, Harvard formats.".into()),
                     input_schema: Arc::new(serde_json::to_value(schemars::schema_for!(BibliographyInput)).unwrap().as_object().unwrap().clone()),
                     output_schema: None,
                     annotations: None,

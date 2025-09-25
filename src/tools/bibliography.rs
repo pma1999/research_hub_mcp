@@ -8,17 +8,25 @@ use tracing::{debug, error, info, instrument, warn};
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct BibliographyInput {
     /// List of DOIs or paper identifiers
+    #[schemars(
+        description = "Array of DOIs/identifiers. No limit on quantity. Fetches metadata for 30 papers concurrently."
+    )]
     pub identifiers: Vec<String>,
 
-    /// Citation format (bibtex, apa, mla, chicago, ieee)
+    /// Citation format (bibtex, apa, mla, chicago, ieee, harvard)
+    #[schemars(
+        description = "Citation format: 'bibtex' (default), 'apa', 'mla', 'chicago', 'ieee', or 'harvard'"
+    )]
     #[serde(default = "default_format")]
     pub format: CitationFormat,
 
     /// Include abstract in citation
+    #[schemars(description = "Include paper abstract in the citation (default: false)")]
     #[serde(default)]
     pub include_abstract: bool,
 
     /// Include keywords in citation
+    #[schemars(description = "Include paper keywords in the citation (default: false)")]
     #[serde(default)]
     pub include_keywords: bool,
 }
@@ -105,6 +113,7 @@ pub struct BibliographyTool {
     _config: Arc<Config>,
 }
 
+#[allow(dead_code)]
 impl BibliographyTool {
     /// Create a new bibliography tool
     pub const fn new(config: Arc<Config>) -> Result<Self> {
