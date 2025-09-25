@@ -1,1 +1,0 @@
-# knowledge_accumulator_mcp Configuration

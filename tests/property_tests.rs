@@ -1,4 +1,4 @@
-use knowledge_accumulator_mcp::{Config, Error};
+use rust_research_mcp::{Config, Error};
 use proptest::prelude::*;
 
 /// Property-based tests for critical algorithms and data structures
@@ -87,7 +87,7 @@ mod config_validation_props {
 
 mod error_categorization_props {
     use super::*;
-    use knowledge_accumulator_mcp::error::ErrorCategory;
+    use rust_research_mcp::error::ErrorCategory;
 
     proptest! {
         #[test]
@@ -117,8 +117,8 @@ mod error_categorization_props {
 
 mod circuit_breaker_props {
     use super::*;
-    use knowledge_accumulator_mcp::resilience::circuit_breaker::CircuitBreakerConfig;
-    use knowledge_accumulator_mcp::resilience::CircuitBreaker;
+    use rust_research_mcp::resilience::circuit_breaker::CircuitBreakerConfig;
+    use rust_research_mcp::resilience::CircuitBreaker;
     use std::time::Duration;
 
     proptest! {
@@ -149,7 +149,7 @@ mod circuit_breaker_props {
 /*
 mod rate_limiter_props {
     use super::*;
-    use knowledge_accumulator_mcp::client::rate_limiter::RateLimiter;
+    use rust_research_mcp::client::rate_limiter::RateLimiter;
     use std::time::Duration;
 
     proptest! {

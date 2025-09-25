@@ -1,4 +1,4 @@
-use knowledge_accumulator_mcp::client::providers::{
+use rust_research_mcp::client::providers::{
     ArxivProvider, CoreProvider, CrossRefProvider, OpenAlexProvider, SciHubProvider, SearchContext,
     SearchQuery, SearchType, SemanticScholarProvider, SourceProvider, SsrnProvider,
     UnpaywallProvider,
@@ -33,7 +33,7 @@ impl Default for TestConfig {
 fn create_test_context() -> SearchContext {
     SearchContext {
         timeout: Duration::from_secs(30),
-        user_agent: "knowledge_accumulator_mcp-test/0.2.1".to_string(),
+        user_agent: "rust_research_mcp-test/0.2.1".to_string(),
         rate_limit: Some(Duration::from_millis(500)),
         headers: HashMap::new(),
     }

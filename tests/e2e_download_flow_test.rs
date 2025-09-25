@@ -1,7 +1,7 @@
-use knowledge_accumulator_mcp::client::meta_search::{MetaSearchClient, MetaSearchConfig};
-use knowledge_accumulator_mcp::tools::download::{DownloadInput, DownloadTool};
-use knowledge_accumulator_mcp::tools::metadata::{MetadataExtractor, MetadataInput};
-use knowledge_accumulator_mcp::{Config, Result};
+use rust_research_mcp::client::meta_search::{MetaSearchClient, MetaSearchConfig};
+use rust_research_mcp::tools::download::{DownloadInput, DownloadTool};
+use rust_research_mcp::tools::metadata::{MetadataExtractor, MetadataInput};
+use rust_research_mcp::{Config, Result};
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::fs;
@@ -56,8 +56,8 @@ async fn test_e2e_download_and_metadata_flow() -> Result<()> {
 
                 // Verify the metadata extraction worked
                 match metadata_result.status {
-                    knowledge_accumulator_mcp::tools::metadata::ExtractionStatus::Success
-                    | knowledge_accumulator_mcp::tools::metadata::ExtractionStatus::Partial => {
+                    rust_research_mcp::tools::metadata::ExtractionStatus::Success
+                    | rust_research_mcp::tools::metadata::ExtractionStatus::Partial => {
                         println!("Metadata extraction successful");
                         if let Some(metadata) = metadata_result.metadata {
                             println!("Extracted title: {:?}", metadata.title);
@@ -110,7 +110,7 @@ async fn test_metadata_extraction_error_handling() -> Result<()> {
     let result = metadata_extractor.extract_metadata(metadata_input).await?;
     assert!(matches!(
         result.status,
-        knowledge_accumulator_mcp::tools::metadata::ExtractionStatus::Failed
+        rust_research_mcp::tools::metadata::ExtractionStatus::Failed
     ));
     assert!(result.error.is_some());
     assert!(result.error.as_ref().unwrap().contains("not found"));
@@ -131,7 +131,7 @@ async fn test_metadata_extraction_error_handling() -> Result<()> {
     let result = metadata_extractor.extract_metadata(metadata_input).await?;
     assert!(matches!(
         result.status,
-        knowledge_accumulator_mcp::tools::metadata::ExtractionStatus::Failed
+        rust_research_mcp::tools::metadata::ExtractionStatus::Failed
     ));
     assert!(result.error.is_some());
 

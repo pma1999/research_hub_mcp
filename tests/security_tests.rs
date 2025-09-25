@@ -1,6 +1,6 @@
-use knowledge_accumulator_mcp::tools::download::{DownloadInput, DownloadTool};
-use knowledge_accumulator_mcp::tools::search::{SearchInput, SearchTool, SearchType};
-use knowledge_accumulator_mcp::{Config, Error, MetaSearchClient, MetaSearchConfig};
+use rust_research_mcp::tools::download::{DownloadInput, DownloadTool};
+use rust_research_mcp::tools::search::{SearchInput, SearchTool, SearchType};
+use rust_research_mcp::{Config, Error, MetaSearchClient, MetaSearchConfig};
 use std::sync::Arc;
 use tempfile::TempDir;
 

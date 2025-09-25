@@ -2,9 +2,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-use rust_research_mcp::{
-    Config, ConfigOverrides, DaemonConfig, DaemonService, PidFile, Server,
-};
+use rust_research_mcp::{Config, ConfigOverrides, DaemonConfig, DaemonService, PidFile, Server};
 use std::sync::Arc;
 use tracing::{debug, error, info};
 

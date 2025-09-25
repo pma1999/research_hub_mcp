@@ -1,4 +1,4 @@
-use knowledge_accumulator_mcp::{Config, Server};
+use rust_research_mcp::{Config, Server};
 use std::sync::Arc;
 
 #[tokio::test]
@@ -58,7 +58,7 @@ async fn test_server_with_custom_config() {
 #[tokio::test]
 async fn test_transport_validation() {
     // This test ensures transport validation doesn't block in development
-    let result = knowledge_accumulator_mcp::server::transport::validate_stdio_transport();
+    let result = rust_research_mcp::server::transport::validate_stdio_transport();
     assert!(
         result.is_ok(),
         "Transport validation should allow terminal in development"
@@ -69,7 +69,7 @@ async fn test_transport_validation() {
 async fn test_server_handler_integration() {
     let config = Config::default();
     let handler =
-        knowledge_accumulator_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
+        rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap();
 
     // Test ping
     let ping_result = handler.ping().await;
@@ -80,7 +80,7 @@ async fn test_server_handler_integration() {
 async fn test_concurrent_operations() {
     let config = Config::default();
     let handler = Arc::new(
-        knowledge_accumulator_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap(),
+        rust_research_mcp::server::ResearchServerHandler::new(Arc::new(config)).unwrap(),
     );
 
     // Test multiple concurrent ping operations
