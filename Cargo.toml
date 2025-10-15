@@ -112,8 +112,8 @@ criterion = {version = "0.5", features = ["html_reports"]}
 # Install with: cargo install cargo-tarpaulin
 
 [build-dependencies]
-# For generating build info
-vergen = {version = "8.0", features = ["build", "git", "gitcl"]}
+# Build dependencies (minimal - vergen removed for Docker build optimization)
+# Version info comes from CARGO_PKG_VERSION environment variable
 
 [[bin]]
 name = "rust-research-mcp"
@@ -144,6 +144,13 @@ strip = true
 [profile.dev]
 debug = true
 incremental = true
+
+[profile.docker]
+inherits = "release"
+lto = "thin"  # Thin LTO instead of fat LTO for faster Docker builds
+codegen-units = 16  # Parallelization instead of 1 for faster compilation
+strip = true
+opt-level = 3
 
 # Cargo configuration for clippy
 [lints.clippy]

@@ -1,43 +1,56 @@
-# Etapa de build
-FROM rust:1.74-slim AS builder
+# Stage 1: Chef planner
+FROM rust:1.74-slim AS chef
+RUN cargo install cargo-chef
 WORKDIR /app
-# Paquetes frecuentes que necesita cargo (openssl, etc.)
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY Cargo.toml Cargo.lock build.rs ./
-COPY src ./src
-COPY benches ./benches
-# Compila en release
-RUN cargo build --release
 
-# Etapa de runtime con Node.js
+# Stage 2: Recipe preparation
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY build.rs ./
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Stage 3: Build dependencies (CACHED LAYER)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies only - this layer is cached
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+RUN cargo chef cook --profile docker --recipe-path recipe.json
+
+# Stage 4: Build application
+COPY . .
+# Use faster docker profile for compilation
+RUN cargo build --profile docker
+
+# Stage 5: Runtime with Node.js wrapper
 FROM node:20-slim
-RUN useradd -m -u 10001 mcp \
-  && apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 \
-  && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /data && chown -R mcp:mcp /data
+RUN useradd -m -u 10001 mcp && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates libssl3 && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /data && chown -R mcp:mcp /data
 
 WORKDIR /home/mcp
 
-# Copiar el binario Rust
-COPY --from=builder /app/target/release/rust-research-mcp /usr/local/bin/rust-research-mcp
+# Copy binary from builder (docker profile outputs to target/docker/)
+COPY --from=builder /app/target/docker/rust-research-mcp /usr/local/bin/rust-research-mcp
 
-# Copiar wrapper HTTP y package.json
+# Copy HTTP wrapper
 COPY mcp-http-wrapper.js package.json ./
-
-# Cambiar permisos
 RUN chown -R mcp:mcp /home/mcp && chmod +x mcp-http-wrapper.js
 
 USER mcp
 
-# Variables de entorno
-ENV RUST_LOG=info
-ENV PORT=3000
-ENV DOWNLOAD_DIR=/data
-ENV LOG_LEVEL=info
+# Environment variables
+ENV RUST_LOG=info \
+    PORT=3000 \
+    DOWNLOAD_DIR=/data \
+    LOG_LEVEL=info
 
-# Exponer puerto
 EXPOSE 3000
 
-# Ejecutar el wrapper HTTP (que luego ejecuta el binario Rust)
+# Run the HTTP wrapper (which spawns the Rust binary)
 CMD ["node", "mcp-http-wrapper.js"]
 

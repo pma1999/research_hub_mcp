@@ -20,7 +20,7 @@ docs/
 *.md
 !README.md
 
-# Git
+# Git (no longer needed - build.rs simplified)
 .git/
 .gitignore
 .gitattributes
@@ -49,4 +49,9 @@ extension/
 
 # LaunchAgent
 launchd/
+
+# Additional build optimization
+Cargo.lock.bak
+*.orig
+.DS_Store
 
