@@ -1,0 +1,15 @@
+{
+  "id": "Ladvien/research_hub_mcp",
+  "name": "rust-research-mcp",
+  "description": "MCP de investigación académica: búsqueda multi-proveedor, descarga robusta y extracción de metadatos.",
+  "tags": ["research","papers","arXiv","CrossRef","Semantic Scholar","Rust"],
+  "deployment": {
+    "localOnly": false,
+    "requirements": [
+      { "name": "DOWNLOAD_DIR", "description": "Ruta de descargas dentro del contenedor", "required": false },
+      { "name": "LOG_LEVEL", "description": "Nivel de log", "required": false }
+    ]
+  },
+  "repository": { "type": "git", "url": "https://github.com/Ladvien/research_hub_mcp" }
+}
+

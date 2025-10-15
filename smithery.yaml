@@ -1,0 +1,27 @@
+startCommand:
+  # Smithery envuelve el proceso stdio y lo expone a los clientes
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      DOWNLOAD_DIR:
+        type: string
+        description: "Directorio de descargas dentro del contenedor"
+        default: "/data"
+      LOG_LEVEL:
+        type: string
+        description: "Nivel de log (trace|debug|info|warn|error)"
+        default: "info"
+    required: []
+  commandFunction: |
+    (config) => ({
+      command: "/usr/local/bin/rust-research-mcp",
+      args: [
+        "--download-dir", config.DOWNLOAD_DIR || "/data",
+        "--log-level", config.LOG_LEVEL || "info"
+      ],
+      env: {
+        RUST_LOG: config.LOG_LEVEL || "info"
+      }
+    })
+
