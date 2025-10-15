@@ -1,0 +1,52 @@
+# Build artifacts
+target/
+*.so
+*.dylib
+*.dll
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+tests/
+benches/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Misc
+.env
+.env.*
+*.log
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Homebrew
+homebrew/
+
+# Scripts
+scripts/
+
+# Extension
+extension/
+
+# LaunchAgent
+launchd/
+

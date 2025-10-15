@@ -1,27 +1,25 @@
+runtime: "container"
+build:
+  dockerfile: "Dockerfile"
+  dockerBuildPath: "."
 startCommand:
-  # Smithery envuelve el proceso stdio y lo expone a los clientes
-  type: stdio
+  type: "http"
   configSchema:
     type: object
     properties:
       DOWNLOAD_DIR:
         type: string
-        description: "Directorio de descargas dentro del contenedor"
+        title: "Download Directory"
+        description: "Directory for downloaded papers inside the container"
         default: "/data"
       LOG_LEVEL:
         type: string
-        description: "Nivel de log (trace|debug|info|warn|error)"
+        title: "Log Level"
+        description: "Logging level (trace, debug, info, warn, error)"
         default: "info"
+        enum: ["trace", "debug", "info", "warn", "error"]
     required: []
-  commandFunction: |
-    (config) => ({
-      command: "/usr/local/bin/rust-research-mcp",
-      args: [
-        "--download-dir", config.DOWNLOAD_DIR || "/data",
-        "--log-level", config.LOG_LEVEL || "info"
-      ],
-      env: {
-        RUST_LOG: config.LOG_LEVEL || "info"
-      }
-    })
+  exampleConfig:
+    DOWNLOAD_DIR: "/data"
+    LOG_LEVEL: "info"
 

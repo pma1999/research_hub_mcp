@@ -1,0 +1,14 @@
+{
+  "name": "rust-research-mcp-wrapper",
+  "version": "1.0.0",
+  "description": "HTTP wrapper for Rust Research MCP server",
+  "type": "module",
+  "main": "mcp-http-wrapper.js",
+  "scripts": {
+    "start": "node mcp-http-wrapper.js"
+  },
+  "keywords": ["mcp", "research", "wrapper"],
+  "author": "",
+  "license": "GPL-3.0"
+}
+
